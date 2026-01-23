@@ -1,0 +1,48 @@
+import { useState, useEffect, useCallback } from 'react';
+
+/**
+ * Custom hook for persisting state in localStorage
+ * @param key - The localStorage key
+ * @param initialValue - Default value if nothing is stored
+ */
+export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+  // Get initial value from localStorage or use default
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try {
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error(`Error reading localStorage key "${key}":`, error);
+      return initialValue;
+    }
+  });
+
+  // Update localStorage whenever value changes
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(storedValue));
+    } catch (error) {
+      console.error(`Error setting localStorage key "${key}":`, error);
+    }
+  }, [key, storedValue]);
+
+  // Wrapper to handle function updates
+  const setValue = useCallback((value: T | ((prev: T) => T)) => {
+    setStoredValue(prev => {
+      const newValue = value instanceof Function ? value(prev) : value;
+      return newValue;
+    });
+  }, []);
+
+  return [storedValue, setValue];
+}
+
+/**
+ * Keys used for localStorage
+ */
+export const STORAGE_KEYS = {
+  WORKOUT_HISTORY: 'sloefit_workout_history',
+  NUTRITION_LOG: 'sloefit_nutrition_log',
+  USER_GOAL: 'sloefit_user_goal',
+  CURRENT_DAY: 'sloefit_current_day',
+} as const;

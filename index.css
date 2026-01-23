@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #D4FF00;
+  --bg-app: #000000;
+  --bg-card: #1C1C1E;
+  --bg-card-hover: #2C2C2E;
+  --text-primary: #FFFFFF;
+  --text-secondary: #8E8E93;
+}
+
+@layer base {
+  :root {
+    --safe-area-bottom: env(safe-area-inset-bottom);
+  }
+
+  body {
+    @apply bg-[var(--bg-app)] text-[var(--text-primary)] antialiased selection:bg-[var(--color-primary)] selection:text-black;
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer components {
+
+  /* Premium Card Style */
+  .card {
+    @apply bg-[var(--bg-card)] rounded-2xl border border-white/5 p-5 shadow-lg backdrop-blur-sm transition-all duration-300;
+  }
+
+  .card:active {
+    @apply scale-[0.98] bg-[var(--bg-card-hover)];
+  }
+
+  /* Primary Button (Neon Volt) */
+  .btn-primary {
+    @apply bg-[var(--color-primary)] text-black font-black uppercase tracking-wide py-4 px-6 rounded-xl shadow-lg shadow-[var(--color-primary)]/30 hover:shadow-xl hover:shadow-[var(--color-primary)]/50 transition-all active:scale-95 cursor-pointer;
+  }
+
+  /* Secondary Button (Glass) */
+  .btn-secondary {
+    @apply bg-white/10 text-white font-bold py-3 px-6 rounded-xl hover:bg-white/20 transition-all active:scale-95 backdrop-blur-md cursor-pointer;
+  }
+
+  /* Input Field */
+  .input-field {
+    @apply bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] outline-none transition-all placeholder:text-gray-600;
+  }
+
+  /* Navigation Item */
+  .nav-item {
+    @apply flex flex-col items-center justify-center w-full h-full text-gray-500 transition-colors duration-200 cursor-pointer bg-transparent border-0;
+  }
+
+  .nav-item.active {
+    @apply text-[var(--color-primary)];
+  }
+
+  /* Animations */
+  .animate-slide-up {
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
