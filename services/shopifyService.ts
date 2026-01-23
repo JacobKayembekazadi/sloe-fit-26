@@ -2,8 +2,8 @@ import Client from '@shopify/buy-button-js';
 
 // Shopify Store Configuration
 const SHOPIFY_CONFIG = {
-    domain: 'sloe-fit.myshopify.com', // Replace with your actual Shopify store domain
-    storefrontAccessToken: process.env.SHOPIFY_STOREFRONT_TOKEN || 'YOUR_STOREFRONT_ACCESS_TOKEN_HERE',
+    domain: import.meta.env.VITE_SHOPIFY_STORE_DOMAIN || 'sloe-fit.myshopify.com',
+    storefrontAccessToken: import.meta.env.VITE_SHOPIFY_STOREFRONT_ACCESS_TOKEN || '',
 };
 
 // Create Shopify client
