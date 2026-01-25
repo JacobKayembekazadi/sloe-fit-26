@@ -55,6 +55,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Timeout safeguard - never stay loading forever
+        const timeout = setTimeout(() => {
+            setLoading(false);
+        }, 10000);
+
         // Check active sessions and sets the user
         supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session);
@@ -65,6 +70,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await ensureProfileExists(session.user);
             }
 
+            setLoading(false);
+        }).catch((err) => {
+            console.error('Auth session error:', err);
             setLoading(false);
         });
 
@@ -81,7 +89,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            clearTimeout(timeout);
+            subscription.unsubscribe();
+        };
     }, []);
 
     const signOut = async () => {
