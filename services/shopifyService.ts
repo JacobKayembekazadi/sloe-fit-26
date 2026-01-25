@@ -9,7 +9,14 @@ const SHOPIFY_CONFIG = {
 // Create Shopify client
 let client: any = null;
 
+export const isShopifyConfigured = () => {
+    return Boolean(SHOPIFY_CONFIG.storefrontAccessToken);
+};
+
 export const initializeShopifyClient = () => {
+    if (!isShopifyConfigured()) {
+        return null;
+    }
     if (!client) {
         client = Client.buildClient({
             domain: SHOPIFY_CONFIG.domain,
@@ -36,8 +43,10 @@ export interface ShopifyProduct {
 
 // Fetch product by ID
 export const fetchProduct = async (productId: string): Promise<ShopifyProduct | null> => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return null;
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const product = await shopifyClient.product.fetch(productId);
         return product as ShopifyProduct;
     } catch (error) {
@@ -48,8 +57,10 @@ export const fetchProduct = async (productId: string): Promise<ShopifyProduct | 
 
 // Fetch multiple products
 export const fetchProducts = async (productIds: string[]): Promise<ShopifyProduct[]> => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return [];
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const productsPromises = productIds.map(id => shopifyClient.product.fetch(id));
         const products = await Promise.all(productsPromises);
         return products.filter(Boolean) as ShopifyProduct[];
@@ -61,8 +72,10 @@ export const fetchProducts = async (productIds: string[]): Promise<ShopifyProduc
 
 // Create a checkout
 export const createCheckout = async () => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return null;
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const checkout = await shopifyClient.checkout.create();
         return checkout;
     } catch (error) {
@@ -73,8 +86,10 @@ export const createCheckout = async () => {
 
 // Add line item to checkout
 export const addToCart = async (checkoutId: string, variantId: string, quantity: number = 1) => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return null;
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const lineItemsToAdd = [
             {
                 variantId,
@@ -91,8 +106,10 @@ export const addToCart = async (checkoutId: string, variantId: string, quantity:
 
 // Remove line item from checkout
 export const removeFromCart = async (checkoutId: string, lineItemId: string) => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return null;
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const checkout = await shopifyClient.checkout.removeLineItems(checkoutId, [lineItemId]);
         return checkout;
     } catch (error) {
@@ -103,8 +120,10 @@ export const removeFromCart = async (checkoutId: string, lineItemId: string) => 
 
 // Update line item quantity
 export const updateCartQuantity = async (checkoutId: string, lineItemId: string, quantity: number) => {
+    const shopifyClient = initializeShopifyClient();
+    if (!shopifyClient) return null;
+
     try {
-        const shopifyClient = initializeShopifyClient();
         const lineItemsToUpdate = [
             {
                 id: lineItemId,
