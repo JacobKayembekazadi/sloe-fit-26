@@ -12,7 +12,29 @@ export interface NutritionTargets {
     fats: number;
 }
 
-export const getNutritionTargets = (goal: string | null): NutritionTargets => {
+// Extended user profile with training preferences
+export interface UserProfile {
+    goal: string | null;
+    height_inches: number | null;
+    weight_lbs: number | null;
+    age: number | null;
+    training_experience: 'beginner' | 'intermediate' | 'advanced' | null;
+    equipment_access: 'gym' | 'home' | 'minimal' | null;
+    days_per_week: number | null;
+}
+
+// Activity multiplier for TDEE calculation
+const ACTIVITY_MULTIPLIER = 1.55; // Moderate activity (3-5 days/week)
+
+// Calculate BMR using Mifflin-St Jeor equation (assumes male for now)
+const calculateBMR = (weightLbs: number, heightInches: number, age: number): number => {
+    const weightKg = weightLbs * 0.453592;
+    const heightCm = heightInches * 2.54;
+    return Math.round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
+};
+
+// Get default targets based on goal only
+const getDefaultTargets = (goal: string | null): NutritionTargets => {
     switch (goal) {
         case 'CUT':
             return { calories: 1800, protein: 200, carbs: 150, fats: 60 };
@@ -24,10 +46,37 @@ export const getNutritionTargets = (goal: string | null): NutritionTargets => {
     }
 };
 
+// Calculate personalized targets based on user stats
+export const calculateNutritionTargets = (profile: UserProfile): NutritionTargets => {
+    // If user provided weight/height/age, calculate properly
+    if (profile.weight_lbs && profile.height_inches && profile.age) {
+        const bmr = calculateBMR(profile.weight_lbs, profile.height_inches, profile.age);
+        const tdee = Math.round(bmr * ACTIVITY_MULTIPLIER);
+        const goalAdjustment = { CUT: -500, BULK: 300, RECOMP: 0 }[profile.goal || 'RECOMP'] || 0;
+        const calories = tdee + goalAdjustment;
+        const protein = profile.weight_lbs; // 1g per lb bodyweight
+        const fats = Math.round((calories * 0.25) / 9); // 25% from fats
+        const carbs = Math.round((calories - protein * 4 - fats * 9) / 4); // Remainder from carbs
+
+        return { calories, protein, carbs, fats };
+    }
+    // Fallback to goal-based defaults
+    return getDefaultTargets(profile.goal);
+};
+
 export const useUserData = () => {
     const { user } = useAuth();
     const [goal, setGoal] = useState<string | null>(null);
     const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+    const [userProfile, setUserProfile] = useState<UserProfile>({
+        goal: null,
+        height_inches: null,
+        weight_lbs: null,
+        age: null,
+        training_experience: null,
+        equipment_access: null,
+        days_per_week: null
+    });
     const [workouts, setWorkouts] = useState<CompletedWorkout[]>([]);
     const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -36,12 +85,21 @@ export const useUserData = () => {
         if (!user) return;
         const { data: profile } = await supabase
             .from('profiles')
-            .select('goal, onboarding_complete')
+            .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week')
             .eq('id', user.id)
             .single();
         if (profile) {
             setGoal(profile.goal);
             setOnboardingComplete(profile.onboarding_complete ?? false);
+            setUserProfile({
+                goal: profile.goal,
+                height_inches: profile.height_inches,
+                weight_lbs: profile.weight_lbs,
+                age: profile.age,
+                training_experience: profile.training_experience,
+                equipment_access: profile.equipment_access,
+                days_per_week: profile.days_per_week
+            });
         } else {
             setOnboardingComplete(false);
         }
@@ -103,6 +161,7 @@ export const useUserData = () => {
     const updateGoal = async (newGoal: string) => {
         if (!user) return;
         setGoal(newGoal);
+        setUserProfile(prev => ({ ...prev, goal: newGoal }));
         await supabase.from('profiles').update({ goal: newGoal }).eq('id', user.id);
     };
 
@@ -186,7 +245,7 @@ export const useUserData = () => {
         await saveNutrition(updatedLog);
     };
 
-    const nutritionTargets = getNutritionTargets(goal);
+    const nutritionTargets = calculateNutritionTargets(userProfile);
 
     // Refetch profile after onboarding completes
     const refetchProfile = async () => {
@@ -196,6 +255,7 @@ export const useUserData = () => {
     return {
         goal,
         onboardingComplete,
+        userProfile,
         nutritionTargets,
         workouts,
         nutritionLogs,

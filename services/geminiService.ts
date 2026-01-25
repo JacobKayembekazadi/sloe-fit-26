@@ -1,7 +1,9 @@
 
 import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
-import { BODY_ANALYSIS_PROMPT, MEAL_ANALYSIS_PROMPT, PROGRESS_ANALYSIS_PROMPT } from '../prompts';
+import { BODY_ANALYSIS_PROMPT, MEAL_ANALYSIS_PROMPT, PROGRESS_ANALYSIS_PROMPT, WORKOUT_GENERATION_PROMPT, TEXT_MEAL_ANALYSIS_PROMPT } from '../prompts';
 import { fileToGenerativePart } from '../utils/fileUtils';
+import { RecoveryState } from '../components/RecoveryCheckIn';
+import { UserProfile } from '../hooks/useUserData';
 
 // Interface for parsed meal analysis result
 export interface MealAnalysisResult {
@@ -152,5 +154,151 @@ export const analyzeProgress = async (images: File[], metrics: string): Promise<
   } catch (error) {
     console.error("Error analyzing progress:", error);
     return `An error occurred while analyzing your progress: ${error instanceof Error ? error.message : String(error)}. Please try again later.`;
+  }
+};
+
+// Workout generation types
+export interface GeneratedWorkout {
+  title: string;
+  duration_minutes: number;
+  intensity: 'light' | 'moderate' | 'intense';
+  recovery_adjusted: boolean;
+  recovery_notes?: string;
+  warmup: {
+    duration_minutes: number;
+    exercises: { name: string; duration: string }[];
+  };
+  exercises: {
+    name: string;
+    sets: number;
+    reps: string;
+    rest_seconds: number;
+    notes?: string;
+    target_muscles: string[];
+  }[];
+  cooldown: {
+    duration_minutes: number;
+    exercises: { name: string; duration: string }[];
+  };
+}
+
+export interface WorkoutGenerationInput {
+  profile: UserProfile;
+  recovery: RecoveryState;
+  recentWorkouts: { title: string; date: string; muscles: string[] }[];
+}
+
+export const generateWorkout = async (input: WorkoutGenerationInput): Promise<GeneratedWorkout | null> => {
+  try {
+    const prompt = `
+Generate a workout for this user:
+
+USER PROFILE:
+- Goal: ${input.profile.goal || 'RECOMP'}
+- Training Experience: ${input.profile.training_experience || 'beginner'}
+- Equipment Access: ${input.profile.equipment_access || 'gym'}
+- Days Per Week: ${input.profile.days_per_week || 4}
+
+RECOVERY STATE:
+- Energy Level: ${input.recovery.energyLevel}/5
+- Sleep Last Night: ${input.recovery.sleepHours} hours
+- Sore Areas: ${input.recovery.sorenessAreas.length > 0 ? input.recovery.sorenessAreas.join(', ') : 'None'}
+- Last Workout Rating: ${input.recovery.lastWorkoutRating}/5
+
+RECENT WORKOUTS (last 3):
+${input.recentWorkouts.length > 0
+  ? input.recentWorkouts.map(w => `- ${w.title} (${w.date}): ${w.muscles.join(', ')}`).join('\n')
+  : 'No recent workouts recorded'}
+
+Generate an appropriate workout based on the above data.
+`;
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: model,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        systemInstruction: WORKOUT_GENERATION_PROMPT,
+      }
+    });
+
+    if (response.text) {
+      try {
+        // Clean up the response - remove any markdown code blocks
+        let jsonText = response.text.trim();
+        if (jsonText.startsWith('```json')) {
+          jsonText = jsonText.slice(7);
+        }
+        if (jsonText.startsWith('```')) {
+          jsonText = jsonText.slice(3);
+        }
+        if (jsonText.endsWith('```')) {
+          jsonText = jsonText.slice(0, -3);
+        }
+        jsonText = jsonText.trim();
+
+        const workout = JSON.parse(jsonText) as GeneratedWorkout;
+        return workout;
+      } catch (parseError) {
+        console.error("Error parsing workout JSON:", parseError, response.text);
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error generating workout:", error);
+    return null;
+  }
+};
+
+// Text meal analysis types
+export interface TextMealAnalysisResult {
+  foods: { name: string; portion: string; calories: number; protein: number; carbs: number; fats: number }[];
+  totals: { calories: number; protein: number; carbs: number; fats: number };
+  confidence: 'high' | 'medium' | 'low';
+  notes: string;
+}
+
+export const analyzeTextMeal = async (description: string, userGoal: string | null): Promise<TextMealAnalysisResult | null> => {
+  try {
+    const goalContext = userGoal
+      ? `The user's goal is ${userGoal}. Consider this when estimating portions.`
+      : 'No specific goal set.';
+
+    const prompt = `Analyze this meal: "${description}"\n\n${goalContext}`;
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: model,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        systemInstruction: TEXT_MEAL_ANALYSIS_PROMPT,
+      }
+    });
+
+    if (response.text) {
+      try {
+        // Clean up the response - remove any markdown code blocks
+        let jsonText = response.text.trim();
+        if (jsonText.startsWith('```json')) {
+          jsonText = jsonText.slice(7);
+        }
+        if (jsonText.startsWith('```')) {
+          jsonText = jsonText.slice(3);
+        }
+        if (jsonText.endsWith('```')) {
+          jsonText = jsonText.slice(0, -3);
+        }
+        jsonText = jsonText.trim();
+
+        const result = JSON.parse(jsonText) as TextMealAnalysisResult;
+        return result;
+      } catch (parseError) {
+        console.error("Error parsing meal JSON:", parseError, response.text);
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error analyzing text meal:", error);
+    return null;
   }
 };

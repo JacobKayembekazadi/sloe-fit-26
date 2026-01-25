@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Supabase Data Hook
-  const { goal, onboardingComplete, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading } = useUserData();
+  const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading } = useUserData();
 
   const handleGoalUpdate = (goalText: string) => {
     const goalMatch = goalText.match(/RECOMMENDED GOAL: \[(.+)\]/);
@@ -93,6 +93,7 @@ const AppContent: React.FC = () => {
         nutritionLogs={nutritionLogs}
         nutritionTargets={nutritionTargets}
         onBack={() => setCurrentView('tabs')}
+        goal={goal}
       />;
     }
 
@@ -107,11 +108,19 @@ const AppContent: React.FC = () => {
           nutritionTargets={nutritionTargets}
           goal={goal}
           workoutHistory={workouts}
+          userProfile={userProfile}
         />;
       case 'body':
         return <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />;
       case 'meal':
-        return <MealTracker userGoal={goal} onLogMeal={addMealToDaily} />;
+        const todayDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        const todayLog = nutritionLogs.find(l => l.date === todayDate);
+        return <MealTracker
+          userGoal={goal}
+          onLogMeal={addMealToDaily}
+          todayNutrition={todayLog ? { calories: todayLog.calories, protein: todayLog.protein, carbs: todayLog.carbs, fats: todayLog.fats } : undefined}
+          nutritionTargets={nutritionTargets}
+        />;
       case 'mindset':
         return <Mindset />;
       case 'progress':

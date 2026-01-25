@@ -4,6 +4,7 @@ import type { CompletedWorkout, NutritionLog } from '../App';
 import type { NutritionTargets } from '../hooks/useUserData';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import ProgressChart from './ProgressChart';
+import WeeklyNutritionSummary from './WeeklyNutritionSummary';
 
 type ViewMode = 'workouts' | 'charts';
 
@@ -12,9 +13,10 @@ interface WorkoutHistoryProps {
     nutritionLogs: NutritionLog[];
     nutritionTargets: NutritionTargets;
     onBack: () => void;
+    goal?: string | null;
 }
 
-const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack }) => {
+const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack, goal }) => {
     const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(0);
     const [viewMode, setViewMode] = useState<ViewMode>('workouts');
 
@@ -159,6 +161,13 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
             {/* Charts View */}
             {viewMode === 'charts' && (
                 <div className="space-y-6">
+                    {/* Weekly Insights */}
+                    <WeeklyNutritionSummary
+                        nutritionLogs={nutritionLogs}
+                        targets={nutritionTargets}
+                        goal={goal || null}
+                    />
+
                     <ProgressChart
                         data={calorieChartData}
                         title="Daily Calories (Last 14 Days)"
