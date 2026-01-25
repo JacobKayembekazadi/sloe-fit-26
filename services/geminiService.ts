@@ -23,7 +23,7 @@ if (!API_KEY) {
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
-const model = 'gemini-3-flash-preview';
+const model = 'gemini-2.0-flash';
 
 export const analyzeBodyPhoto = async (image: File): Promise<string> => {
   try {
