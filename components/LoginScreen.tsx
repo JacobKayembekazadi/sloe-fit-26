@@ -9,11 +9,53 @@ const LoginScreen: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+
+    // Validate email format
+    const isValidEmail = (email: string): boolean => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    };
+
+    // Validate password strength (min 6 chars for Supabase)
+    const validatePassword = (password: string): string | null => {
+        if (password.length < 6) {
+            return 'Password must be at least 6 characters';
+        }
+        return null;
+    };
+
+    // Validate all fields
+    const validateForm = (): boolean => {
+        const errors: { email?: string; password?: string; fullName?: string } = {};
+
+        if (!isValidEmail(email)) {
+            errors.email = 'Please enter a valid email address';
+        }
+
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+            errors.password = passwordError;
+        }
+
+        if (isSignUp && fullName.trim().length < 2) {
+            errors.fullName = 'Please enter your name';
+        }
+
+        setFieldErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
         setError(null);
+        setFieldErrors({});
+
+        if (!validateForm()) {
+            return;
+        }
+
+        setLoading(true);
 
         try {
             if (isSignUp) {
@@ -75,11 +117,16 @@ const LoginScreen: React.FC = () => {
                                 <input
                                     type="text"
                                     value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                    className="input-field w-full"
+                                    onChange={(e) => {
+                                        setFullName(e.target.value);
+                                        if (fieldErrors.fullName) setFieldErrors(prev => ({ ...prev, fullName: undefined }));
+                                    }}
+                                    className={`input-field w-full ${fieldErrors.fullName ? 'border-red-500' : ''}`}
                                     placeholder="King Kay"
-                                    required={isSignUp}
                                 />
+                                {fieldErrors.fullName && (
+                                    <p className="text-red-400 text-xs mt-1">{fieldErrors.fullName}</p>
+                                )}
                             </div>
                         )}
                         <div>
@@ -87,28 +134,41 @@ const LoginScreen: React.FC = () => {
                             <input
                                 type="email"
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="input-field w-full"
+                                onChange={(e) => {
+                                    setEmail(e.target.value);
+                                    if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: undefined }));
+                                }}
+                                className={`input-field w-full ${fieldErrors.email ? 'border-red-500' : ''}`}
                                 placeholder="you@example.com"
-                                required
                             />
+                            {fieldErrors.email && (
+                                <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs uppercase text-gray-500 font-bold mb-1">Password</label>
                             <input
                                 type="password"
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="input-field w-full"
+                                onChange={(e) => {
+                                    setPassword(e.target.value);
+                                    if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: undefined }));
+                                }}
+                                className={`input-field w-full ${fieldErrors.password ? 'border-red-500' : ''}`}
                                 placeholder="••••••••"
-                                required
                             />
+                            {fieldErrors.password && (
+                                <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>
+                            )}
+                            {isSignUp && !fieldErrors.password && (
+                                <p className="text-gray-500 text-xs mt-1">Minimum 6 characters</p>
+                            )}
                         </div>
 
                         <button
                             type="submit"
                             disabled={loading}
-                            className="btn-primary w-full flex justify-center items-center"
+                            className="btn-primary w-full flex justify-center items-center min-h-[48px]"
                         >
                             {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Sign Up' : 'Log In')}
                         </button>

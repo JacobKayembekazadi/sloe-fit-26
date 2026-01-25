@@ -1,5 +1,6 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
 import { analyzeProgress } from '../services/geminiService';
+import { validateImage } from '../services/storageService';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import ResultDisplay from './ResultDisplay';
@@ -26,6 +27,15 @@ const ProgressTracker: React.FC = () => {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, slotId: 'front' | 'side' | 'back') => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+
+      // Validate image before accepting
+      const validation = validateImage(selectedFile);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file');
+        return;
+      }
+
+      setError(null);
       const reader = new FileReader();
       reader.onloadend = () => {
         setPhotoSlots(prevSlots =>

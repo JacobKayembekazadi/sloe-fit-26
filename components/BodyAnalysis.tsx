@@ -1,5 +1,6 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
 import { analyzeBodyPhoto } from '../services/geminiService';
+import { validateImage } from '../services/storageService';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import ResultDisplay from './ResultDisplay';
@@ -20,6 +21,14 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+
+      // Validate image before accepting
+      const validation = validateImage(selectedFile);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file');
+        return;
+      }
+
       setFile(selectedFile);
       setResult(null);
       setError(null);

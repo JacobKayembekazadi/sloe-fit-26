@@ -4,12 +4,48 @@ import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { CompletedWorkout, NutritionLog } from '../App';
 
+// Nutrition targets based on user goal
+export interface NutritionTargets {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+}
+
+export const getNutritionTargets = (goal: string | null): NutritionTargets => {
+    switch (goal) {
+        case 'CUT':
+            return { calories: 1800, protein: 200, carbs: 150, fats: 60 };
+        case 'BULK':
+            return { calories: 3000, protein: 180, carbs: 350, fats: 80 };
+        case 'RECOMP':
+        default:
+            return { calories: 2200, protein: 190, carbs: 220, fats: 70 };
+    }
+};
+
 export const useUserData = () => {
     const { user } = useAuth();
     const [goal, setGoal] = useState<string | null>(null);
+    const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
     const [workouts, setWorkouts] = useState<CompletedWorkout[]>([]);
     const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const fetchProfile = async () => {
+        if (!user) return;
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('goal, onboarding_complete')
+            .eq('id', user.id)
+            .single();
+        if (profile) {
+            setGoal(profile.goal);
+            setOnboardingComplete(profile.onboarding_complete ?? false);
+        } else {
+            setOnboardingComplete(false);
+        }
+    };
 
     useEffect(() => {
         if (!user) return;
@@ -17,13 +53,8 @@ export const useUserData = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch Profile for Goal
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('goal')
-                    .eq('id', user.id)
-                    .single();
-                if (profile) setGoal(profile.goal);
+                // Fetch Profile for Goal and Onboarding Status
+                await fetchProfile();
 
                 // Fetch Workouts
                 const { data: workoutData } = await supabase
@@ -136,13 +167,43 @@ export const useUserData = () => {
         }
     };
 
+    // Add meal macros to today's daily totals
+    const addMealToDaily = async (macros: { calories: number; protein: number; carbs: number; fats: number }) => {
+        if (!user) return;
+
+        const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Find existing log for today or start from zero
+        const existingLog = nutritionLogs.find(l => l.date === today);
+        const updatedLog: NutritionLog = {
+            date: today,
+            calories: (existingLog?.calories || 0) + macros.calories,
+            protein: (existingLog?.protein || 0) + macros.protein,
+            carbs: (existingLog?.carbs || 0) + macros.carbs,
+            fats: (existingLog?.fats || 0) + macros.fats
+        };
+
+        await saveNutrition(updatedLog);
+    };
+
+    const nutritionTargets = getNutritionTargets(goal);
+
+    // Refetch profile after onboarding completes
+    const refetchProfile = async () => {
+        await fetchProfile();
+    };
+
     return {
         goal,
+        onboardingComplete,
+        nutritionTargets,
         workouts,
         nutritionLogs,
         loading,
         updateGoal,
         addWorkout,
-        saveNutrition
+        saveNutrition,
+        addMealToDaily,
+        refetchProfile
     };
 };

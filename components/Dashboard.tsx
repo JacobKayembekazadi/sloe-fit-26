@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ProgressBar from './ProgressBar';
 import MealIcon from './icons/MealIcon';
 import CameraIcon from './icons/CameraIcon';
@@ -8,7 +8,9 @@ import PlusIcon from './icons/PlusIcon';
 import TrashIcon from './icons/TrashIcon';
 import ListIcon from './icons/ListIcon';
 import { EXERCISE_LIST } from '../data/exercises';
-import type { ExerciseLog, NutritionLog } from '../App';
+import { getTodaysWorkout } from '../services/workoutService';
+import type { ExerciseLog, NutritionLog, CompletedWorkout } from '../App';
+import type { NutritionTargets } from '../hooks/useUserData';
 
 type Tab = 'dashboard' | 'body' | 'meal' | 'mindset' | 'progress';
 
@@ -18,22 +20,35 @@ interface DashboardProps {
     showHistoryView: () => void;
     nutritionLog: NutritionLog[];
     saveNutritionLog: (data: NutritionLog) => void;
+    nutritionTargets: NutritionTargets;
+    goal: string | null;
+    workoutHistory: CompletedWorkout[];
 }
 
-const initialWorkout: ExerciseLog[] = [
-    { id: 1, name: "Barbell Bench Press", sets: "3", reps: "10-12", weight: "" },
-    { id: 2, name: "Overhead Press (Barbell)", sets: "3", reps: "10-12", weight: "" },
-    { id: 3, name: "Incline Dumbbell Bench Press", sets: "3", reps: "10-12", weight: "" },
-    { id: 4, name: "Tricep Pushdown", sets: "3", reps: "12-15", weight: "" },
-    { id: 5, name: "Lateral Raises (Dumbbell)", sets: "3", reps: "15-20", weight: "" },
-];
-
-const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory, showHistoryView, nutritionLog, saveNutritionLog }) => {
+const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory, showHistoryView, nutritionLog, saveNutritionLog, nutritionTargets, goal, workoutHistory }) => {
     const [workoutStatus, setWorkoutStatus] = useState<'logging' | 'saved' | 'completed'>('logging');
-    const [workoutLog, setWorkoutLog] = useState<ExerciseLog[]>(initialWorkout);
     const [activeSearch, setActiveSearch] = useState<number | null>(null);
-    const currentDay = 7;
-    const workoutTitle = "Push Day - Foundation";
+
+    // Calculate workouts completed this week for rotation
+    const workoutsThisWeek = useMemo(() => {
+        const now = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        return workoutHistory.filter(w => {
+            const workoutDate = new Date(w.date);
+            return workoutDate >= startOfWeek;
+        }).length;
+    }, [workoutHistory]);
+
+    // Get today's workout based on goal and rotation
+    const todaysWorkout = useMemo(() => getTodaysWorkout(goal, workoutsThisWeek), [goal, workoutsThisWeek]);
+    const [workoutLog, setWorkoutLog] = useState<ExerciseLog[]>(todaysWorkout.exercises);
+    const workoutTitle = todaysWorkout.title;
+
+    // Calculate current day in program (based on total workout history)
+    const currentDay = Math.min(workoutHistory.length + 1, 30);
 
     // Get today's nutrition from log or use defaults
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -46,9 +61,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     };
 
     const nutritionData = {
-        calories: { current: todayNutrition.calories, target: 2500 },
-        protein: { current: todayNutrition.protein, target: 180 },
-        carbs: { current: todayNutrition.carbs, target: 250 },
+        calories: { current: todayNutrition.calories, target: nutritionTargets.calories },
+        protein: { current: todayNutrition.protein, target: nutritionTargets.protein },
+        carbs: { current: todayNutrition.carbs, target: nutritionTargets.carbs },
     };
 
     const handleWorkoutChange = (id: number, field: keyof ExerciseLog, value: string) => {
@@ -84,7 +99,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
 
     const startNewWorkout = () => {
         setWorkoutStatus('logging');
-        setWorkoutLog(initialWorkout);
+        setWorkoutLog(todaysWorkout.exercises);
     }
 
 

@@ -1,25 +1,40 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
-import { analyzeMealPhoto } from '../services/geminiService';
+import { analyzeMealPhoto, MealAnalysisResult } from '../services/geminiService';
+import { validateImage } from '../services/storageService';
+import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
+import CheckIcon from './icons/CheckIcon';
 import ResultDisplay from './ResultDisplay';
 import ProductCard from './ProductCard';
 import { PRODUCT_IDS } from '../services/shopifyService';
 
 interface MealTrackerProps {
   userGoal: string | null;
+  onLogMeal: (macros: { calories: number; protein: number; carbs: number; fats: number }) => Promise<void>;
 }
 
-const MealTracker: React.FC<MealTrackerProps> = ({ userGoal }) => {
+const MealTracker: React.FC<MealTrackerProps> = ({ userGoal, onLogMeal }) => {
+  const { showToast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [macros, setMacros] = useState<MealAnalysisResult['macros']>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLogged, setIsLogged] = useState(false);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+
+      // Validate image before accepting
+      const validation = validateImage(selectedFile);
+      if (!validation.valid) {
+        setError(validation.error || 'Invalid image file');
+        return;
+      }
+
       setFile(selectedFile);
       setResult(null);
       setError(null);
@@ -40,22 +55,38 @@ const MealTracker: React.FC<MealTrackerProps> = ({ userGoal }) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setMacros(null);
+    setIsLogged(false);
 
     const analysisResult = await analyzeMealPhoto(file, userGoal);
-    if (analysisResult.startsWith('An error occurred') || analysisResult.startsWith('Error:')) {
-      setError(analysisResult);
+    if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
+      setError(analysisResult.markdown);
     } else {
-      setResult(analysisResult);
+      setResult(analysisResult.markdown);
+      setMacros(analysisResult.macros);
     }
     setIsLoading(false);
   }, [file, userGoal]);
+
+  const handleLogMeal = useCallback(async () => {
+    if (!macros) return;
+    try {
+      await onLogMeal(macros);
+      setIsLogged(true);
+      showToast(`Logged ${macros.calories} calories`, 'success');
+    } catch {
+      showToast('Failed to log meal', 'error');
+    }
+  }, [macros, onLogMeal, showToast]);
 
   const resetForNextMeal = () => {
     setFile(null);
     setPreview(null);
     setResult(null);
+    setMacros(null);
     setError(null);
     setIsLoading(false);
+    setIsLogged(false);
   };
 
   if (!userGoal && !result) {
@@ -130,6 +161,22 @@ const MealTracker: React.FC<MealTrackerProps> = ({ userGoal }) => {
           <div className="card">
             <ResultDisplay result={result} />
           </div>
+
+          {/* Log This Meal Button */}
+          {macros && !isLogged && (
+            <button
+              onClick={handleLogMeal}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              Log This Meal ({macros.calories} cal, {macros.protein}g protein)
+            </button>
+          )}
+
+          {isLogged && (
+            <div className="flex items-center justify-center gap-2 py-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 font-bold">
+              <CheckIcon className="w-5 h-5" /> Meal Logged to Daily Totals
+            </div>
+          )}
 
           <button
             onClick={resetForNextMeal}

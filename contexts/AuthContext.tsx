@@ -18,6 +18,37 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+// Ensure profile exists for user (creates if missing)
+const ensureProfileExists = async (user: User) => {
+    try {
+        // Check if profile exists
+        const { data: existingProfile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .single();
+
+        // If profile doesn't exist (PGRST116 = no rows returned), create it
+        if (fetchError?.code === 'PGRST116' || !existingProfile) {
+            const { error: insertError } = await supabase
+                .from('profiles')
+                .insert({
+                    id: user.id,
+                    full_name: user.user_metadata?.full_name || '',
+                    goal: null,
+                    onboarding_complete: false,
+                    created_at: new Date().toISOString()
+                });
+
+            if (insertError && insertError.code !== '23505') { // Ignore duplicate key errors
+                console.error('Error creating profile:', insertError);
+            }
+        }
+    } catch (err) {
+        console.error('Error ensuring profile exists:', err);
+    }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
@@ -25,16 +56,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         // Check active sessions and sets the user
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session);
             setUser(session?.user ?? null);
+
+            // Ensure profile exists for authenticated users
+            if (session?.user) {
+                await ensureProfileExists(session.user);
+            }
+
             setLoading(false);
         });
 
         // Listen for changes on auth state (logged in, signed out, etc.)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
+
+            // Create profile on signup or ensure it exists on login
+            if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+                await ensureProfileExists(session.user);
+            }
+
             setLoading(false);
         });
 
@@ -47,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return (
         <AuthContext.Provider value={{ user, session, loading, signOut }}>
-            {!loading && children}
+            {children}
         </AuthContext.Provider>
     );
 };

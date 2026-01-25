@@ -337,6 +337,17 @@ Structure response exactly like this:
 Examples:
 - "Next time, measure that salad dressing - eyeballing usually means 2-3× the actual serving"
 - "The fried chicken added ~200 cal vs. grilled - small swap, big difference over 30 days"
+
+---
+
+## IMPORTANT: STRUCTURED DATA OUTPUT
+At the very end of your response, you MUST include a JSON block with the macro totals in this exact format:
+
+---MACROS_JSON---
+{"calories": [number], "protein": [number], "carbs": [number], "fats": [number]}
+---END_MACROS---
+
+Replace [number] with the actual integer values from your analysis. This data will be used to auto-log the meal.
 `;
 
 export const PROGRESS_ANALYSIS_PROMPT = `

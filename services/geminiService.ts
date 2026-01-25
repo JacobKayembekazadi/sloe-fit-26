@@ -3,6 +3,17 @@ import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
 import { BODY_ANALYSIS_PROMPT, MEAL_ANALYSIS_PROMPT, PROGRESS_ANALYSIS_PROMPT } from '../prompts';
 import { fileToGenerativePart } from '../utils/fileUtils';
 
+// Interface for parsed meal analysis result
+export interface MealAnalysisResult {
+  markdown: string;
+  macros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+  } | null;
+}
+
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!API_KEY) {
@@ -39,7 +50,38 @@ export const analyzeBodyPhoto = async (image: File): Promise<string> => {
   }
 };
 
-export const analyzeMealPhoto = async (image: File, userGoal: string | null): Promise<string> => {
+// Helper function to parse macros JSON from AI response
+const parseMacrosFromResponse = (text: string): MealAnalysisResult['macros'] => {
+  try {
+    const jsonMatch = text.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
+    if (jsonMatch && jsonMatch[1]) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (
+        typeof parsed.calories === 'number' &&
+        typeof parsed.protein === 'number' &&
+        typeof parsed.carbs === 'number' &&
+        typeof parsed.fats === 'number'
+      ) {
+        return {
+          calories: Math.round(parsed.calories),
+          protein: Math.round(parsed.protein),
+          carbs: Math.round(parsed.carbs),
+          fats: Math.round(parsed.fats)
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse macros JSON from response:', e);
+  }
+  return null;
+};
+
+// Helper function to strip macros JSON block from markdown
+const stripMacrosBlock = (text: string): string => {
+  return text.replace(/---MACROS_JSON---[\s\S]*?---END_MACROS---/g, '').trim();
+};
+
+export const analyzeMealPhoto = async (image: File, userGoal: string | null): Promise<MealAnalysisResult> => {
   try {
     const imagePart = await fileToGenerativePart(image);
 
@@ -62,13 +104,22 @@ export const analyzeMealPhoto = async (image: File, userGoal: string | null): Pr
     });
 
     if (response.text) {
-      return response.text;
+      const fullText = response.text;
+      const macros = parseMacrosFromResponse(fullText);
+      const markdown = stripMacrosBlock(fullText);
+      return { markdown, macros };
     } else {
-      return "Error: The model did not return a valid response. Please check your image and try again.";
+      return {
+        markdown: "Error: The model did not return a valid response. Please check your image and try again.",
+        macros: null
+      };
     }
   } catch (error) {
     console.error("Error analyzing meal photo:", error);
-    return `An error occurred while analyzing the image: ${error instanceof Error ? error.message : String(error)}. Please try again later.`;
+    return {
+      markdown: `An error occurred while analyzing the image: ${error instanceof Error ? error.message : String(error)}. Please try again later.`,
+      macros: null
+    };
   }
 };
 

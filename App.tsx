@@ -9,9 +9,13 @@ import Mindset from './components/Mindset';
 import ProgressTracker from './components/ProgressTracker';
 import WorkoutHistory from './components/WorkoutHistory';
 import CartDrawer from './components/CartDrawer';
+import Onboarding from './components/Onboarding';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingScreen from './components/LoadingScreen';
 import { useUserData } from './hooks/useUserData';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import LoginScreen from './components/LoginScreen';
 
 type Tab = 'dashboard' | 'body' | 'meal' | 'mindset' | 'progress';
@@ -45,7 +49,7 @@ const AppContent: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Supabase Data Hook
-  const { goal, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, loading: dataLoading } = useUserData();
+  const { goal, onboardingComplete, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading } = useUserData();
 
   const handleGoalUpdate = (goalText: string) => {
     const goalMatch = goalText.match(/RECOMMENDED GOAL: \[(.+)\]/);
@@ -63,20 +67,33 @@ const AppContent: React.FC = () => {
     saveNutrition(data);
   };
 
+  const handleOnboardingComplete = () => {
+    refetchProfile();
+  };
 
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return <div className="h-screen bg-black flex items-center justify-center text-[var(--color-primary)]">Loading...</div>;
+  if (loading || dataLoading) {
+    return <LoadingScreen message="Loading your data..." subMessage="Setting up your personalized experience" />;
   }
 
   if (!user) {
     return <LoginScreen />;
   }
 
+  // Show onboarding if not completed
+  if (onboardingComplete === false) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
+
   const renderContent = () => {
     if (currentView === 'history') {
-      return <WorkoutHistory history={workouts} onBack={() => setCurrentView('tabs')} />;
+      return <WorkoutHistory
+        history={workouts}
+        nutritionLogs={nutritionLogs}
+        nutritionTargets={nutritionTargets}
+        onBack={() => setCurrentView('tabs')}
+      />;
     }
 
     switch (activeTab) {
@@ -87,11 +104,14 @@ const AppContent: React.FC = () => {
           showHistoryView={() => setCurrentView('history')}
           nutritionLog={nutritionLogs}
           saveNutritionLog={handleSaveNutritionLog}
+          nutritionTargets={nutritionTargets}
+          goal={goal}
+          workoutHistory={workouts}
         />;
       case 'body':
         return <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />;
       case 'meal':
-        return <MealTracker userGoal={goal} />;
+        return <MealTracker userGoal={goal} onLogMeal={addMealToDaily} />;
       case 'mindset':
         return <Mindset />;
       case 'progress':
@@ -128,9 +148,13 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 
