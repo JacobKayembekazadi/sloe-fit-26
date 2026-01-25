@@ -83,30 +83,57 @@ export const useUserData = () => {
 
     const fetchProfile = async () => {
         if (!user) return;
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week')
-            .eq('id', user.id)
-            .single();
-        if (profile) {
-            setGoal(profile.goal);
-            setOnboardingComplete(profile.onboarding_complete ?? false);
-            setUserProfile({
-                goal: profile.goal,
-                height_inches: profile.height_inches,
-                weight_lbs: profile.weight_lbs,
-                age: profile.age,
-                training_experience: profile.training_experience,
-                equipment_access: profile.equipment_access,
-                days_per_week: profile.days_per_week
-            });
-        } else {
+        try {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week')
+                .eq('id', user.id)
+                .single();
+
+            if (error) {
+                // If columns don't exist yet, try basic query
+                const { data: basicProfile } = await supabase
+                    .from('profiles')
+                    .select('goal, onboarding_complete')
+                    .eq('id', user.id)
+                    .single();
+
+                if (basicProfile) {
+                    setGoal(basicProfile.goal);
+                    setOnboardingComplete(basicProfile.onboarding_complete ?? false);
+                    setUserProfile(prev => ({ ...prev, goal: basicProfile.goal }));
+                } else {
+                    setOnboardingComplete(false);
+                }
+                return;
+            }
+
+            if (profile) {
+                setGoal(profile.goal);
+                setOnboardingComplete(profile.onboarding_complete ?? false);
+                setUserProfile({
+                    goal: profile.goal,
+                    height_inches: profile.height_inches,
+                    weight_lbs: profile.weight_lbs,
+                    age: profile.age,
+                    training_experience: profile.training_experience,
+                    equipment_access: profile.equipment_access,
+                    days_per_week: profile.days_per_week
+                });
+            } else {
+                setOnboardingComplete(false);
+            }
+        } catch (err) {
+            console.error('Error fetching profile:', err);
             setOnboardingComplete(false);
         }
     };
 
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
 
         const fetchData = async () => {
             setLoading(true);
