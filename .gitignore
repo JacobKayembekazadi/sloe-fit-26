@@ -27,3 +27,13 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# AI tool folders
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.windsurf/
+nul

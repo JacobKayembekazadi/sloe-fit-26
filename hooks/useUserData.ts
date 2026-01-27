@@ -21,6 +21,9 @@ export interface UserProfile {
     training_experience: 'beginner' | 'intermediate' | 'advanced' | null;
     equipment_access: 'gym' | 'home' | 'minimal' | null;
     days_per_week: number | null;
+    role: 'consumer' | 'client' | 'trainer';
+    trainer_id: string | null;
+    full_name: string | null;
 }
 
 // Activity multiplier for TDEE calculation
@@ -75,7 +78,10 @@ export const useUserData = () => {
         age: null,
         training_experience: null,
         equipment_access: null,
-        days_per_week: null
+        days_per_week: null,
+        role: 'consumer',
+        trainer_id: null,
+        full_name: null
     });
     const [workouts, setWorkouts] = useState<CompletedWorkout[]>([]);
     const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>([]);
@@ -84,45 +90,51 @@ export const useUserData = () => {
     const fetchProfile = async () => {
         if (!user) return;
         try {
-            const { data: profile, error } = await supabase
+            // First try basic query that always works
+            const { data: basicProfile, error: basicError } = await supabase
                 .from('profiles')
-                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week')
+                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week, full_name')
                 .eq('id', user.id)
                 .single();
 
-            if (error) {
-                // If columns don't exist yet, try basic query
-                const { data: basicProfile } = await supabase
-                    .from('profiles')
-                    .select('goal, onboarding_complete')
-                    .eq('id', user.id)
-                    .single();
-
-                if (basicProfile) {
-                    setGoal(basicProfile.goal);
-                    setOnboardingComplete(basicProfile.onboarding_complete ?? false);
-                    setUserProfile(prev => ({ ...prev, goal: basicProfile.goal }));
-                } else {
-                    setOnboardingComplete(false);
-                }
+            if (basicError || !basicProfile) {
+                console.log('No profile found or error:', basicError);
+                setOnboardingComplete(false);
                 return;
             }
 
-            if (profile) {
-                setGoal(profile.goal);
-                setOnboardingComplete(profile.onboarding_complete ?? false);
-                setUserProfile({
-                    goal: profile.goal,
-                    height_inches: profile.height_inches,
-                    weight_lbs: profile.weight_lbs,
-                    age: profile.age,
-                    training_experience: profile.training_experience,
-                    equipment_access: profile.equipment_access,
-                    days_per_week: profile.days_per_week
-                });
-            } else {
-                setOnboardingComplete(false);
+            // Set basic profile data
+            setGoal(basicProfile.goal);
+            setOnboardingComplete(basicProfile.onboarding_complete ?? false);
+
+            // Try to get BYOC fields (role, trainer_id) - these may not exist yet
+            let role: 'consumer' | 'client' | 'trainer' = 'consumer';
+            let trainer_id: string | null = null;
+
+            const { data: byocData, error: byocError } = await supabase
+                .from('profiles')
+                .select('role, trainer_id')
+                .eq('id', user.id)
+                .single();
+
+            // Only use BYOC data if query succeeded (columns exist)
+            if (!byocError && byocData) {
+                role = byocData.role || 'consumer';
+                trainer_id = byocData.trainer_id;
             }
+
+            setUserProfile({
+                goal: basicProfile.goal,
+                height_inches: basicProfile.height_inches,
+                weight_lbs: basicProfile.weight_lbs,
+                age: basicProfile.age,
+                training_experience: basicProfile.training_experience,
+                equipment_access: basicProfile.equipment_access,
+                days_per_week: basicProfile.days_per_week,
+                role,
+                trainer_id,
+                full_name: basicProfile.full_name
+            });
         } catch (err) {
             console.error('Error fetching profile:', err);
             setOnboardingComplete(false);
@@ -134,6 +146,13 @@ export const useUserData = () => {
             setLoading(false);
             return;
         }
+
+        // Timeout safeguard - never stay loading forever
+        const timeout = setTimeout(() => {
+            console.warn('useUserData timeout - forcing loading to false');
+            setLoading(false);
+            setOnboardingComplete(prev => prev ?? false);
+        }, 8000);
 
         const fetchData = async () => {
             setLoading(true);
@@ -178,11 +197,14 @@ export const useUserData = () => {
             } catch (error) {
                 console.error('Error fetching user data:', error);
             } finally {
+                clearTimeout(timeout);
                 setLoading(false);
             }
         };
 
         fetchData();
+
+        return () => clearTimeout(timeout);
     }, [user]);
 
     const updateGoal = async (newGoal: string) => {
@@ -274,9 +296,15 @@ export const useUserData = () => {
 
     const nutritionTargets = calculateNutritionTargets(userProfile);
 
-    // Refetch profile after onboarding completes
+    // Refetch profile after onboarding completes - optimistically set onboardingComplete
     const refetchProfile = async () => {
-        await fetchProfile();
+        // Optimistically set onboarding as complete to prevent loading loop
+        setOnboardingComplete(true);
+        try {
+            await fetchProfile();
+        } catch (err) {
+            console.error('Error refetching profile:', err);
+        }
     };
 
     return {

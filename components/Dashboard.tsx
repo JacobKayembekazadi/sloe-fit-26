@@ -10,7 +10,7 @@ import ListIcon from './icons/ListIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import { EXERCISE_LIST } from '../data/exercises';
 import { getTodaysWorkout } from '../services/workoutService';
-import { generateWorkout, GeneratedWorkout } from '../services/geminiService';
+import { generateWorkout, GeneratedWorkout } from '../services/openaiService';
 import RecoveryCheckIn, { RecoveryState } from './RecoveryCheckIn';
 import type { ExerciseLog, NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
@@ -142,7 +142,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
             age: null,
             training_experience: 'beginner',
             equipment_access: 'gym',
-            days_per_week: 4
+            days_per_week: 4,
+            role: 'consumer',
+            trainer_id: null,
+            full_name: null
         };
 
         try {

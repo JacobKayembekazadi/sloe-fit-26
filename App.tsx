@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import Dashboard from './components/Dashboard';
@@ -8,18 +8,21 @@ import MealTracker from './components/MealTracker';
 import Mindset from './components/Mindset';
 import ProgressTracker from './components/ProgressTracker';
 import WorkoutHistory from './components/WorkoutHistory';
+import Settings from './components/Settings';
+import TrainerDashboard from './components/TrainerDashboard';
 import CartDrawer from './components/CartDrawer';
 import Onboarding from './components/Onboarding';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingScreen from './components/LoadingScreen';
 import { useUserData } from './hooks/useUserData';
+import { supabase } from './supabaseClient';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import LoginScreen from './components/LoginScreen';
 
 type Tab = 'dashboard' | 'body' | 'meal' | 'mindset' | 'progress';
-type View = 'tabs' | 'history';
+type View = 'tabs' | 'history' | 'settings' | 'trainer';
 
 export interface ExerciseLog {
   id: number;
@@ -47,9 +50,25 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [currentView, setCurrentView] = useState<View>('tabs');
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [userName, setUserName] = useState<string>('');
 
   // Supabase Data Hook
   const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading } = useUserData();
+  const { user, loading } = useAuth();
+
+  // Fetch user's name for avatar
+  useEffect(() => {
+    const fetchName = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+      if (data?.full_name) setUserName(data.full_name);
+    };
+    fetchName();
+  }, [user]);
 
   const handleGoalUpdate = (goalText: string) => {
     const goalMatch = goalText.match(/RECOMMENDED GOAL: \[(.+)\]/);
@@ -70,8 +89,6 @@ const AppContent: React.FC = () => {
   const handleOnboardingComplete = () => {
     refetchProfile();
   };
-
-  const { user, loading } = useAuth();
 
   if (loading || dataLoading) {
     return <LoadingScreen message="Loading your data..." subMessage="Setting up your personalized experience" />;
@@ -95,6 +112,14 @@ const AppContent: React.FC = () => {
         onBack={() => setCurrentView('tabs')}
         goal={goal}
       />;
+    }
+
+    if (currentView === 'settings') {
+      return <Settings onBack={() => setCurrentView('tabs')} />;
+    }
+
+    if (currentView === 'trainer') {
+      return <TrainerDashboard onBack={() => setCurrentView('tabs')} />;
     }
 
     switch (activeTab) {
@@ -137,7 +162,13 @@ const AppContent: React.FC = () => {
       {/* Mobile Shell Layout */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         <div className="w-full max-w-lg mx-auto p-4 sm:p-6">
-          <Header onCartClick={() => setIsCartOpen(true)} />
+          <Header
+              onCartClick={() => setIsCartOpen(true)}
+              onSettingsClick={() => setCurrentView('settings')}
+              onTrainerClick={() => setCurrentView('trainer')}
+              isTrainer={userProfile.role === 'trainer'}
+              userName={userName}
+            />
 
           <main className="mt-6">
             <div className="animate-slide-up">

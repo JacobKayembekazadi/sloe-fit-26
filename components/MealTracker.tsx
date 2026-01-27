@@ -1,5 +1,5 @@
 import React, { useState, useCallback, ChangeEvent } from 'react';
-import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/geminiService';
+import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/openaiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
