@@ -93,6 +93,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         setLoading(true);
         setError(null);
 
+        // Timeout safeguard - don't hang forever
+        const timeout = setTimeout(() => {
+            setLoading(false);
+            setError('Request timed out. Please try again.');
+        }, 10000);
+
         try {
             // Convert height to inches
             const heightInches = (parseInt(profile.height_ft) || 0) * 12 + (parseInt(profile.height_in) || 0);
@@ -111,10 +117,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 })
                 .eq('id', user.id);
 
+            clearTimeout(timeout);
+
             if (updateError) throw updateError;
 
             onComplete();
         } catch (err: any) {
+            clearTimeout(timeout);
+            console.error('Onboarding error:', err);
             setError(err.message || 'Failed to save your profile. Please try again.');
             setLoading(false);
         }
