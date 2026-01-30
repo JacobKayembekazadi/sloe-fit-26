@@ -103,9 +103,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             // Convert height to inches
             const heightInches = (parseInt(profile.height_ft) || 0) * 12 + (parseInt(profile.height_in) || 0);
 
+            // Use upsert to handle both new profiles and existing ones
+            // This fixes the issue where update() succeeds but updates 0 rows if profile doesn't exist
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({
+                .upsert({
+                    id: user.id,
                     goal: profile.goal,
                     height_inches: heightInches || null,
                     weight_lbs: parseInt(profile.weight_lbs) || null,
@@ -114,8 +117,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     equipment_access: profile.equipment_access,
                     days_per_week: profile.days_per_week,
                     onboarding_complete: true
-                })
-                .eq('id', user.id);
+                });
 
             clearTimeout(timeout);
 
