@@ -90,50 +90,33 @@ export const useUserData = () => {
     const fetchProfile = async () => {
         if (!user) return;
         try {
-            // First try basic query that always works
-            const { data: basicProfile, error: basicError } = await supabase
+            // Single query for all profile fields
+            const { data: profile, error } = await supabase
                 .from('profiles')
-                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week, full_name')
+                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week, full_name, role, trainer_id')
                 .eq('id', user.id)
                 .single();
 
-            if (basicError || !basicProfile) {
-                console.log('No profile found or error:', basicError);
+            if (error || !profile) {
+                console.log('No profile found or error:', error);
                 setOnboardingComplete(false);
                 return;
             }
 
-            // Set basic profile data
-            setGoal(basicProfile.goal);
-            setOnboardingComplete(basicProfile.onboarding_complete ?? false);
-
-            // Try to get BYOC fields (role, trainer_id) - these may not exist yet
-            let role: 'consumer' | 'client' | 'trainer' = 'consumer';
-            let trainer_id: string | null = null;
-
-            const { data: byocData, error: byocError } = await supabase
-                .from('profiles')
-                .select('role, trainer_id')
-                .eq('id', user.id)
-                .single();
-
-            // Only use BYOC data if query succeeded (columns exist)
-            if (!byocError && byocData) {
-                role = byocData.role || 'consumer';
-                trainer_id = byocData.trainer_id;
-            }
-
+            // Set profile data
+            setGoal(profile.goal);
+            setOnboardingComplete(profile.onboarding_complete ?? false);
             setUserProfile({
-                goal: basicProfile.goal,
-                height_inches: basicProfile.height_inches,
-                weight_lbs: basicProfile.weight_lbs,
-                age: basicProfile.age,
-                training_experience: basicProfile.training_experience,
-                equipment_access: basicProfile.equipment_access,
-                days_per_week: basicProfile.days_per_week,
-                role,
-                trainer_id,
-                full_name: basicProfile.full_name
+                goal: profile.goal,
+                height_inches: profile.height_inches,
+                weight_lbs: profile.weight_lbs,
+                age: profile.age,
+                training_experience: profile.training_experience,
+                equipment_access: profile.equipment_access,
+                days_per_week: profile.days_per_week,
+                role: profile.role || 'consumer',
+                trainer_id: profile.trainer_id,
+                full_name: profile.full_name
             });
         } catch (err) {
             console.error('Error fetching profile:', err);
@@ -157,34 +140,48 @@ export const useUserData = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch Profile for Goal and Onboarding Status
-                await fetchProfile();
+                // Run all queries in parallel for faster loading
+                const [profileResult, workoutsResult, nutritionResult] = await Promise.all([
+                    // Fetch Profile
+                    fetchProfile().catch(err => {
+                        console.error('Profile fetch failed:', err);
+                        return null;
+                    }),
+                    // Fetch Workouts
+                    supabase
+                        .from('workouts')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('date', { ascending: false })
+                        .then(({ data }) => data)
+                        .catch(err => {
+                            console.error('Workouts fetch failed:', err);
+                            return null;
+                        }),
+                    // Fetch Nutrition
+                    supabase
+                        .from('nutrition_logs')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('date', { ascending: false })
+                        .then(({ data }) => data)
+                        .catch(err => {
+                            console.error('Nutrition fetch failed:', err);
+                            return null;
+                        })
+                ]);
 
-                // Fetch Workouts
-                const { data: workoutData } = await supabase
-                    .from('workouts')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('date', { ascending: false });
-
-                if (workoutData) {
-                    const parsedWorkouts = workoutData.map(w => ({
+                if (workoutsResult) {
+                    const parsedWorkouts = workoutsResult.map((w: any) => ({
                         date: new Date(w.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
                         title: w.title,
-                        log: Array.isArray(w.exercises) ? w.exercises : (w.exercises as any).exercises || [] // Handle potential JSON structure mismatch
+                        log: Array.isArray(w.exercises) ? w.exercises : (w.exercises as any)?.exercises || []
                     }));
                     setWorkouts(parsedWorkouts);
                 }
 
-                // Fetch Nutrition
-                const { data: nutritionData } = await supabase
-                    .from('nutrition_logs')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('date', { ascending: false });
-
-                if (nutritionData) {
-                    const parsedNutrition = nutritionData.map(n => ({
+                if (nutritionResult) {
+                    const parsedNutrition = nutritionResult.map((n: any) => ({
                         date: n.date,
                         calories: n.calories,
                         protein: n.protein,
