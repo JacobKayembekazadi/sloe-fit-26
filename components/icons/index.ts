@@ -6,6 +6,7 @@ export { default as CameraIcon } from './CameraIcon';
 export { default as CartIcon } from './CartIcon';
 export { default as ChartIcon } from './ChartIcon';
 export { default as CheckIcon } from './CheckIcon';
+export { default as HistoryIcon } from './HistoryIcon';
 export { default as HomeIcon } from './HomeIcon';
 export { default as ListIcon } from './ListIcon';
 export { default as LoaderIcon } from './LoaderIcon';
