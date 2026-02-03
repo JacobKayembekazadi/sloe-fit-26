@@ -70,12 +70,12 @@ const RecoveryCheckIn: React.FC<RecoveryCheckInProps> = ({ onComplete, isLoading
             <button
                 key={level}
                 onClick={() => updateRecovery('energyLevel', level)}
-                className={`flex-1 py-4 rounded-xl border-2 transition-all ${
+                className={`flex-1 py-3 sm:py-4 rounded-xl border-2 transition-all ${
                     selected ? colors[level - 1] : 'bg-gray-800/50 border-gray-700 text-gray-400'
                 }`}
             >
-                <div className="text-2xl font-black">{level}</div>
-                <div className="text-xs mt-1">{labels[level - 1]}</div>
+                <div className="text-xl sm:text-2xl font-black">{level}</div>
+                <div className="text-[10px] sm:text-xs mt-1">{labels[level - 1]}</div>
             </button>
         );
     };
@@ -107,7 +107,7 @@ const RecoveryCheckIn: React.FC<RecoveryCheckInProps> = ({ onComplete, isLoading
                                 AI will adjust workout intensity based on this
                             </p>
 
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5 sm:gap-2">
                                 {[1, 2, 3, 4, 5].map(level =>
                                     renderEnergyLevel(level, recovery.energyLevel === level)
                                 )}

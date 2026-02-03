@@ -1,0 +1,16 @@
+export { default as ArrowLeftIcon } from './ArrowLeftIcon';
+export { default as ArrowRightIcon } from './ArrowRightIcon';
+export { default as BodyIcon } from './BodyIcon';
+export { default as BrainIcon } from './BrainIcon';
+export { default as CameraIcon } from './CameraIcon';
+export { default as CartIcon } from './CartIcon';
+export { default as ChartIcon } from './ChartIcon';
+export { default as CheckIcon } from './CheckIcon';
+export { default as HomeIcon } from './HomeIcon';
+export { default as ListIcon } from './ListIcon';
+export { default as LoaderIcon } from './LoaderIcon';
+export { default as MealIcon } from './MealIcon';
+export { default as MicrophoneIcon } from './MicrophoneIcon';
+export { default as PlusIcon } from './PlusIcon';
+export { default as ShopIcon } from './ShopIcon';
+export { default as TrashIcon } from './TrashIcon';

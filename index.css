@@ -112,6 +112,23 @@
     }
   }
 
+  /* Loading bar animation */
+  .animate-loading-bar {
+    animation: loadingBar 1.5s ease-in-out infinite;
+  }
+
+  @keyframes loadingBar {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(200%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  }
+
   /* Focus visible for accessibility */
   .focus-visible:focus-visible {
     @apply outline-2 outline-offset-2 outline-[var(--color-primary)];

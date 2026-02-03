@@ -3,9 +3,8 @@ import HomeIcon from './icons/HomeIcon';
 import BodyIcon from './icons/BodyIcon';
 import MealIcon from './icons/MealIcon';
 import BrainIcon from './icons/BrainIcon';
-import ChartIcon from './icons/ChartIcon';
 
-type Tab = 'dashboard' | 'body' | 'meal' | 'mindset' | 'progress';
+type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
 
 interface BottomNavProps {
     activeTab: Tab;
@@ -18,7 +17,6 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab }) => {
         { id: 'body', label: 'Body', icon: BodyIcon },
         { id: 'meal', label: 'Eat', icon: MealIcon },
         { id: 'mindset', label: 'Mind', icon: BrainIcon },
-        { id: 'progress', label: 'Stats', icon: ChartIcon },
     ];
 
     return (

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { supabase } from '@/supabaseClient';
 import LoaderIcon from './icons/LoaderIcon';
 
@@ -13,6 +14,7 @@ interface JoinInviteProps {
 
 const JoinInvite: React.FC<JoinInviteProps> = ({ inviteCode: initialCode, onSuccess, onClose }) => {
     const { user } = useAuth();
+    const { showToast } = useToast();
     const [code, setCode] = useState(initialCode || '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ const JoinInvite: React.FC<JoinInviteProps> = ({ inviteCode: initialCode, onSucc
 
             if (result.success) {
                 setSuccess(true);
+                showToast('Successfully joined trainer!', 'success');
                 // Clear the URL path
                 window.history.replaceState({}, '', '/');
                 setTimeout(() => {
@@ -60,6 +63,7 @@ const JoinInvite: React.FC<JoinInviteProps> = ({ inviteCode: initialCode, onSucc
         } catch (err) {
             console.error('Error joining:', err);
             setError('Something went wrong. Please try again.');
+            showToast('Failed to join trainer', 'error');
         } finally {
             setLoading(false);
         }

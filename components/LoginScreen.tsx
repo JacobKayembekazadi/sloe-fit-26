@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
 
 const LoginScreen: React.FC = () => {
+    const { showToast } = useToast();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState(''); // For Signup
+    const [isTrainer, setIsTrainer] = useState(false); // For trainer signup
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -59,17 +62,29 @@ const LoginScreen: React.FC = () => {
 
         try {
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({
+                const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
                         data: {
                             full_name: fullName,
+                            is_trainer: isTrainer,
                         },
                     },
                 });
                 if (error) throw error;
-                alert('Account created! You can now sign in.');
+
+                // Check if email confirmation is required
+                if (data.user && !data.session) {
+                    // Email confirmation required
+                    alert('Check your email to confirm your account, then sign in.');
+                } else if (data.session) {
+                    // Auto-signed in (email confirmation disabled)
+                    // Session will be picked up by AuthContext
+                    return;
+                } else {
+                    alert('Account created! You can now sign in.');
+                }
                 setIsSignUp(false); // Switch to login after signup
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
@@ -79,7 +94,17 @@ const LoginScreen: React.FC = () => {
                 if (error) throw error;
             }
         } catch (err: any) {
-            setError(err.message || 'Authentication failed');
+            // Provide more helpful error messages
+            let message = err.message || 'Authentication failed';
+            if (message.includes('Email not confirmed')) {
+                message = 'Please check your email and click the confirmation link before signing in.';
+            } else if (message.includes('Invalid login credentials')) {
+                message = 'Invalid email or password. If you just signed up, check your email for a confirmation link.';
+            } else if (message.includes('User already registered')) {
+                message = 'An account with this email already exists. Try signing in instead.';
+            }
+            setError(message);
+            showToast(message, 'error');
         } finally {
             setLoading(false);
         }
@@ -165,6 +190,29 @@ const LoginScreen: React.FC = () => {
                             )}
                         </div>
 
+                        {isSignUp && (
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        checked={isTrainer}
+                                        onChange={(e) => setIsTrainer(e.target.checked)}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-5 h-5 border-2 border-gray-600 rounded bg-gray-800 peer-checked:bg-[var(--color-primary)] peer-checked:border-[var(--color-primary)] transition-all flex items-center justify-center">
+                                        {isTrainer && (
+                                            <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className="text-gray-400 text-sm group-hover:text-white transition-colors">
+                                    I'm a fitness trainer
+                                </span>
+                            </label>
+                        )}
+
                         <button
                             type="submit"
                             disabled={loading}
@@ -179,6 +227,7 @@ const LoginScreen: React.FC = () => {
                             onClick={() => {
                                 setIsSignUp(!isSignUp);
                                 setError(null);
+                                setIsTrainer(false);
                             }}
                             className="text-gray-500 text-sm hover:text-white transition-colors"
                         >

@@ -77,11 +77,11 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
 
             {/* Macro breakdown */}
             {showMacros && protein && carbs && fats && (
-                <div className="flex justify-center gap-6 mt-4">
+                <div className="flex justify-center gap-4 sm:gap-6 mt-4">
                     <div className="text-center">
                         <div className="text-sm font-bold text-white">{protein.consumed}g</div>
                         <div className="text-xs text-gray-500">Protein</div>
-                        <div className="w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
+                        <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-blue-400 rounded-full transition-all"
                                 style={{ width: `${Math.min((protein.consumed / protein.target) * 100, 100)}%` }}
@@ -91,7 +91,7 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
                     <div className="text-center">
                         <div className="text-sm font-bold text-white">{carbs.consumed}g</div>
                         <div className="text-xs text-gray-500">Carbs</div>
-                        <div className="w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
+                        <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-yellow-400 rounded-full transition-all"
                                 style={{ width: `${Math.min((carbs.consumed / carbs.target) * 100, 100)}%` }}
@@ -101,7 +101,7 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
                     <div className="text-center">
                         <div className="text-sm font-bold text-white">{fats.consumed}g</div>
                         <div className="text-xs text-gray-500">Fats</div>
-                        <div className="w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
+                        <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-pink-400 rounded-full transition-all"
                                 style={{ width: `${Math.min((fats.consumed / fats.target) * 100, 100)}%` }}
