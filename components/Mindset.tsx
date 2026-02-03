@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { MINDSET_CONTENT } from '../prompts';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import ArrowRightIcon from './icons/ArrowRightIcon';
@@ -51,7 +51,7 @@ const Mindset: React.FC = () => {
                     <button
                         onClick={handlePrevious}
                         disabled={currentIndex === 0}
-                        className="flex items-center gap-2 px-4 py-3 rounded-xl text-gray-400 font-bold hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        className="flex items-center gap-2 px-4 py-3 rounded-xl text-gray-400 font-bold hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-all focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
                         aria-label="Previous day"
                     >
                         <ArrowLeftIcon />
@@ -65,7 +65,7 @@ const Mindset: React.FC = () => {
                     <button
                         onClick={handleNext}
                         disabled={currentIndex === MINDSET_CONTENT.length - 1}
-                        className="flex items-center gap-2 px-4 py-3 rounded-xl text-white font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        className="flex items-center gap-2 px-4 py-3 rounded-xl text-white font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
                         aria-label="Next day"
                     >
                         NEXT
@@ -77,4 +77,4 @@ const Mindset: React.FC = () => {
     );
 };
 
-export default Mindset;
+export default memo(Mindset);

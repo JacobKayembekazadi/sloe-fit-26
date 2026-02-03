@@ -68,7 +68,7 @@ const ActiveWorkoutTimer: React.FC<ActiveWorkoutTimerProps> = ({
             </div>
 
             {/* Headline & Exercise Details */}
-            <div className="bg-background-dark/50 dark:bg-black/40 backdrop-blur-md rounded-t-[2rem] sm:rounded-t-[2.5rem] pt-6 sm:pt-8 pb-8 sm:pb-10 px-4 sm:px-6 border-t border-white/5 flex-1 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+            <div className="bg-black/40 backdrop-blur-md rounded-t-[2rem] sm:rounded-t-[2.5rem] pt-6 sm:pt-8 pb-8 sm:pb-10 px-4 sm:px-6 border-t border-white/5 flex-1 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 <div className="flex flex-col items-center mb-6 sm:mb-8">
                     <h1 className="text-white tracking-tight text-xl sm:text-3xl font-bold leading-tight text-center mb-1 px-2">{currentExerciseName}</h1>
                     <p className="text-white/60 text-sm sm:text-base font-normal leading-normal text-center">Target: {totalSets} sets of {reps}</p>

@@ -1,7 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import type { ExerciseLog } from '../App';
 import RestTimer from './RestTimer';
 import WorkoutSetsLogger from './WorkoutSetsLogger';
+
+// -- Constants --
+
+const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
 
 // -- Interfaces --
 
@@ -20,6 +24,14 @@ interface TrackedExercise {
   targetReps: string;
   sets: SetData[];
   notes?: string;
+}
+
+export interface WorkoutDraft {
+  exercises: TrackedExercise[];
+  activeExerciseIndex: number;
+  elapsedTime: number;
+  workoutTitle: string;
+  savedAt: number;
 }
 
 interface WorkoutSessionProps {
@@ -81,6 +93,26 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [workoutStartTime, isPaused, restTimerOpen]);
+
+  // Autosave draft to localStorage
+  useEffect(() => {
+    // Don't save empty state
+    if (exercises.length === 0) return;
+
+    const draft: WorkoutDraft = {
+      exercises,
+      activeExerciseIndex,
+      elapsedTime,
+      workoutTitle,
+      savedAt: Date.now()
+    };
+
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // localStorage might be full or unavailable - fail silently
+    }
+  }, [exercises, activeExerciseIndex, elapsedTime, workoutTitle]);
 
   // Format elapsed time
   const formatTime = (seconds: number) => {
@@ -165,6 +197,9 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   };
 
   const handleFinishWorkout = () => {
+    // Clear the draft since workout is complete
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+
     // Convert back to ExerciseLog format
     const completedLogs: ExerciseLog[] = exercises.map(ex => {
       const completedSets = ex.sets.filter(s => s.completed);
@@ -200,23 +235,26 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-screen h-dvh bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-hidden">
+    <div className="flex flex-col min-h-screen h-dvh bg-background-dark font-display text-white overflow-hidden">
 
       {/* Cancel Confirmation Dialog */}
       {showCancelConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#1a2e20] rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+          <div className="bg-[#1a2e20] rounded-2xl p-6 max-w-sm w-full shadow-2xl">
             <h3 className="text-lg font-bold mb-2">End Workout?</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">You have unsaved progress. Are you sure you want to quit?</p>
+            <p className="text-slate-400 text-sm mb-6">You have unsaved progress. Are you sure you want to quit?</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCancelConfirm(false)}
-                className="flex-1 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-600 font-bold text-sm"
+                className="flex-1 py-3 rounded-xl border-2 border-slate-600 font-bold text-sm"
               >
                 Keep Going
               </button>
               <button
-                onClick={onCancel}
+                onClick={() => {
+                  localStorage.removeItem(DRAFT_STORAGE_KEY);
+                  onCancel();
+                }}
                 className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold text-sm"
               >
                 Discard
@@ -241,14 +279,14 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       {!restTimerOpen && (
         <>
           {/* Compact Top Bar with Timer */}
-          <div className="shrink-0 z-10 bg-background-light dark:bg-background-dark border-b border-slate-200 dark:border-slate-800">
+          <div className="shrink-0 z-10 bg-background-dark border-b border-slate-800">
             <div className="flex items-center p-3 sm:p-4 justify-between">
-              <button onClick={handleCancel} className="text-slate-900 dark:text-white flex size-12 shrink-0 items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
+              <button onClick={handleCancel} aria-label="Cancel workout" className="text-white flex size-12 shrink-0 items-center justify-center rounded-xl hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]">
                 <span className="material-symbols-outlined text-xl">close</span>
               </button>
 
               {/* Compact Timer */}
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#223649] px-3 py-1.5 rounded-full">
+              <div className="flex items-center gap-2 bg-[#223649] px-3 py-1.5 rounded-full">
                 <span className="material-symbols-outlined text-[var(--color-primary)] text-sm">timer</span>
                 <span className="text-sm font-bold tabular-nums">{formatTime(elapsedTime)}</span>
                 <button
@@ -270,13 +308,14 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
               <button
                 onClick={() => activeExerciseIndex > 0 && setActiveExerciseIndex(prev => prev - 1)}
                 disabled={activeExerciseIndex === 0}
-                className="size-10 bg-slate-100 dark:bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-[#2a435a] transition-colors shrink-0"
+                aria-label="Previous exercise"
+                className="size-10 bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
               >
                 <span className="material-symbols-outlined text-lg">chevron_left</span>
               </button>
 
               <div className="flex-1 text-center">
-                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <p className="text-xs text-slate-400 uppercase tracking-wider">
                   Exercise {activeExerciseIndex + 1} of {exercises.length}
                 </p>
               </div>
@@ -284,7 +323,8 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
               <button
                 onClick={() => activeExerciseIndex < exercises.length - 1 && setActiveExerciseIndex(prev => prev + 1)}
                 disabled={activeExerciseIndex === exercises.length - 1}
-                className="size-10 bg-slate-100 dark:bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-[#2a435a] transition-colors shrink-0"
+                aria-label="Next exercise"
+                className="size-10 bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
               >
                 <span className="material-symbols-outlined text-lg">chevron_right</span>
               </button>
@@ -292,7 +332,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
 
             {/* Progress Bar */}
             <div className="px-4 pb-3">
-              <div className="rounded-full bg-slate-200 dark:bg-[#223649] h-1 overflow-hidden">
+              <div className="rounded-full bg-[#223649] h-1 overflow-hidden">
                 <div className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500" style={{ width: `${progress}%` }}></div>
               </div>
             </div>
@@ -311,11 +351,12 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
           </div>
 
           {/* Footer - Finish Workout Button */}
-          <div className="shrink-0 bg-white/90 dark:bg-background-dark/95 backdrop-blur-md p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-800">
+          <div className="shrink-0 bg-background-dark/95 backdrop-blur-md p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-800">
             <div className="max-w-md mx-auto">
               <button
                 onClick={handleFinishWorkout}
-                className="w-full bg-[var(--color-primary)] text-black font-bold py-4 rounded-xl shadow-lg shadow-[var(--color-primary)]/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-base flex items-center justify-center gap-2"
+                aria-label="Finish workout"
+                className="w-full bg-[var(--color-primary)] text-black font-bold py-4 rounded-xl shadow-lg shadow-[var(--color-primary)]/20 hover:scale-[1.02] active:scale-[0.98] transition-all text-base flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               >
                 <span className="material-symbols-outlined">check_circle</span>
                 FINISH WORKOUT
@@ -328,4 +369,4 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   );
 };
 
-export default WorkoutSession;
+export default memo(WorkoutSession);

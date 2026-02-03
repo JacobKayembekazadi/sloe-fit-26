@@ -1,4 +1,4 @@
-import React, { useState, useCallback, ChangeEvent } from 'react';
+import React, { useState, useCallback, ChangeEvent, memo } from 'react';
 import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/openaiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
@@ -23,7 +23,7 @@ interface MealTrackerProps {
 
 // Skeleton component for loading states
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`animate-pulse bg-gray-800 rounded ${className}`} />
+  <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
 );
 
 // Loading skeleton for analysis results
@@ -318,7 +318,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">
             <div className="relative mb-4">
-              <div className="w-16 h-16 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin" />
+              <div className="w-16 h-16 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin motion-reduce:animate-none" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-2xl">🍽️</span>
               </div>
@@ -384,7 +384,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
             >
               {isLogging ? (
                 <>
-                  <LoaderIcon className="w-5 h-5 animate-spin" />
+                  <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
                   Logging...
                 </>
               ) : (
@@ -399,7 +399,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           )}
 
           {isLogged && (
-            <div className="flex items-center justify-center gap-2 py-4 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 font-bold animate-pulse">
+            <div className="flex items-center justify-center gap-2 py-4 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 font-bold animate-pulse motion-reduce:animate-none">
               <CheckIcon className="w-6 h-6" />
               <span>Meal Logged Successfully!</span>
             </div>
@@ -463,4 +463,4 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   );
 };
 
-export default MealTracker;
+export default memo(MealTracker);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface WorkoutPreviewProps {
@@ -23,7 +23,7 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     const { theme } = useTheme();
 
     return (
-        <div className="relative flex min-h-screen w-full flex-col overflow-y-auto pb-44 bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white transition-colors duration-300">
+        <div className="relative flex min-h-screen w-full flex-col overflow-y-auto pb-44 bg-background-dark font-display text-white transition-colors duration-300">
             {/* Top App Bar Overlay */}
             <div className="fixed top-0 left-0 right-0 z-[60] flex items-center bg-transparent p-3 sm:p-4 pb-2 justify-between">
                 <button
@@ -87,25 +87,25 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
 
             {/* Exercise List Header */}
             <div className="flex items-center justify-between px-4 sm:px-6 pt-6 sm:pt-8 pb-3 sm:pb-4">
-                <h3 className="text-slate-900 dark:text-white text-lg sm:text-xl font-bold leading-tight tracking-tight">Exercise List</h3>
-                <span className="text-slate-400 dark:text-slate-500 text-xs sm:text-sm font-medium">{exercises.length} exercises</span>
+                <h3 className="text-white text-lg sm:text-xl font-bold leading-tight tracking-tight">Exercise List</h3>
+                <span className="text-slate-500 text-xs sm:text-sm font-medium">{exercises.length} exercises</span>
             </div>
 
             {/* List Content */}
             <div className="flex flex-col gap-2 sm:gap-3 px-3 sm:px-4 pb-8">
                 {exercises.map((exercise, index) => (
-                    <div key={index} className="flex items-center gap-3 sm:gap-4 bg-white/80 dark:bg-[#223649]/40 rounded-xl sm:rounded-2xl px-3 sm:px-4 min-h-[76px] sm:min-h-[84px] py-3 sm:py-4 border border-slate-200 dark:border-white/5 shadow-sm dark:shadow-none">
-                        <div className="flex items-center justify-center size-8 sm:size-10 rounded-full bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 font-bold text-sm shrink-0">
+                    <div key={index} className="flex items-center gap-3 sm:gap-4 bg-[#223649]/40 rounded-xl sm:rounded-2xl px-3 sm:px-4 min-h-[76px] sm:min-h-[84px] py-3 sm:py-4 border border-white/5 shadow-none">
+                        <div className="flex items-center justify-center size-8 sm:size-10 rounded-full bg-white/10 text-slate-400 font-bold text-sm shrink-0">
                             {index + 1}
                         </div>
                         <div
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-lg sm:rounded-xl size-12 sm:size-14 border border-slate-200 dark:border-white/10 bg-slate-200 dark:bg-slate-700 shrink-0"
+                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-lg sm:rounded-xl size-12 sm:size-14 border border-white/10 bg-slate-700 shrink-0"
                             style={{ backgroundImage: exercise.image ? `url("${exercise.image}")` : undefined }}
                         >
                             {!exercise.image && <div className="w-full h-full flex items-center justify-center text-slate-400"><span className="material-symbols-outlined text-xl">fitness_center</span></div>}
                         </div>
                         <div className="flex flex-col justify-center min-w-0 flex-1">
-                            <p className="text-slate-900 dark:text-white text-sm sm:text-base font-bold leading-tight line-clamp-1">{exercise.name}</p>
+                            <p className="text-white text-sm sm:text-base font-bold leading-tight line-clamp-1">{exercise.name}</p>
                             <p className="text-[var(--color-primary)] text-[11px] sm:text-xs font-semibold leading-normal mt-0.5">{exercise.sets} Sets × {exercise.reps} Reps</p>
                         </div>
                     </div>
@@ -113,9 +113,9 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
             </div>
 
             {/* Sticky Bottom CTA */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-background-light via-background-light/95 dark:from-background-dark dark:via-background-dark/95 to-transparent pt-8 sm:pt-10 z-[70]">
+            <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-background-dark via-background-dark/95 to-transparent pt-8 sm:pt-10 z-[70]">
                 <div className="flex flex-col gap-3 sm:gap-4 max-w-md mx-auto">
-                    <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-white/50 text-[10px] uppercase tracking-widest font-bold">
+                    <div className="flex items-center justify-center gap-2 text-white/50 text-[10px] uppercase tracking-widest font-bold">
                         <span className="material-symbols-outlined text-xs">vibration</span>
                         Haptic Guidance Enabled
                     </div>
@@ -135,4 +135,4 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     );
 };
 
-export default WorkoutPreview;
+export default memo(WorkoutPreview);

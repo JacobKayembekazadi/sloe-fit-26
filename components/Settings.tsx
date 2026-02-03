@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useToast } from '@/contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
@@ -55,7 +54,7 @@ const supabaseFetch = async (endpoint: string, options: RequestInit = {}) => {
 
 // Skeleton component
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <div className={`animate-pulse bg-gray-800 rounded ${className}`} />
+    <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
 );
 
 // Settings loading skeleton
@@ -136,7 +135,6 @@ interface ProfileData {
 
 const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const { user, signOut } = useAuth();
-    const { theme, toggleTheme } = useTheme();
     const { permission, requestPermission, sendLocalNotification } = useNotifications();
     const { showToast } = useToast();
 
@@ -266,7 +264,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             <header className="flex items-center gap-4">
                 <button
                     onClick={onBack}
-                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+                    aria-label="Go back"
+                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] rounded-lg"
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -439,7 +438,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             >
                 {saving ? (
                     <>
-                        <LoaderIcon className="w-5 h-5 animate-spin" />
+                        <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
                         Saving...
                     </>
                 ) : saved ? (
@@ -468,7 +467,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     >
                         {upgrading ? (
                             <>
-                                <LoaderIcon className="w-5 h-5 animate-spin" />
+                                <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
                                 Upgrading...
                             </>
                         ) : (
@@ -500,22 +499,6 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </div>
             )}
 
-            {/* Theme Toggle */}
-            <div className="card flex items-center justify-between">
-                <div>
-                    <h3 className="text-lg font-bold text-[var(--text-primary)]">Dark Mode</h3>
-                    <p className="text-[var(--text-secondary)] text-sm">Toggle app theme</p>
-                </div>
-                <button
-                    onClick={toggleTheme}
-                    className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${theme === 'dark' ? 'bg-[var(--color-primary)]' : 'bg-gray-600'
-                        }`}
-                >
-                    <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${theme === 'dark' ? 'translate-x-6' : 'translate-x-0'
-                        }`}></div>
-                </button>
-            </div>
-
             {/* Notifications Toggle */}
             <div className="card flex flex-col gap-4">
                 <div className="flex items-center justify-between">
@@ -524,8 +507,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                         <p className="text-[var(--text-secondary)] text-sm">Enable daily reminders</p>
                     </div>
                     <button
-                        onClick={requestPermission} // From useNotifications
-                        className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${permission === 'granted' ? 'bg-[var(--color-primary)]' : 'bg-gray-600'
+                        onClick={requestPermission}
+                        aria-label={permission === 'granted' ? 'Notifications enabled' : 'Enable notifications'}
+                        role="switch"
+                        aria-checked={permission === 'granted'}
+                        className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black ${permission === 'granted' ? 'bg-[var(--color-primary)]' : 'bg-gray-600'
                             }`}
                     >
                         <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${permission === 'granted' ? 'translate-x-6' : 'translate-x-0'
@@ -547,7 +533,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             {/* Sign Out */}
             <button
                 onClick={handleSignOut}
-                className="w-full py-4 text-red-500 hover:text-red-400 font-bold transition-colors"
+                aria-label="Sign out of account"
+                className="w-full py-4 text-red-500 hover:text-red-400 font-bold transition-colors focus-visible:ring-2 focus-visible:ring-red-500 rounded-lg"
             >
                 Sign Out
             </button>
@@ -560,4 +547,4 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     );
 };
 
-export default Settings;
+export default memo(Settings);

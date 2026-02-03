@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import ProgressBar from './ProgressBar';
 import MealIcon from './icons/MealIcon';
 import CameraIcon from './icons/CameraIcon';
@@ -9,7 +9,7 @@ import LoaderIcon from './icons/LoaderIcon';
 import { getTodaysWorkout } from '../services/workoutService';
 import { generateWorkout, GeneratedWorkout } from '../services/openaiService';
 import RecoveryCheckIn, { RecoveryState } from './RecoveryCheckIn';
-import WorkoutSession from './WorkoutSession';
+import WorkoutSession, { WorkoutDraft } from './WorkoutSession';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -18,11 +18,13 @@ import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
 import WorkoutPreview from './WorkoutPreview';
 import WorkoutSummary from './WorkoutSummary';
 
-type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
+const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
+
+type Tab = 'dashboard' | 'history' | 'body' | 'meal' | 'mindset';
 
 interface DashboardProps {
     setActiveTab: (tab: Tab) => void;
-    addWorkoutToHistory: (log: ExerciseLog[], title: string) => void;
+    addWorkoutToHistory: (log: ExerciseLog[], title: string, rating?: number) => Promise<boolean>;
     showHistoryView: () => void;
     showTrainerView?: () => void;
     nutritionLog: NutritionLog[];
@@ -32,6 +34,14 @@ interface DashboardProps {
     workoutHistory: CompletedWorkout[];
     userProfile?: UserProfile;
 }
+
+// Helper to format time ago
+const formatTimeAgo = (timestamp: number): string => {
+    const minutes = Math.floor((Date.now() - timestamp) / 60000);
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory, showHistoryView, showTrainerView, nutritionLog, saveNutritionLog, nutritionTargets, goal, workoutHistory, userProfile }) => {
     const { user } = useAuth();
@@ -45,31 +55,53 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const [trainerName, setTrainerName] = useState<string | null>(null);
     const [startTime, setStartTime] = useState<number>(0);
     const [endTime, setEndTime] = useState<number>(0);
+    const [recoveryDraft, setRecoveryDraft] = useState<WorkoutDraft | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
-    // Fetch pending workouts count for clients with trainers
+    // Check for draft workout on mount
+    useEffect(() => {
+        const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (saved && workoutStatus === 'idle') {
+            try {
+                const draft: WorkoutDraft = JSON.parse(saved);
+                const ageMinutes = (Date.now() - draft.savedAt) / 60000;
+
+                if (ageMinutes < 120) {  // Less than 2 hours old
+                    setRecoveryDraft(draft);
+                } else {
+                    // Too old, discard
+                    localStorage.removeItem(DRAFT_STORAGE_KEY);
+                }
+            } catch {
+                localStorage.removeItem(DRAFT_STORAGE_KEY);
+            }
+        }
+    }, [workoutStatus]);
+
+    // Fetch pending workouts count for clients with trainers - PARALLELIZED
     useEffect(() => {
         const fetchTrainerData = async () => {
             if (!user || !userProfile?.trainer_id) return;
 
             try {
-                // Fetch pending workouts count
-                const { count } = await supabase
-                    .from('assigned_workouts')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('client_id', user.id)
-                    .eq('status', 'pending');
+                // Run both queries in parallel instead of sequentially
+                const [pendingResult, trainerResult] = await Promise.all([
+                    supabase
+                        .from('assigned_workouts')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('client_id', user.id)
+                        .eq('status', 'pending'),
+                    supabase
+                        .from('profiles')
+                        .select('full_name')
+                        .eq('id', userProfile.trainer_id)
+                        .single()
+                ]);
 
-                setPendingWorkoutsCount(count || 0);
+                setPendingWorkoutsCount(pendingResult.count || 0);
 
-                // Fetch trainer name
-                const { data: trainerData } = await supabase
-                    .from('profiles')
-                    .select('full_name')
-                    .eq('id', userProfile.trainer_id)
-                    .single();
-
-                if (trainerData) {
-                    setTrainerName(trainerData.full_name);
+                if (trainerResult.data) {
+                    setTrainerName(trainerResult.data.full_name);
                 }
             } catch {
                 // Optional feature - trainer data may not be set up
@@ -151,15 +183,46 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         setAiWorkout(null);
     };
 
-    const handleRateWorkout = (rating: number) => {
+    const handleRateWorkout = async (rating: number) => {
         setPostWorkoutRating(rating);
-        // Save logic here
-        addWorkoutToHistory(completedLog, workoutTitle);
+        setIsSaving(true);
+
+        // Pass rating to save function
+        const saved = await addWorkoutToHistory(completedLog, workoutTitle, rating);
         saveNutritionLog(todayNutrition);
 
-        // Maybe close or show "Saved" toast?
-        showToast('Workout Saved!', 'success');
-        setWorkoutStatus('idle'); // Back to dashboard
+        setIsSaving(false);
+
+        if (saved) {
+            showToast('Workout Saved!', 'success');
+            setWorkoutStatus('idle');
+        } else {
+            showToast('Failed to save workout. Please try again.', 'error');
+            // DON'T close modal - let user retry
+        }
+    };
+
+    const handleResumeDraft = () => {
+        if (!recoveryDraft) return;
+
+        // Convert draft exercises to ExerciseLog format for WorkoutSession
+        const exerciseLogs: ExerciseLog[] = recoveryDraft.exercises.map(ex => ({
+            id: ex.id,
+            name: ex.name,
+            sets: String(ex.targetSets),
+            reps: ex.targetReps,
+            weight: ex.sets[0]?.weight || ''
+        }));
+
+        setWorkoutLog(exerciseLogs);
+        setWorkoutTitle(recoveryDraft.workoutTitle);
+        setRecoveryDraft(null);
+        setWorkoutStatus('active');
+    };
+
+    const handleDiscardDraft = () => {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        setRecoveryDraft(null);
     };
 
     const startNewWorkout = () => {
@@ -243,6 +306,40 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
 
     return (
         <div className="w-full space-y-8 pb-8">
+            {/* Draft Recovery Modal */}
+            {recoveryDraft && (
+                <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[70] p-4">
+                    <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-700">
+                        <div className="text-center mb-4">
+                            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">💪</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">Resume Workout?</h3>
+                            <p className="text-gray-400 text-sm">
+                                You have an unfinished <span className="text-white font-medium">{recoveryDraft.workoutTitle}</span> from {formatTimeAgo(recoveryDraft.savedAt)}.
+                            </p>
+                            <p className="text-gray-500 text-xs mt-2">
+                                {recoveryDraft.exercises.reduce((acc, ex) => acc + ex.sets.filter(s => s.completed).length, 0)} sets completed
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleDiscardDraft}
+                                className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl text-white font-medium transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+                            >
+                                Discard
+                            </button>
+                            <button
+                                onClick={handleResumeDraft}
+                                className="flex-1 py-3 bg-[var(--color-primary)] hover:opacity-90 rounded-xl text-black font-bold transition-opacity focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+                            >
+                                Resume
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Recovery Check-In Modal */}
             {workoutStatus === 'recovery' && (
                 <RecoveryCheckIn
@@ -253,7 +350,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
 
             {/* Full Screen Overlays */}
             {workoutStatus === 'preview' && (
-                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-light dark:bg-background-dark">
+                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-dark">
                     <WorkoutPreview
                         title={workoutTitle}
                         duration={45} // Estimate
@@ -271,7 +368,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
             )}
 
             {workoutStatus === 'active' && (
-                <div className="fixed inset-0 z-[60] overflow-hidden bg-background-light dark:bg-background-dark">
+                <div className="fixed inset-0 z-[60] overflow-hidden bg-background-dark">
                     <WorkoutSession
                         initialExercises={workoutLog}
                         workoutTitle={workoutTitle}
@@ -284,7 +381,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
             )}
 
             {workoutStatus === 'completed' && (
-                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-light dark:bg-background-dark">
+                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-dark">
                     <WorkoutSummary
                         duration={getDurationString()}
                         volume={calculateVolume(completedLog)}
@@ -292,6 +389,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         onShare={() => showToast('Shared to feed!', 'success')}
                         onClose={() => handleRateWorkout(3)} // Default rating if closed without rating
                         onRate={handleRateWorkout}
+                        onViewHistory={async () => {
+                            await handleRateWorkout(3); // Save with default rating
+                            showHistoryView(); // Then navigate to history
+                        }}
+                        isSaving={isSaving}
                     />
                 </div>
             )}
@@ -343,18 +445,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                                     <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
                                     <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
                                 </div>
-                                <button onClick={startNewWorkout} className="btn-primary w-full">
+                                <button onClick={startNewWorkout} className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]">
                                     Start Today's Workout
                                 </button>
-                                <button onClick={skipRecoveryAndStart} className="text-gray-500 text-sm mt-3 hover:text-white transition-colors">
+                                <button onClick={skipRecoveryAndStart} className="text-gray-500 text-sm mt-3 hover:text-white transition-colors focus-visible:text-white focus-visible:underline">
                                     Skip recovery check
                                 </button>
                             </div>
                         ) : workoutStatus === 'generating' ? (
                             // AI is generating workout
                             <div className="py-12 text-center">
-                                <LoaderIcon className="w-12 h-12 text-[var(--color-primary)] animate-spin mx-auto mb-4" />
-                                <p className="text-xl font-black text-white animate-pulse">GENERATING WORKOUT...</p>
+                                <LoaderIcon className="w-12 h-12 text-[var(--color-primary)] animate-spin motion-reduce:animate-none mx-auto mb-4" />
+                                <p className="text-xl font-black text-white animate-pulse motion-reduce:animate-none">GENERATING WORKOUT...</p>
                                 <p className="text-gray-400 text-sm mt-2">Personalizing based on your recovery</p>
                             </div>
                         ) : null}
@@ -391,21 +493,29 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
 
                     {/* Quick Actions Grid */}
                     <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
-                        <button onClick={() => setActiveTab('meal')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
+                        <button
+                            onClick={() => setActiveTab('meal')}
+                            aria-label="Log a meal"
+                            className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group touch-manipulation focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-inset"
+                        >
                             <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
-                                <MealIcon className="w-6 h-6" />
+                                <MealIcon className="w-6 h-6" aria-hidden="true" />
                             </div>
                             <span className="font-bold text-sm text-gray-300 group-hover:text-white">Log Meal</span>
                         </button>
-                        <button onClick={() => setActiveTab('body')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
+                        <button
+                            onClick={() => setActiveTab('body')}
+                            aria-label="Body check-in with camera"
+                            className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group touch-manipulation focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-inset"
+                        >
                             <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
-                                <CameraIcon className="w-6 h-6" />
+                                <CameraIcon className="w-6 h-6" aria-hidden="true" />
                             </div>
                             <span className="font-bold text-sm text-gray-300 group-hover:text-white">Check In</span>
                         </button>
                     </div>
 
-                    <a href="https://sloe-fit.com" target="_blank" rel="noopener noreferrer" className="card flex items-center justify-between p-4 bg-gradient-to-r from-[var(--bg-card)] to-[var(--color-primary)]/10 border-0 hover:scale-[1.02]">
+                    <a href="https://sloe-fit.com" target="_blank" rel="noopener noreferrer" className="card flex items-center justify-between p-4 bg-gradient-to-r from-[var(--bg-card)] to-[var(--color-primary)]/10 border-0 hover:scale-[1.02] touch-manipulation focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-inset">
                         <div className="flex items-center gap-4">
                             <div className="bg-[var(--color-primary)] text-black p-2 rounded-lg">
                                 <ShopIcon className="w-6 h-6" />
@@ -440,4 +550,4 @@ function extractMuscleGroups(title: string): string[] {
     return muscles.length > 0 ? muscles : ['full body'];
 }
 
-export default Dashboard;
+export default memo(Dashboard);

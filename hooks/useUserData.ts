@@ -417,9 +417,9 @@ export const useUserData = () => {
         }
     }, [user]);
 
-    // Add workout
-    const addWorkout = useCallback(async (title: string, exercises: any[]) => {
-        if (!user) return;
+    // Add workout - returns true if saved successfully, false otherwise
+    const addWorkout = useCallback(async (title: string, exercises: any[], recoveryRating?: number): Promise<boolean> => {
+        if (!user) return false;
 
         const newWorkout: CompletedWorkout = {
             date: formatDateForDisplay(new Date()),
@@ -438,7 +438,8 @@ export const useUserData = () => {
                 user_id: user.id,
                 title,
                 date: new Date().toISOString(),
-                exercises
+                exercises,
+                recovery_rating: recoveryRating
             });
 
             if (error) {
@@ -447,9 +448,16 @@ export const useUserData = () => {
                     ...prev,
                     workouts: prev.workouts.filter(w => w !== newWorkout)
                 }));
+                return false;
             }
+            return true;
         } catch {
-            // Workout save failed - revert already handled above
+            // Revert on error
+            setData(prev => ({
+                ...prev,
+                workouts: prev.workouts.filter(w => w !== newWorkout)
+            }));
+            return false;
         }
     }, [user]);
 

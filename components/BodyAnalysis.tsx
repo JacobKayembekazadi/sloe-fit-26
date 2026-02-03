@@ -1,4 +1,4 @@
-import React, { useState, useCallback, ChangeEvent } from 'react';
+import React, { useState, useCallback, ChangeEvent, memo } from 'react';
 import { analyzeBodyPhoto } from '../services/openaiService';
 import { validateImage } from '../services/storageService';
 import CameraIcon from './icons/CameraIcon';
@@ -16,7 +16,7 @@ type TabMode = 'analyze' | 'progress';
 
 // Skeleton component for loading states
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`animate-pulse bg-gray-800 rounded ${className}`} />
+  <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
 );
 
 // Analysis result skeleton
@@ -183,7 +183,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">
             <div className="relative mb-4">
-              <div className="w-20 h-20 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin" />
+              <div className="w-20 h-20 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin motion-reduce:animate-none" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-3xl">💪</span>
               </div>
@@ -231,4 +231,4 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   );
 };
 
-export default BodyAnalysis;
+export default memo(BodyAnalysis);

@@ -31,8 +31,8 @@ import { ShopifyProvider } from './contexts/ShopifyContext';
 // Lazy load LoginScreen - only needed for unauthenticated users
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
 
-type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
-type View = 'tabs' | 'history' | 'settings' | 'trainer' | 'myTrainer';
+type Tab = 'dashboard' | 'history' | 'body' | 'meal' | 'mindset';
+type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer';
 
 export interface ExerciseLog {
   id: number;
@@ -90,9 +90,9 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAddWorkoutToHistory = (log: ExerciseLog[], title: string) => {
+  const handleAddWorkoutToHistory = async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
     const validLog = log.filter(ex => ex.name);
-    addWorkout(title, validLog);
+    return await addWorkout(title, validLog, rating);
   };
 
   const handleSaveNutritionLog = (data: NutritionLog) => {
@@ -134,7 +134,8 @@ const AppContent: React.FC = () => {
           <p className="text-gray-400 mb-6">{dataError.message}</p>
           <button
             onClick={retryData}
-            className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:scale-105 transition-transform"
+            aria-label="Retry loading data"
+            className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:scale-105 transition-transform focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             Try Again
           </button>
@@ -154,27 +155,13 @@ const AppContent: React.FC = () => {
 
   const LazyFallback = () => (
     <div className="flex items-center justify-center py-12">
-      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
     </div>
   );
 
   const renderContent = () => {
     if (import.meta.env.DEV) {
       console.log('[App] renderContent called, currentView:', currentView);
-    }
-
-    if (currentView === 'history') {
-      return (
-        <Suspense fallback={<LazyFallback />}>
-          <WorkoutHistory
-            history={workouts}
-            nutritionLogs={nutritionLogs}
-            nutritionTargets={nutritionTargets}
-            onBack={() => setCurrentView('tabs')}
-            goal={goal}
-          />
-        </Suspense>
-      );
     }
 
     if (currentView === 'settings') {
@@ -211,7 +198,7 @@ const AppContent: React.FC = () => {
             <Dashboard
               setActiveTab={setActiveTab}
               addWorkoutToHistory={handleAddWorkoutToHistory}
-              showHistoryView={() => setCurrentView('history')}
+              showHistoryView={() => setActiveTab('history')}
               showTrainerView={userProfile.trainer_id ? () => setCurrentView('myTrainer') : undefined}
               nutritionLog={nutritionLogs}
               saveNutritionLog={handleSaveNutritionLog}
@@ -219,6 +206,18 @@ const AppContent: React.FC = () => {
               goal={goal}
               workoutHistory={workouts}
               userProfile={userProfile}
+            />
+          </Suspense>
+        );
+      case 'history':
+        return (
+          <Suspense fallback={<LazyFallback />}>
+            <WorkoutHistory
+              history={workouts}
+              nutritionLogs={nutritionLogs}
+              nutritionTargets={nutritionTargets}
+              onBack={() => setActiveTab('dashboard')}
+              goal={goal}
             />
           </Suspense>
         );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { supabase } from '../supabaseClient';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
@@ -260,7 +260,7 @@ const LoginScreen: React.FC = () => {
                             disabled={loading}
                             className="btn-primary w-full flex justify-center items-center min-h-[48px]"
                         >
-                            {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Complete Registration' : 'Log In')}
+                            {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : (isSignUp ? 'Complete Registration' : 'Log In')}
                         </button>
                     </form>
 
@@ -294,4 +294,4 @@ const LoginScreen: React.FC = () => {
     );
 };
 
-export default LoginScreen;
+export default memo(LoginScreen);

@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-    darkMode: 'class',
+    darkMode: 'class', // Always dark mode
     content: [
         "./index.html",
         "./**/*.{js,ts,jsx,tsx}",
@@ -12,7 +12,6 @@ export default {
             },
             colors: {
                 primary: '#D4FF00', // Sloe Volt
-                'background-light': '#f5f7f8',
                 'background-dark': '#101922',
             },
             fontFamily: {

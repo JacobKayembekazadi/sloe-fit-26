@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo, useCallback } from 'react';
 import type { CompletedWorkout, NutritionLog } from '../App';
 import type { NutritionTargets } from '../hooks/useUserData';
 import ProgressChart from './ProgressChart';
@@ -16,25 +16,28 @@ interface WorkoutHistoryProps {
     goal?: string | null;
 }
 
+// Pure helper function outside component to avoid recreation
+const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
+    return workout.log.reduce((vol, ex) => {
+        const sets = parseInt(ex.sets) || 0;
+        // Handle comma-separated reps (e.g., "8, 8, 6") - take first value
+        const reps = parseInt(ex.reps?.split(',')[0]) || 0;
+        const weight = parseFloat(ex.weight) || 0;
+        return vol + (sets * reps * weight);
+    }, 0);
+};
+
 const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack, goal }) => {
     const [viewMode, setViewMode] = useState<ViewMode>('workouts');
     const [selectedFilter, setSelectedFilter] = useState<'All' | 'Strength' | 'Cardio' | 'Mindset'>('All');
+    const [showAllWorkouts, setShowAllWorkouts] = useState(false);
+    const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkout | null>(null);
 
-    // -- Derived Data --
-
-    // Calculate workout volume (sets * reps * weight)
-    const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
-        return workout.log.reduce((vol, ex) => {
-            const sets = parseInt(ex.sets) || 0;
-            // Handle comma-separated reps (e.g., "8, 8, 6") - take first value
-            const reps = parseInt(ex.reps?.split(',')[0]) || 0;
-            const weight = parseFloat(ex.weight) || 0;
-            return vol + (sets * reps * weight);
-        }, 0);
-    };
+    // -- Derived Data (Memoized) --
 
     // Calculate monthly volume from actual history
     const monthlyVolume = useMemo(() => {
+        if (history.length === 0) return 0;
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -43,10 +46,10 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
             .reduce((total, workout) => total + calculateWorkoutVolume(workout), 0);
     }, [history]);
 
-    // Calculate weekly volume data for chart
+    // Calculate weekly volume data for chart - only recompute when history changes
     const weeklyVolumeData = useMemo(() => {
         const now = new Date();
-        const weeks: { week: string; value: number; label: string }[] = [];
+        const weeks: { week: string; value: number; label: string; isCurrent: boolean }[] = [];
 
         // Get last 4 weeks
         for (let i = 3; i >= 0; i--) {
@@ -67,7 +70,8 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
             weeks.push({
                 week: `W${4 - i}`,
                 value: weekVolume,
-                label: `W${4 - i}`
+                label: `W${4 - i}`,
+                isCurrent: i === 0 // Current week is when i === 0
             });
         }
 
@@ -79,46 +83,170 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
         }));
     }, [history]);
 
-    // Filtered History
+    // Filtered History - memoized with proper filter dependency
     const filteredHistory = useMemo(() => {
-        // Filter logic could be added here based on workout type tags
-        return history;
+        // Filter based on workout title keywords (until proper tags are added)
+        let filtered = history;
+        if (selectedFilter !== 'All') {
+            const filterLower = selectedFilter.toLowerCase();
+            filtered = history.filter(w => {
+                const titleLower = w.title.toLowerCase();
+                // Match common workout type keywords
+                if (filterLower === 'strength') {
+                    return titleLower.includes('strength') || titleLower.includes('push') ||
+                           titleLower.includes('pull') || titleLower.includes('legs') ||
+                           titleLower.includes('upper') || titleLower.includes('lower') ||
+                           titleLower.includes('chest') || titleLower.includes('back');
+                }
+                if (filterLower === 'cardio') {
+                    return titleLower.includes('cardio') || titleLower.includes('hiit') ||
+                           titleLower.includes('run') || titleLower.includes('cycling');
+                }
+                if (filterLower === 'mindset') {
+                    return titleLower.includes('yoga') || titleLower.includes('stretch') ||
+                           titleLower.includes('mobility') || titleLower.includes('recovery');
+                }
+                return true;
+            });
+        }
+        return filtered;
     }, [history, selectedFilter]);
+
+    // Display history - show 5 recent or all based on state
+    const displayedHistory = useMemo(() => {
+        return showAllWorkouts ? filteredHistory : filteredHistory.slice(0, 5);
+    }, [filteredHistory, showAllWorkouts]);
+
+    // Memoize chart data to prevent recalculation on every render
+    const chartData = useMemo(() =>
+        nutritionLogs.slice(0, 14).map(l => ({
+            date: l.date,
+            value: l.calories,
+            target: nutritionTargets.calories
+        })).reverse(),
+        [nutritionLogs, nutritionTargets.calories]
+    );
+
+    // Memoize callbacks to prevent child re-renders
+    const toggleViewMode = useCallback(() => {
+        setViewMode(prev => prev === 'workouts' ? 'charts' : 'workouts');
+    }, []);
 
 
     // -- Render --
 
     return (
-        <div className="flex flex-col h-screen bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-hidden transition-colors duration-300">
+        <div className="flex flex-col h-screen bg-background-dark font-display text-white overflow-hidden transition-colors duration-300">
 
             {/* Top Navigation Bar */}
-            <header className="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5">
+            <header className="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-white/5">
                 <div className="flex items-center p-4 justify-between">
-                    <button onClick={onBack} className="flex size-10 shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                    <button onClick={onBack} className="flex size-10 shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
                         <span className="material-symbols-outlined text-2xl">arrow_back_ios</span>
                     </button>
                     <h1 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Training History</h1>
                     <button
-                        onClick={() => setViewMode(viewMode === 'workouts' ? 'charts' : 'workouts')}
-                        className={`flex size-10 items-center justify-center cursor-pointer rounded-full transition-colors ${viewMode === 'charts' ? 'bg-[var(--color-primary)] text-black' : 'hover:bg-black/5 dark:hover:bg-white/10'}`}
+                        onClick={toggleViewMode}
+                        className={`flex size-10 items-center justify-center cursor-pointer rounded-full transition-colors ${viewMode === 'charts' ? 'bg-[var(--color-primary)] text-black' : 'hover:bg-white/10'}`}
                     >
                         <span className="material-symbols-outlined text-2xl">insights</span>
                     </button>
                 </div>
             </header>
 
+            {/* Workout Detail Modal */}
+            {selectedWorkout && (
+                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center">
+                    <div className="bg-background-dark w-full max-w-lg max-h-[85vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-white/10">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">{selectedWorkout.title}</h2>
+                                <p className="text-gray-500 text-sm">{selectedWorkout.date}</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedWorkout(null)}
+                                className="size-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                            >
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        {/* Modal Stats */}
+                        <div className="grid grid-cols-3 gap-2 p-4 border-b border-white/10">
+                            <div className="text-center">
+                                <p className="text-2xl font-bold text-[var(--color-primary)]">{selectedWorkout.log.length}</p>
+                                <p className="text-xs text-gray-500">Exercises</p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-2xl font-bold text-white">
+                                    {selectedWorkout.log.reduce((acc, ex) => acc + (parseInt(ex.sets) || 0), 0)}
+                                </p>
+                                <p className="text-xs text-gray-500">Total Sets</p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-2xl font-bold text-white">
+                                    {calculateWorkoutVolume(selectedWorkout).toLocaleString()}
+                                </p>
+                                <p className="text-xs text-gray-500">Volume (lbs)</p>
+                            </div>
+                        </div>
+
+                        {/* Exercise List */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Exercises</h3>
+                            {selectedWorkout.log.map((exercise, idx) => (
+                                <div key={idx} className="bg-[#1C1C1E] rounded-xl p-4 border border-white/5">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <p className="font-bold text-white">{exercise.name}</p>
+                                            <div className="flex gap-4 mt-2 text-sm">
+                                                <span className="text-gray-400">
+                                                    <span className="text-white font-medium">{exercise.sets}</span> sets
+                                                </span>
+                                                <span className="text-gray-400">
+                                                    <span className="text-white font-medium">{exercise.reps}</span> reps
+                                                </span>
+                                                {exercise.weight && (
+                                                    <span className="text-gray-400">
+                                                        <span className="text-[var(--color-primary)] font-medium">{exercise.weight}</span> lbs
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-right text-xs text-gray-500">
+                                            #{idx + 1}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-white/10">
+                            <button
+                                onClick={() => setSelectedWorkout(null)}
+                                className="w-full py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:opacity-90 transition-opacity"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <main className="flex-1 overflow-y-auto pb-24">
                 {viewMode === 'workouts' ? (
                     <>
                         {/* Monthly Volume Chart Section */}
                         <section className="px-4 py-6">
-                            <div className="bg-white dark:bg-[#1C1C1E] rounded-xl p-5 shadow-sm border border-slate-200 dark:border-white/5">
+                            <div className="bg-[#1C1C1E] rounded-xl p-5 shadow-sm border border-white/5">
                                 <div className="flex flex-col gap-1 mb-6">
-                                    <p className="text-slate-500 dark:text-gray-400 text-sm font-medium">Monthly Volume</p>
+                                    <p className="text-gray-400 text-sm font-medium">Monthly Volume</p>
                                     <div className="flex items-baseline gap-2">
                                         <h2 className="text-3xl font-bold tracking-tight">{monthlyVolume.toLocaleString()} <span className="text-lg font-medium opacity-70">lbs</span></h2>
                                     </div>
-                                    <p className="text-slate-400 dark:text-gray-500 text-xs">
+                                    <p className="text-gray-500 text-xs">
                                         {monthlyVolume > 0 ? 'This month' : 'Start training to track volume'}
                                     </p>
                                 </div>
@@ -128,13 +256,13 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                                     {weeklyVolumeData.map((item, i) => (
                                         <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
                                             <div
-                                                className={`w-full rounded-t-lg border-t-2 transition-all duration-500 ${i === 1 // Highlight current week or max week
+                                                className={`w-full rounded-t-lg border-t-2 transition-all duration-500 ${item.isCurrent
                                                         ? 'bg-[var(--color-primary)] border-[var(--color-primary)] opacity-100'
-                                                        : 'bg-[var(--color-primary)]/20 dark:bg-[var(--color-primary)]/10 border-[var(--color-primary)] opacity-60 group-hover:opacity-80'
+                                                        : 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] opacity-60 group-hover:opacity-80'
                                                     }`}
-                                                style={{ height: `${item.value}%` }}
+                                                style={{ height: `${Math.max(item.value, 4)}%` }}
                                             ></div>
-                                            <p className={`text-[10px] font-bold ${i === 1 ? 'text-[var(--color-primary)]' : 'text-slate-400 text-gray-500'}`}>{item.label}</p>
+                                            <p className={`text-[10px] font-bold ${item.isCurrent ? 'text-[var(--color-primary)]' : 'text-gray-500'}`}>{item.label}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -150,7 +278,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                                         onClick={() => setSelectedFilter(filter as any)}
                                         className={`flex h-9 shrink-0 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors ${selectedFilter === filter
                                                 ? 'bg-[var(--color-primary)] text-black shadow-sm'
-                                                : 'bg-white dark:bg-[#223649] text-slate-600 dark:text-white border border-slate-200 dark:border-transparent'
+                                                : 'bg-[#223649] text-white border border-transparent'
                                             }`}
                                     >
                                         {filter}
@@ -161,43 +289,60 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
 
                         {/* Recent Workouts List */}
                         <div className="flex items-center justify-between px-4 pb-2 pt-2">
-                            <h3 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Recent Sessions</h3>
-                            <span className="text-[var(--color-primary)] text-sm font-medium">View All</span>
+                            <h3 className="text-lg font-bold tracking-tight text-white">
+                                {showAllWorkouts ? 'All Sessions' : 'Recent Sessions'}
+                            </h3>
+                            {filteredHistory.length > 5 && (
+                                <button
+                                    onClick={() => setShowAllWorkouts(!showAllWorkouts)}
+                                    className="text-[var(--color-primary)] text-sm font-medium hover:underline"
+                                >
+                                    {showAllWorkouts ? 'Show Less' : `View All (${filteredHistory.length})`}
+                                </button>
+                            )}
                         </div>
 
                         <div className="space-y-px">
-                            {filteredHistory.length === 0 ? (
+                            {displayedHistory.length === 0 ? (
                                 <div className="p-8 text-center text-gray-500">
-                                    No completed workouts yet. Start training!
+                                    {selectedFilter !== 'All'
+                                        ? `No ${selectedFilter.toLowerCase()} workouts found.`
+                                        : 'No completed workouts yet. Start training!'}
                                 </div>
                             ) : (
-                                filteredHistory.map((workout, index) => (
-                                    <div key={index} className="flex gap-4 px-4 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer border-b border-slate-100 dark:border-white/5">
+                                displayedHistory.map((workout, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => setSelectedWorkout(workout)}
+                                        className="flex gap-4 px-4 py-4 hover:bg-white/5 transition-colors cursor-pointer border-b border-white/5 w-full text-left"
+                                    >
                                         <div className="flex items-start gap-4 flex-1">
                                             <div className="flex items-center justify-center rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] shrink-0 size-12 shadow-sm">
                                                 <span className="material-symbols-outlined">fitness_center</span>
                                             </div>
                                             <div className="flex flex-1 flex-col justify-center">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-base font-bold text-slate-900 dark:text-white">{workout.title}</p>
-                                                    {index === 0 && <span className="bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">New</span>}
+                                                    <p className="text-base font-bold text-white">{workout.title}</p>
+                                                    {index === 0 && !showAllWorkouts && (
+                                                        <span className="bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">New</span>
+                                                    )}
                                                 </div>
-                                                <p className="text-slate-500 dark:text-[#90adcb] text-sm font-medium mt-0.5">
+                                                <p className="text-[#90adcb] text-sm font-medium mt-0.5">
                                                     {workout.log.reduce((acc, ex) => acc + parseInt(ex.sets), 0)} Sets • {workout.log.length} Exercises
                                                 </p>
-                                                <p className="text-slate-400 dark:text-gray-500 text-[12px] mt-1 font-normal">{workout.date}</p>
+                                                <p className="text-gray-500 text-[12px] mt-1 font-normal">{workout.date}</p>
                                             </div>
                                         </div>
                                         <div className="shrink-0 flex items-center">
-                                            <span className="material-symbols-outlined text-slate-300 dark:text-gray-600">chevron_right</span>
+                                            <span className="material-symbols-outlined text-gray-600">chevron_right</span>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))
                             )}
                         </div>
                     </>
                 ) : (
-                    /* Charts View (Existing Logic + New Styling) */
+                    /* Charts View */
                     <div className="space-y-6 px-4 py-6">
                         <WeeklyNutritionSummary
                             nutritionLogs={nutritionLogs}
@@ -206,14 +351,13 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                         />
                         <div className="space-y-4">
                             <ProgressChart
-                                data={nutritionLogs.slice(0, 14).map(l => ({ date: l.date, value: l.calories, target: nutritionTargets.calories })).reverse()}
+                                data={chartData}
                                 title="Daily Calories"
                                 color="#D4FF00"
                                 unit=" kcal"
                                 showTarget={true}
                                 chartType="bar"
                             />
-                            {/* Can add more charts here */}
                         </div>
                     </div>
                 )}
@@ -222,4 +366,4 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
     );
 };
 
-export default WorkoutHistory;
+export default memo(WorkoutHistory);

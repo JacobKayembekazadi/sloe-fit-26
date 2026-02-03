@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -346,7 +346,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     className="btn-primary w-full text-lg py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                                 >
                                     {loading ? (
-                                        <LoaderIcon className="w-5 h-5 animate-spin" />
+                                        <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
                                     ) : (
                                         <>
                                             Get Started
@@ -410,7 +410,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     disabled={!canProceed() || loading}
                                     className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                                 >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : 'Continue'}
+                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
                                 </button>
                             </div>
                         </div>
@@ -509,7 +509,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     disabled={!canProceed() || loading}
                                     className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                                 >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : 'Continue'}
+                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
                                 </button>
                             </div>
                         </div>
@@ -556,7 +556,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     disabled={!canProceed() || loading}
                                     className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                                 >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : 'Continue'}
+                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
                                 </button>
                             </div>
                         </div>
@@ -603,7 +603,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     disabled={!canProceed() || loading}
                                     className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                                 >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : 'Continue'}
+                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
                                 </button>
                             </div>
                         </div>
@@ -703,7 +703,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 >
                                     {saving ? (
                                         <>
-                                            <LoaderIcon className="w-5 h-5 animate-spin" />
+                                            <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
                                             <span>Saving...</span>
                                         </>
                                     ) : (
@@ -724,4 +724,4 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     );
 };
 
-export default Onboarding;
+export default memo(Onboarding);

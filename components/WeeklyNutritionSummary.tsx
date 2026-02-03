@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import type { NutritionLog } from '../App';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
@@ -18,9 +18,22 @@ interface AIInsights {
     tip: string;
 }
 
-// Day labels for the week
+// Day labels for the week - defined outside component to prevent recreation
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_LABELS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+// Helper functions outside component to prevent recreation
+const getAdherenceColor = (adherence: number) => {
+    if (adherence >= 90) return 'text-green-400';
+    if (adherence >= 70) return 'text-yellow-400';
+    return 'text-red-400';
+};
+
+const getAdherenceBg = (adherence: number) => {
+    if (adherence >= 90) return 'bg-green-500';
+    if (adherence >= 70) return 'bg-yellow-500';
+    return 'bg-red-500';
+};
 
 const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
     nutritionLogs,
@@ -245,19 +258,6 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
             fetchAiInsights();
         }
     }, [stats.daysTracked, hasFetchedAI, loadingInsights, fetchAiInsights]);
-
-    // Get color based on adherence
-    const getAdherenceColor = (adherence: number) => {
-        if (adherence >= 90) return 'text-green-400';
-        if (adherence >= 70) return 'text-yellow-400';
-        return 'text-red-400';
-    };
-
-    const getAdherenceBg = (adherence: number) => {
-        if (adherence >= 90) return 'bg-green-500';
-        if (adherence >= 70) return 'bg-yellow-500';
-        return 'bg-red-500';
-    };
 
     // Get bar height for chart (relative to target)
     const getBarHeight = (value: number, target: number, metric: string) => {
@@ -524,4 +524,4 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
     );
 };
 
-export default WeeklyNutritionSummary;
+export default memo(WeeklyNutritionSummary);

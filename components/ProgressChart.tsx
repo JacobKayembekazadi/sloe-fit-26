@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, memo, useCallback, useState, useRef, useEffect } from 'react';
 import {
     LineChart,
     Line,
@@ -27,6 +27,34 @@ interface ProgressChartProps {
     chartType?: 'line' | 'bar';
 }
 
+// Custom tooltip component - defined outside to prevent recreation
+const CustomTooltip = memo(({ active, payload, label, unit, showTarget }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-[#2C2C2E] border border-white/10 rounded-lg p-3 shadow-lg">
+                <p className="text-gray-400 text-xs mb-1">{label}</p>
+                <p className="text-white font-bold">
+                    {payload[0].value}{unit}
+                </p>
+                {showTarget && payload[0].payload.target && (
+                    <p className="text-gray-500 text-xs mt-1">
+                        Target: {payload[0].payload.target}{unit}
+                    </p>
+                )}
+            </div>
+        );
+    }
+    return null;
+});
+
+CustomTooltip.displayName = 'CustomTooltip';
+
+// Format date for display (e.g., "Jan 15") - pure function outside component
+const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 const ProgressChart: React.FC<ProgressChartProps> = ({
     data,
     title,
@@ -35,38 +63,46 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
     showTarget = false,
     chartType = 'line'
 }) => {
-    // Format date for display (e.g., "Jan 15")
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
+    // Track container readiness to prevent -1 dimension errors
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isReady, setIsReady] = useState(false);
 
-    // Custom tooltip
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-[#2C2C2E] border border-white/10 rounded-lg p-3 shadow-lg">
-                    <p className="text-gray-400 text-xs mb-1">{label}</p>
-                    <p className="text-white font-bold">
-                        {payload[0].value}{unit}
-                    </p>
-                    {showTarget && payload[0].payload.target && (
-                        <p className="text-gray-500 text-xs mt-1">
-                            Target: {payload[0].payload.target}{unit}
-                        </p>
-                    )}
-                </div>
-            );
-        }
-        return null;
-    };
+    // Check if container has valid dimensions before rendering chart
+    useEffect(() => {
+        const checkDimensions = () => {
+            if (containerRef.current) {
+                const { offsetWidth, offsetHeight } = containerRef.current;
+                if (offsetWidth > 0 && offsetHeight > 0) {
+                    setIsReady(true);
+                }
+            }
+        };
 
-    const formattedData = data.map(d => ({
-        ...d,
-        formattedDate: formatDate(d.date)
-    }));
+        // Check immediately and on next frame
+        checkDimensions();
+        const frameId = requestAnimationFrame(checkDimensions);
 
-    const targetValue = showTarget && data.length > 0 ? data[0].target : undefined;
+        return () => cancelAnimationFrame(frameId);
+    }, []);
+
+    // Memoize formatted data to prevent recalculation
+    const formattedData = useMemo(() =>
+        data.map(d => ({
+            ...d,
+            formattedDate: formatDate(d.date)
+        })),
+        [data]
+    );
+
+    const targetValue = useMemo(() =>
+        showTarget && data.length > 0 ? data[0].target : undefined,
+        [showTarget, data]
+    );
+
+    // Memoize tooltip content renderer
+    const renderTooltip = useCallback((props: any) => (
+        <CustomTooltip {...props} unit={unit} showTarget={showTarget} />
+    ), [unit, showTarget]);
 
     if (data.length === 0) {
         return (
@@ -82,7 +118,9 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
     return (
         <div className="card">
             <h4 className="text-sm font-bold text-white mb-4">{title}</h4>
-            <div className="h-48">
+            {/* Container ref to detect valid dimensions before rendering */}
+            <div ref={containerRef} className="h-48" style={{ minWidth: 1, minHeight: 1 }}>
+                {isReady && (
                 <ResponsiveContainer width="100%" height="100%">
                     {chartType === 'line' ? (
                         <LineChart data={formattedData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
@@ -98,7 +136,7 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
                                 axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
                                 tickLine={false}
                             />
-                            <Tooltip content={<CustomTooltip />} />
+                            <Tooltip content={renderTooltip} />
                             {showTarget && targetValue && (
                                 <ReferenceLine
                                     y={targetValue}
@@ -130,7 +168,7 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
                                 axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
                                 tickLine={false}
                             />
-                            <Tooltip content={<CustomTooltip />} />
+                            <Tooltip content={renderTooltip} />
                             {showTarget && targetValue && (
                                 <ReferenceLine
                                     y={targetValue}
@@ -142,9 +180,10 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
                         </BarChart>
                     )}
                 </ResponsiveContainer>
+                )}
             </div>
         </div>
     );
 };
 
-export default ProgressChart;
+export default memo(ProgressChart);
