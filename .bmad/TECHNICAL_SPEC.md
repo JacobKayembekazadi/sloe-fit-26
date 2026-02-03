@@ -41,11 +41,31 @@
     *   Body Composition Analysis (Vision)
     *   Meal Nutrition Analysis (Vision)
 
+### PWA Configuration
+-   **Plugin**: `vite-plugin-pwa` v1.2.0
+-   **Service Worker**: Workbox (generateSW mode)
+-   **Caching**:
+    *   Static assets (JS, CSS, HTML, images)
+    *   Google Fonts (CacheFirst, 1 year)
+-   **Manifest**:
+    *   Display: standalone
+    *   Theme: `#D4FF00` (neon volt)
+    *   Background: `#000000` (black)
+-   **Install Prompt**: Custom `InstallPrompt.tsx` component with iOS/Android detection
+
 ## Security
 -   **RLS Policies**: enabled on all tables. Users can only `SELECT`, `INSERT`, `UPDATE` their own rows (`auth.uid() = user_id`).
 -   **Environment Variables**: API keys stored in `.env` (local) and Vercel (prod).
 
+## Trainer System
+-   **Trainer Role**: Users with `role = 'trainer'` access TrainerDashboard
+-   **Client Assignment**: Clients have `trainer_id` FK reference to trainer's profile
+-   **Views**:
+    *   `TrainerDashboard.tsx`: Trainer manages clients, workouts, nutrition
+    *   `ClientTrainerView.tsx`: Client views assigned trainer details
+
 ## Deployment
 -   **Build Command**: `npm run build`
--   **Output**: `dist/`
--   **Target**: Vercel / Netlify
+-   **Output**: `dist/` (includes `sw.js`, `manifest.webmanifest`, icons)
+-   **Target**: Vercel / Netlify (HTTPS required for PWA)
+

@@ -15,6 +15,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import type { ExerciseLog, NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
+import WorkoutPreview from './WorkoutPreview';
+import WorkoutSummary from './WorkoutSummary';
 
 type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
 
@@ -34,12 +36,15 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory, showHistoryView, showTrainerView, nutritionLog, saveNutritionLog, nutritionTargets, goal, workoutHistory, userProfile }) => {
     const { user } = useAuth();
     const { showToast } = useToast();
-    const [workoutStatus, setWorkoutStatus] = useState<'idle' | 'recovery' | 'generating' | 'active' | 'rating' | 'completed'>('idle');
+    // Added 'preview' to status
+    const [workoutStatus, setWorkoutStatus] = useState<'idle' | 'recovery' | 'generating' | 'preview' | 'active' | 'completed'>('idle');
     const [aiWorkout, setAiWorkout] = useState<GeneratedWorkout | null>(null);
-    const [postWorkoutRating, setPostWorkoutRating] = useState<number>(3);
+    const [postWorkoutRating, setPostWorkoutRating] = useState<number>(3); // Keep for internal tracking
     const [completedLog, setCompletedLog] = useState<ExerciseLog[]>([]);
     const [pendingWorkoutsCount, setPendingWorkoutsCount] = useState(0);
     const [trainerName, setTrainerName] = useState<string | null>(null);
+    const [startTime, setStartTime] = useState<number>(0);
+    const [endTime, setEndTime] = useState<number>(0);
 
     // Fetch pending workouts count for clients with trainers
     useEffect(() => {
@@ -66,9 +71,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                 if (trainerData) {
                     setTrainerName(trainerData.full_name);
                 }
-            } catch (err) {
-                console.log('Could not fetch trainer data:', err);
-                // Don't show toast - optional feature that may not be set up
+            } catch {
+                // Optional feature - trainer data may not be set up
             }
         };
 
@@ -137,7 +141,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const handleWorkoutComplete = (exercises: ExerciseLog[], title: string) => {
         setCompletedLog(exercises);
         setWorkoutTitle(title);
-        setWorkoutStatus('rating');
+        setEndTime(Date.now());
+        setWorkoutStatus('completed');
     };
 
     // Handle cancel from WorkoutSession
@@ -146,10 +151,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         setAiWorkout(null);
     };
 
-    const handleSubmitRating = () => {
+    const handleRateWorkout = (rating: number) => {
+        setPostWorkoutRating(rating);
+        // Save logic here
         addWorkoutToHistory(completedLog, workoutTitle);
         saveNutritionLog(todayNutrition);
-        setWorkoutStatus('completed');
+
+        // Maybe close or show "Saved" toast?
+        showToast('Workout Saved!', 'success');
+        setWorkoutStatus('idle'); // Back to dashboard
     };
 
     const startNewWorkout = () => {
@@ -191,19 +201,44 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                 setWorkoutTitle(fallbackWorkout.title);
             }
         } catch (error) {
-            console.error('Error generating workout:', error);
             setWorkoutLog(fallbackWorkout.exercises);
             setWorkoutTitle(fallbackWorkout.title);
             showToast('Using fallback workout - AI unavailable', 'info');
         }
 
-        setWorkoutStatus('active');
+        // Show Preview instead of going straight to active
+        setWorkoutStatus('preview');
     }, [userProfile, goal, recentWorkouts, fallbackWorkout]);
 
     const skipRecoveryAndStart = () => {
         setWorkoutLog(fallbackWorkout.exercises);
         setWorkoutTitle(fallbackWorkout.title);
+        setWorkoutStatus('preview');
+    };
+
+    const handleStartFromPreview = () => {
+        setStartTime(Date.now());
         setWorkoutStatus('active');
+    };
+
+    const calculateVolume = (logs: ExerciseLog[]) => {
+        return logs.reduce((acc, log) => {
+            const weight = parseFloat(log.weight) || 0;
+            const sets = parseInt(log.sets) || 0;
+            // Assuming 10 reps average if not specified for volume calc approximation
+            // Parse reps string "8-12" -> 10
+            const repsStr = log.reps.split('-')[0];
+            const reps = parseInt(repsStr) || 10;
+            return acc + (weight * sets * reps);
+        }, 0);
+    };
+
+    const getDurationString = () => {
+        const diff = (endTime - startTime) / 1000 / 60; // minutes
+        const hrs = Math.floor(diff / 60);
+        const mins = Math.floor(diff % 60);
+        if (hrs > 0) return `${hrs}h ${mins}m`;
+        return `${mins}m`;
     };
 
     return (
@@ -216,97 +251,27 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                 />
             )}
 
-            <header className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-4xl font-black text-white tracking-tighter">TODAY</h2>
-                    <p className="text-gray-400 text-sm font-medium">
-                        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </p>
+            {/* Full Screen Overlays */}
+            {workoutStatus === 'preview' && (
+                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-light dark:bg-background-dark">
+                    <WorkoutPreview
+                        title={workoutTitle}
+                        duration={45} // Estimate
+                        difficulty="Intermediate"
+                        description={aiWorkout?.recovery_notes || "A balanced session targeting hypertrophy."}
+                        exercises={workoutLog.map(ex => ({
+                            name: ex.name,
+                            sets: parseInt(ex.sets),
+                            reps: ex.reps
+                        }))}
+                        onStart={handleStartFromPreview}
+                        onBack={() => setWorkoutStatus('idle')}
+                    />
                 </div>
-                <div className="text-right">
-                    <span className="text-[var(--color-primary)] font-bold text-xl">Day {currentDay}</span>
-                    <span className="text-white/50 text-xs block">of 30</span>
-                </div>
-            </header>
+            )}
 
-            {/* Nutrition Card */}
-            <div className="card">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <MealIcon className="w-5 h-5 text-[var(--color-primary)]" /> NUTRITION
-                    </h3>
-                </div>
-                <div className="space-y-6">
-                    <ProgressBar label="Calories" currentValue={nutritionData.calories.current} targetValue={nutritionData.calories.target} unit="kcal" />
-                    <div className="grid grid-cols-2 gap-4">
-                        <ProgressBar label="Protein" currentValue={nutritionData.protein.current} targetValue={nutritionData.protein.target} unit="g" />
-                        <ProgressBar label="Carbs" currentValue={nutritionData.carbs.current} targetValue={nutritionData.carbs.target} unit="g" />
-                    </div>
-                </div>
-            </div>
-
-            {/* Workout Section */}
-            <div className="card">
-                {workoutStatus === 'idle' ? (
-                    // No workout started yet
-                    <div className="py-8 text-center">
-                        <div className="mb-6">
-                            <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
-                                <span className="text-3xl">💪</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
-                            <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
-                        </div>
-                        <button onClick={startNewWorkout} className="btn-primary w-full">
-                            Start Today's Workout
-                        </button>
-                        <button onClick={skipRecoveryAndStart} className="text-gray-500 text-sm mt-3 hover:text-white transition-colors">
-                            Skip recovery check
-                        </button>
-                    </div>
-                ) : workoutStatus === 'generating' ? (
-                    // AI is generating workout
-                    <div className="py-12 text-center">
-                        <LoaderIcon className="w-12 h-12 text-[var(--color-primary)] animate-spin mx-auto mb-4" />
-                        <p className="text-xl font-black text-white animate-pulse">GENERATING WORKOUT...</p>
-                        <p className="text-gray-400 text-sm mt-2">Personalizing based on your recovery</p>
-                    </div>
-                ) : workoutStatus === 'rating' ? (
-                    // Post-workout rating
-                    <div className="py-8 text-center space-y-6">
-                        <div>
-                            <h3 className="text-xl font-bold text-white mb-2">How was that workout?</h3>
-                            <p className="text-gray-400 text-sm">This helps AI optimize future sessions</p>
-                        </div>
-
-                        <div className="flex justify-center gap-2">
-                            {[1, 2, 3, 4, 5].map(rating => (
-                                <button
-                                    key={rating}
-                                    onClick={() => setPostWorkoutRating(rating)}
-                                    className={`w-14 h-14 rounded-xl border-2 transition-all font-bold text-lg ${
-                                        postWorkoutRating === rating
-                                            ? 'bg-[var(--color-primary)]/20 border-[var(--color-primary)] text-[var(--color-primary)]'
-                                            : 'bg-gray-800/50 border-gray-700 text-gray-400'
-                                    }`}
-                                >
-                                    {rating}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="text-sm text-gray-500">
-                            {postWorkoutRating <= 2 ? "That's okay - we'll adjust next time" :
-                             postWorkoutRating === 3 ? "Solid effort!" :
-                             "Great session!"}
-                        </div>
-
-                        <button onClick={handleSubmitRating} className="btn-primary w-full">
-                            Submit & Complete
-                        </button>
-                    </div>
-                ) : workoutStatus === 'active' ? (
-                    // Active workout with WorkoutSession component
+            {workoutStatus === 'active' && (
+                <div className="fixed inset-0 z-[60] overflow-hidden bg-background-light dark:bg-background-dark">
                     <WorkoutSession
                         initialExercises={workoutLog}
                         workoutTitle={workoutTitle}
@@ -315,99 +280,145 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         recoveryAdjusted={aiWorkout?.recovery_adjusted}
                         recoveryNotes={aiWorkout?.recovery_notes}
                     />
-                ) : workoutStatus === 'completed' ? (
-                    // Workout completed summary
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <h3 className="text-lg font-bold text-white uppercase tracking-wide">Workout Complete!</h3>
-                                <p className="text-[var(--color-primary)] text-sm font-bold">{workoutTitle}</p>
-                            </div>
-                            <div className="bg-green-500/20 text-green-400 p-2 rounded-full">
-                                <CheckIcon className="w-5 h-5" />
-                            </div>
-                        </div>
-
-                        <div className="space-y-3">
-                            {completedLog.map(ex => ex.name && (
-                                <div key={ex.id} className="flex justify-between items-center py-3 border-b border-white/5 last:border-0">
-                                    <span className="font-medium text-white">{ex.name}</span>
-                                    <span className="text-gray-400 text-sm">
-                                        {ex.sets} × {ex.reps} {ex.weight && `@ ${ex.weight} lbs`}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="pt-4 flex flex-col gap-3">
-                            <button onClick={showHistoryView} className="btn-secondary w-full flex items-center justify-center gap-2">
-                                <ListIcon className="w-5 h-5" /> View History
-                            </button>
-                            <button onClick={startNewWorkout} className="text-gray-400 text-sm font-medium py-2 hover:text-white transition-colors">
-                                Start New Workout
-                            </button>
-                        </div>
-                    </div>
-                ) : null}
-            </div>
-
-            {/* Trainer Card (for clients with trainers) */}
-            {userProfile?.trainer_id && showTrainerView && (
-                <button
-                    onClick={showTrainerView}
-                    className="card flex items-center justify-between p-4 bg-gradient-to-r from-purple-900/30 to-purple-600/20 border-purple-500/30 hover:border-purple-500/50 transition-all hover:scale-[1.02]"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                        </div>
-                        <div className="text-left">
-                            <h4 className="font-bold text-white">My Trainer</h4>
-                            <p className="text-sm text-gray-400">{trainerName || 'Your Coach'}</p>
-                            {pendingWorkoutsCount > 0 && (
-                                <p className="text-xs text-yellow-400 mt-0.5 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></span>
-                                    {pendingWorkoutsCount} workout{pendingWorkoutsCount > 1 ? 's' : ''} assigned
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                    <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                </button>
+                </div>
             )}
 
-            {/* Quick Actions Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => setActiveTab('meal')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
-                    <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
-                        <MealIcon className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm text-gray-300 group-hover:text-white">Log Meal</span>
-                </button>
-                <button onClick={() => setActiveTab('body')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
-                    <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
-                        <CameraIcon className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm text-gray-300 group-hover:text-white">Check In</span>
-                </button>
-            </div>
-
-            <a href="https://sloe-fit.com" target="_blank" rel="noopener noreferrer" className="card flex items-center justify-between p-4 bg-gradient-to-r from-[var(--bg-card)] to-[var(--color-primary)]/10 border-0 hover:scale-[1.02]">
-                <div className="flex items-center gap-4">
-                    <div className="bg-[var(--color-primary)] text-black p-2 rounded-lg">
-                        <ShopIcon className="w-6 h-6" />
-                    </div>
-                    <div className="text-left">
-                        <h4 className="font-bold text-white">Supplements</h4>
-                        <p className="text-xs text-[var(--color-primary)]">Restock & Fuel Up</p>
-                    </div>
+            {workoutStatus === 'completed' && (
+                <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-light dark:bg-background-dark">
+                    <WorkoutSummary
+                        duration={getDurationString()}
+                        volume={calculateVolume(completedLog)}
+                        exercisesCount={completedLog.length}
+                        onShare={() => showToast('Shared to feed!', 'success')}
+                        onClose={() => handleRateWorkout(3)} // Default rating if closed without rating
+                        onRate={handleRateWorkout}
+                    />
                 </div>
-                <div className="text-gray-400">→</div>
-            </a>
+            )}
+
+            {/* Standard Dashboard Content (Hidden when in modal mode, or just don't render?) */}
+            {/* We will conditionally render the Dashboard content only when status is idle/generating/recovery(modal) */}
+
+            {['idle', 'recovery', 'generating'].includes(workoutStatus) && (
+                <>
+                    <header className="flex justify-between items-end">
+                        <div>
+                            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tighter">TODAY</h2>
+                            <p className="text-gray-400 text-sm font-medium">
+                                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-[var(--color-primary)] font-bold text-xl">Day {currentDay}</span>
+                            <span className="text-white/50 text-xs block">of 30</span>
+                        </div>
+                    </header>
+
+                    {/* Nutrition Card */}
+                    {/* ... (Existing Nutrition Card Code) ... */}
+                    <div className="card">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <MealIcon className="w-5 h-5 text-[var(--color-primary)]" /> NUTRITION
+                            </h3>
+                        </div>
+                        <div className="space-y-6">
+                            <ProgressBar label="Calories" currentValue={nutritionData.calories.current} targetValue={nutritionData.calories.target} unit="kcal" />
+                            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
+                                <ProgressBar label="Protein" currentValue={nutritionData.protein.current} targetValue={nutritionData.protein.target} unit="g" />
+                                <ProgressBar label="Carbs" currentValue={nutritionData.carbs.current} targetValue={nutritionData.carbs.target} unit="g" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Workout Section */}
+                    <div className="card">
+                        {workoutStatus === 'idle' ? (
+                            // No workout started yet
+                            <div className="py-8 text-center">
+                                <div className="mb-6">
+                                    <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
+                                        <span className="text-3xl">💪</span>
+                                    </div>
+                                    <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
+                                    <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
+                                </div>
+                                <button onClick={startNewWorkout} className="btn-primary w-full">
+                                    Start Today's Workout
+                                </button>
+                                <button onClick={skipRecoveryAndStart} className="text-gray-500 text-sm mt-3 hover:text-white transition-colors">
+                                    Skip recovery check
+                                </button>
+                            </div>
+                        ) : workoutStatus === 'generating' ? (
+                            // AI is generating workout
+                            <div className="py-12 text-center">
+                                <LoaderIcon className="w-12 h-12 text-[var(--color-primary)] animate-spin mx-auto mb-4" />
+                                <p className="text-xl font-black text-white animate-pulse">GENERATING WORKOUT...</p>
+                                <p className="text-gray-400 text-sm mt-2">Personalizing based on your recovery</p>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    {/* Trainer Card (for clients with trainers) */}
+                    {userProfile?.trainer_id && showTrainerView && (
+                        <button
+                            onClick={showTrainerView}
+                            className="card flex items-center justify-between p-4 bg-gradient-to-r from-purple-900/30 to-purple-600/20 border-purple-500/30 hover:border-purple-500/50 transition-all hover:scale-[1.02]"
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center">
+                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                </div>
+                                <div className="text-left">
+                                    <h4 className="font-bold text-white">My Trainer</h4>
+                                    <p className="text-sm text-gray-400">{trainerName || 'Your Coach'}</p>
+                                    {pendingWorkoutsCount > 0 && (
+                                        <p className="text-xs text-yellow-400 mt-0.5 flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></span>
+                                            {pendingWorkoutsCount} workout{pendingWorkoutsCount > 1 ? 's' : ''} assigned
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Quick Actions Grid */}
+                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
+                        <button onClick={() => setActiveTab('meal')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
+                            <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
+                                <MealIcon className="w-6 h-6" />
+                            </div>
+                            <span className="font-bold text-sm text-gray-300 group-hover:text-white">Log Meal</span>
+                        </button>
+                        <button onClick={() => setActiveTab('body')} className="card flex flex-col items-center justify-center gap-3 py-6 hover:border-[var(--color-primary)] group">
+                            <div className="bg-gray-800 p-3 rounded-full group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
+                                <CameraIcon className="w-6 h-6" />
+                            </div>
+                            <span className="font-bold text-sm text-gray-300 group-hover:text-white">Check In</span>
+                        </button>
+                    </div>
+
+                    <a href="https://sloe-fit.com" target="_blank" rel="noopener noreferrer" className="card flex items-center justify-between p-4 bg-gradient-to-r from-[var(--bg-card)] to-[var(--color-primary)]/10 border-0 hover:scale-[1.02]">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-[var(--color-primary)] text-black p-2 rounded-lg">
+                                <ShopIcon className="w-6 h-6" />
+                            </div>
+                            <div className="text-left">
+                                <h4 className="font-bold text-white">Supplements</h4>
+                                <p className="text-xs text-[var(--color-primary)]">Restock & Fuel Up</p>
+                            </div>
+                        </div>
+                        <div className="text-gray-400">→</div>
+                    </a>
+                </>
+            )}
         </div>
     );
 };

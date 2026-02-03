@@ -225,7 +225,6 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                 setAiInsights(localInsights);
             }
         } catch (error) {
-            console.error('Error fetching AI insights:', error);
             setAiInsights(localInsights);
             // Don't show toast - gracefully fallback to local insights
         } finally {

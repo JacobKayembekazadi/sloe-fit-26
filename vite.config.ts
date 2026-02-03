@@ -88,6 +88,19 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-charts': ['recharts'],
+            'vendor-markdown': ['react-markdown', 'remark-gfm'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-openai': ['openai'],
+            'vendor-shopify': ['@shopify/buy-button-js'],
+          }
+        }
+      }
     }
   };
 });

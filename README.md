@@ -44,3 +44,8 @@ npm run dev
 
 ## 🏗️ Deployment
 Ready for Vercel or Netlify. Ensure environment variables are set in the deployment dashboard.
+
+## 📚 Documentation
+For detailed architectural context and project state for AI assistants, see:
+- [LLM Context](docs/LLM_CONTEXT.md)
+

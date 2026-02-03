@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
 import { CompletedWorkout, NutritionLog } from '../App';
 
@@ -160,11 +160,8 @@ export const useUserData = () => {
     const fetchAllData = useCallback(async (userId: string, signal: AbortSignal) => {
         // Prevent fetching if already fetched for this user in this session
         if (hasFetchedRef.current && currentUserIdRef.current === userId) {
-            console.log('[useUserData] Already fetched, skipping...');
             return;
         }
-
-        console.log('[useUserData] Starting fetch for user:', userId);
         setLoadingState('loading');
         setError(null);
 
@@ -175,14 +172,16 @@ export const useUserData = () => {
         // Get the user's JWT token from localStorage (bypassing Supabase client)
         let authToken = supabaseKey;
         try {
-            const storageKey = `sb-utnyfmdydekevjschjsf-auth-token`;
+            // Extract project ID from URL (e.g., https://abc123.supabase.co -> abc123)
+            const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+            const storageKey = `sb-${projectId}-auth-token`;
             const stored = localStorage.getItem(storageKey);
             if (stored) {
                 const parsed = JSON.parse(stored);
                 authToken = parsed?.access_token || supabaseKey;
             }
-        } catch (e) {
-            console.log('[useUserData] Could not get auth token from localStorage, using anon key');
+        } catch {
+            // Could not get auth token from localStorage, using anon key
         }
 
         const fetchHeaders = {
@@ -191,8 +190,6 @@ export const useUserData = () => {
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         };
-
-        console.log('[useUserData] Using raw fetch for data (bypassing Supabase client)...');
 
         try {
             // Create a timeout promise
@@ -206,8 +203,7 @@ export const useUserData = () => {
             });
 
 
-            // Fetch all data in parallel using raw fetch (bypasses broken Supabase client)
-            console.log('[useUserData] Starting parallel fetches with raw fetch...');
+            // Fetch all data in parallel using raw fetch
 
             const rawFetch = async (endpoint: string) => {
                 const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
@@ -230,14 +226,11 @@ export const useUserData = () => {
                         return { data: null, error: { code: 'PGRST116', message: 'No rows returned' } };
                     }
                     return r;
-                })
-                .then(r => { console.log('[useUserData] Profile fetch complete:', r.error?.message || 'success'); return r; });
+                });
 
-            const workoutsFetch = rawFetch(`workouts?select=*&user_id=eq.${userId}&order=date.desc&limit=50`)
-                .then(r => { console.log('[useUserData] Workouts fetch complete:', r.error?.message || 'success'); return r; });
+            const workoutsFetch = rawFetch(`workouts?select=*&user_id=eq.${userId}&order=date.desc&limit=50`);
 
-            const nutritionFetch = rawFetch(`nutrition_logs?select=*&user_id=eq.${userId}&order=date.desc&limit=30`)
-                .then(r => { console.log('[useUserData] Nutrition fetch complete:', r.error?.message || 'success'); return r; });
+            const nutritionFetch = rawFetch(`nutrition_logs?select=*&user_id=eq.${userId}&order=date.desc&limit=30`);
 
             const fetchPromise = Promise.all([profileFetch, workoutsFetch, nutritionFetch]);
 
@@ -250,9 +243,6 @@ export const useUserData = () => {
             if (signal.aborted || currentUserIdRef.current !== userId) {
                 return;
             }
-
-            console.log('[useUserData] Fetch complete, processing results...');
-            console.log('[useUserData] Profile result:', profileResult);
 
             // Process profile
             let profile: UserProfile = DEFAULT_PROFILE;
@@ -277,19 +267,17 @@ export const useUserData = () => {
                 onboardingComplete = p.onboarding_complete ?? false;
             } else if (profileResult.error?.code === 'PGRST116') {
                 // No profile found - create one and show onboarding
-                console.log('No profile found, creating one...');
                 try {
-                    await supabase.from('profiles').insert({
+                    await supabaseInsert('profiles', {
                         id: userId,
                         onboarding_complete: false,
                         created_at: new Date().toISOString()
                     });
-                } catch (insertErr) {
-                    console.error('Failed to create profile:', insertErr);
+                } catch {
+                    // Profile creation failed - will be retried on next load
                 }
                 onboardingComplete = false;
             } else if (profileResult.error) {
-                console.error('Profile fetch error:', profileResult.error);
                 onboardingComplete = false;
             }
 
@@ -334,8 +322,6 @@ export const useUserData = () => {
                 return;
             }
 
-            console.error('Error fetching user data:', err);
-
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             const isTimeout = errorMessage === 'Request timeout';
 
@@ -357,12 +343,10 @@ export const useUserData = () => {
 
     // Main effect - fetch data when user changes
     useEffect(() => {
-        console.log('[useUserData] useEffect triggered, user:', user?.id || 'null');
         isMountedRef.current = true;
 
         // User logged out - clear all data
         if (!user) {
-            console.log('[useUserData] No user, resetting data');
             currentUserIdRef.current = null;
             resetData();
             return;
@@ -370,7 +354,6 @@ export const useUserData = () => {
 
         // User changed - cancel previous requests
         if (currentUserIdRef.current !== user.id) {
-            console.log('[useUserData] User changed from', currentUserIdRef.current, 'to', user.id);
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
@@ -383,7 +366,6 @@ export const useUserData = () => {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        console.log('[useUserData] Calling fetchAllData...');
         // Fetch data
         fetchAllData(user.id, controller.signal);
 
@@ -422,17 +404,16 @@ export const useUserData = () => {
         }));
 
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ goal: newGoal })
-                .eq('id', user.id);
+            const { error } = await supabaseUpdate(
+                `profiles?id=eq.${user.id}`,
+                { goal: newGoal }
+            );
 
             if (error) {
-                console.error('Error updating goal:', error);
                 // Could revert here, but keeping optimistic for better UX
             }
-        } catch (err) {
-            console.error('Error updating goal:', err);
+        } catch {
+            // Goal update failed silently - optimistic UI kept
         }
     }, [user]);
 
@@ -453,7 +434,7 @@ export const useUserData = () => {
         }));
 
         try {
-            const { error } = await supabase.from('workouts').insert({
+            const { error } = await supabaseInsert('workouts', {
                 user_id: user.id,
                 title,
                 date: new Date().toISOString(),
@@ -461,15 +442,14 @@ export const useUserData = () => {
             });
 
             if (error) {
-                console.error('Error saving workout:', error);
                 // Revert on error
                 setData(prev => ({
                     ...prev,
                     workouts: prev.workouts.filter(w => w !== newWorkout)
                 }));
             }
-        } catch (err) {
-            console.error('Error saving workout:', err);
+        } catch {
+            // Workout save failed - revert already handled above
         }
     }, [user]);
 
@@ -503,24 +483,16 @@ export const useUserData = () => {
 
         try {
             // Use upsert to avoid race conditions
-            const { error } = await supabase
-                .from('nutrition_logs')
-                .upsert({
-                    user_id: user.id,
-                    date: normalizedDate,
-                    calories: log.calories,
-                    protein: log.protein,
-                    carbs: log.carbs,
-                    fats: log.fats
-                }, {
-                    onConflict: 'user_id,date'
-                });
-
-            if (error) {
-                console.error('Error saving nutrition:', error);
-            }
-        } catch (err) {
-            console.error('Error saving nutrition:', err);
+            await supabaseUpsert('nutrition_logs', {
+                user_id: user.id,
+                date: normalizedDate,
+                calories: log.calories,
+                protein: log.protein,
+                carbs: log.carbs,
+                fats: log.fats
+            }, 'user_id,date');
+        } catch {
+            // Nutrition save failed silently - optimistic UI kept
         }
     }, [user]);
 
@@ -558,14 +530,11 @@ export const useUserData = () => {
         }));
 
         try {
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('goal, onboarding_complete, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week, full_name, role, trainer_id')
-                .eq('id', user.id)
-                .single();
+            const { data: profile, error } = await supabaseGetSingle<any>(
+                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,full_name,role,trainer_id`
+            );
 
             if (error) {
-                console.error('Error refetching profile:', error);
                 return;
             }
 
@@ -588,8 +557,8 @@ export const useUserData = () => {
                     }
                 }));
             }
-        } catch (err) {
-            console.error('Error refetching profile:', err);
+        } catch {
+            // Profile refetch failed silently
         }
     }, [user]);
 
@@ -597,8 +566,10 @@ export const useUserData = () => {
     const nutritionTargets = calculateNutritionTargets(data.profile);
     const loading = loadingState === 'loading' || loadingState === 'idle';
 
-    // Debug: log loading state on each render
-    console.log('[useUserData] Render - loadingState:', loadingState, 'computed loading:', loading, 'onboardingComplete:', data.onboardingComplete);
+    // Debug: log loading state on each render (dev only)
+    if (import.meta.env.DEV) {
+        console.log('[useUserData] Render - loadingState:', loadingState, 'computed loading:', loading, 'onboardingComplete:', data.onboardingComplete);
+    }
 
     return {
         // Data

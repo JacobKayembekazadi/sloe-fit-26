@@ -2,9 +2,15 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
+import WelcomeScreen from './WelcomeScreen';
+import OnboardingQuiz, { OnboardingData } from './onboarding/OnboardingQuiz';
 
 const LoginScreen: React.FC = () => {
     const { showToast } = useToast();
+    const [view, setView] = useState<'welcome' | 'quiz' | 'auth'>('welcome');
+    // Store onboarding data to save on signup
+    const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState(''); // For Signup
@@ -62,30 +68,31 @@ const LoginScreen: React.FC = () => {
 
         try {
             if (isSignUp) {
+                // Combine standard metadata with onboarding data (if available)
+                const metadata = {
+                    full_name: fullName,
+                    is_trainer: isTrainer,
+                    ...(onboardingData || {}) // Spread onboarding quiz answers
+                };
+
                 const { data, error } = await supabase.auth.signUp({
                     email,
                     password,
                     options: {
-                        data: {
-                            full_name: fullName,
-                            is_trainer: isTrainer,
-                        },
+                        data: metadata,
                     },
                 });
                 if (error) throw error;
 
                 // Check if email confirmation is required
                 if (data.user && !data.session) {
-                    // Email confirmation required
                     alert('Check your email to confirm your account, then sign in.');
                 } else if (data.session) {
-                    // Auto-signed in (email confirmation disabled)
-                    // Session will be picked up by AuthContext
                     return;
                 } else {
                     alert('Account created! You can now sign in.');
                 }
-                setIsSignUp(false); // Switch to login after signup
+                setIsSignUp(false);
             } else {
                 const { error } = await supabase.auth.signInWithPassword({
                     email,
@@ -94,14 +101,13 @@ const LoginScreen: React.FC = () => {
                 if (error) throw error;
             }
         } catch (err: any) {
-            // Provide more helpful error messages
             let message = err.message || 'Authentication failed';
             if (message.includes('Email not confirmed')) {
                 message = 'Please check your email and click the confirmation link before signing in.';
             } else if (message.includes('Invalid login credentials')) {
-                message = 'Invalid email or password. If you just signed up, check your email for a confirmation link.';
+                message = 'Invalid email or password.';
             } else if (message.includes('User already registered')) {
-                message = 'An account with this email already exists. Try signing in instead.';
+                message = 'An account with this email already exists.';
             }
             setError(message);
             showToast(message, 'error');
@@ -109,6 +115,33 @@ const LoginScreen: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (view === 'welcome') {
+        return (
+            <WelcomeScreen
+                onGetStarted={() => {
+                    setView('quiz'); // Go to quiz first
+                }}
+                onLogin={() => {
+                    setView('auth');
+                    setIsSignUp(false);
+                }}
+            />
+        );
+    }
+
+    if (view === 'quiz') {
+        return (
+            <OnboardingQuiz
+                onComplete={(data) => {
+                    setOnboardingData(data); // Save data
+                    setView('auth');
+                    setIsSignUp(true); // Go to signup
+                }}
+                onBack={() => setView('welcome')}
+            />
+        );
+    }
 
     return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 animate-fade-in relative overflow-hidden">
@@ -126,8 +159,17 @@ const LoginScreen: React.FC = () => {
 
                 <div className="card space-y-6">
                     <h2 className="text-2xl font-bold text-white text-center">
-                        {isSignUp ? 'Create Account' : 'Welcome Back'}
+                        {isSignUp ? 'Save Your Plan' : 'Welcome Back'}
                     </h2>
+
+                    {/* Show summary of plan if signing up from quiz */}
+                    {isSignUp && onboardingData && (
+                        <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-center border border-gray-700">
+                            <span className="text-gray-400">Target:</span> <span className="text-[var(--color-primary)] font-bold">{onboardingData.goal}</span>
+                            <span className="mx-2 text-gray-600">|</span>
+                            <span className="text-gray-400">Focus:</span> <span className="text-white font-bold">{onboardingData.hurdle}</span>
+                        </div>
+                    )}
 
                     {error && (
                         <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm text-center">
@@ -218,16 +260,28 @@ const LoginScreen: React.FC = () => {
                             disabled={loading}
                             className="btn-primary w-full flex justify-center items-center min-h-[48px]"
                         >
-                            {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Sign Up' : 'Log In')}
+                            {loading ? <LoaderIcon className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Complete Registration' : 'Log In')}
                         </button>
                     </form>
 
                     <div className="text-center">
+                        {/* Back to quiz option if in signup mode from quiz */}
+                        {isSignUp && onboardingData && (
+                            <button
+                                onClick={() => setView('quiz')}
+                                className="text-gray-500 text-sm hover:text-white transition-colors mb-4 block w-full"
+                            >
+                                ← Modify Plan
+                            </button>
+                        )}
+
                         <button
                             onClick={() => {
-                                setIsSignUp(!isSignUp);
+                                const newIsSignUp = !isSignUp;
+                                setIsSignUp(newIsSignUp);
                                 setError(null);
                                 setIsTrainer(false);
+                                setOnboardingData(null); // Clear data if switching to login manually or toggling
                             }}
                             className="text-gray-500 text-sm hover:text-white transition-colors"
                         >

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { supabase } from '@/supabaseClient';
+import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate } from '@/services/supabaseRawFetch';
 import LoaderIcon from './icons/LoaderIcon';
 
 // Skeleton component
@@ -131,22 +131,18 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
 
         try {
             // Fetch trainer info
-            const { data: trainerData } = await supabase
-                .from('profiles')
-                .select('id, full_name')
-                .eq('id', trainerId)
-                .single();
+            const { data: trainerData } = await supabaseGetSingle<TrainerInfo>(
+                `profiles?id=eq.${trainerId}&select=id,full_name`
+            );
 
             if (trainerData) {
                 setTrainer(trainerData);
             }
 
             // Fetch assigned workouts
-            const { data: workoutsData } = await supabase
-                .from('assigned_workouts')
-                .select('*')
-                .eq('client_id', user.id)
-                .order('assigned_at', { ascending: false });
+            const { data: workoutsData } = await supabaseGet<AssignedWorkout[]>(
+                `assigned_workouts?client_id=eq.${user.id}&select=*&order=assigned_at.desc`
+            );
 
             if (workoutsData) {
                 setAssignedWorkouts(workoutsData);
@@ -155,8 +151,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
             // Fetch messages
             await fetchMessages();
         } catch (err) {
-            console.error('Error fetching client trainer data:', err);
-            showToast('Failed to load trainer info', 'error');
+                        showToast('Failed to load trainer info', 'error');
         } finally {
             setLoading(false);
         }
@@ -166,11 +161,9 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
         if (!user) return;
 
         try {
-            const { data } = await supabase
-                .from('trainer_messages')
-                .select('*')
-                .or(`and(sender_id.eq.${user.id},receiver_id.eq.${trainerId}),and(sender_id.eq.${trainerId},receiver_id.eq.${user.id})`)
-                .order('created_at', { ascending: true });
+            const { data } = await supabaseGet<Message[]>(
+                `trainer_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${trainerId}),and(sender_id.eq.${trainerId},receiver_id.eq.${user.id}))&select=*&order=created_at.asc`
+            );
 
             if (data) {
                 setMessages(data);
@@ -181,19 +174,16 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
 
                 // Mark messages as read
                 if (unread > 0) {
-                    await supabase
-                        .from('trainer_messages')
-                        .update({ is_read: true })
-                        .eq('sender_id', trainerId)
-                        .eq('receiver_id', user.id)
-                        .eq('is_read', false);
+                    await supabaseUpdate(
+                        `trainer_messages?sender_id=eq.${trainerId}&receiver_id=eq.${user.id}&is_read=eq.false`,
+                        { is_read: true }
+                    );
 
                     setUnreadCount(0);
                 }
             }
         } catch (err) {
-            console.log('Messages fetch error:', err);
-            setMessages([]);
+                        setMessages([]);
             // Don't show toast - messages feature may not be set up yet
         }
     };
@@ -203,22 +193,19 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
         setSendingMessage(true);
 
         try {
-            const { error } = await supabase
-                .from('trainer_messages')
-                .insert({
-                    sender_id: user.id,
-                    receiver_id: trainerId,
-                    content: newMessage.trim(),
-                    is_read: false
-                });
+            const { error } = await supabaseInsert('trainer_messages', {
+                sender_id: user.id,
+                receiver_id: trainerId,
+                content: newMessage.trim(),
+                is_read: false
+            });
 
             if (!error) {
                 setNewMessage('');
                 await fetchMessages();
             }
         } catch (err) {
-            console.error('Error sending message:', err);
-            showToast('Failed to send message', 'error');
+                        showToast('Failed to send message', 'error');
         } finally {
             setSendingMessage(false);
         }
@@ -234,11 +221,10 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                 updateData.completed_at = new Date().toISOString();
             }
 
-            const { error } = await supabase
-                .from('assigned_workouts')
-                .update(updateData)
-                .eq('id', workoutId)
-                .eq('client_id', user.id);
+            const { error } = await supabaseUpdate(
+                `assigned_workouts?id=eq.${workoutId}&client_id=eq.${user.id}`,
+                updateData
+            );
 
             if (!error) {
                 setAssignedWorkouts(prev =>
@@ -249,8 +235,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                 );
             }
         } catch (err) {
-            console.error('Error updating workout status:', err);
-            showToast('Failed to update workout', 'error');
+                        showToast('Failed to update workout', 'error');
         } finally {
             setUpdatingWorkout(null);
         }

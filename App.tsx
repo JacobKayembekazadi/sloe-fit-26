@@ -1,26 +1,35 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
-import Dashboard from './components/Dashboard';
-import BodyAnalysis from './components/BodyAnalysis';
-import MealTracker from './components/MealTracker';
-import Mindset from './components/Mindset';
-import WorkoutHistory from './components/WorkoutHistory';
-import Settings from './components/Settings';
-import TrainerDashboard from './components/TrainerDashboard';
-import ClientTrainerView from './components/ClientTrainerView';
-import CartDrawer from './components/CartDrawer';
-import Onboarding from './components/Onboarding';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingScreen from './components/LoadingScreen';
 import InstallPrompt from './components/InstallPrompt';
+import OfflineBanner from './components/OfflineBanner';
 import { useUserData } from './hooks/useUserData';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { supabase } from './supabaseClient';
+
+// Lazy load heavy components
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const BodyAnalysis = lazy(() => import('./components/BodyAnalysis'));
+const MealTracker = lazy(() => import('./components/MealTracker'));
+const Mindset = lazy(() => import('./components/Mindset'));
+const WorkoutHistory = lazy(() => import('./components/WorkoutHistory'));
+const Settings = lazy(() => import('./components/Settings'));
+const TrainerDashboard = lazy(() => import('./components/TrainerDashboard'));
+const ClientTrainerView = lazy(() => import('./components/ClientTrainerView'));
+const CartDrawer = lazy(() => import('./components/CartDrawer'));
+const Onboarding = lazy(() => import('./components/Onboarding'));
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
-import LoginScreen from './components/LoginScreen';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { ShopifyProvider } from './contexts/ShopifyContext';
+
+// Lazy load LoginScreen - only needed for unauthenticated users
+const LoginScreen = lazy(() => import('./components/LoginScreen'));
 
 type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
 type View = 'tabs' | 'history' | 'settings' | 'trainer' | 'myTrainer';
@@ -52,6 +61,9 @@ const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('tabs');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [userName, setUserName] = useState<string>('');
+
+  // Online status for offline banner
+  const isOnline = useOnlineStatus();
 
   // Supabase Data Hook
   const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading, error: dataError, retry: retryData } = useUserData();
@@ -91,15 +103,21 @@ const AppContent: React.FC = () => {
     refetchProfile();
   };
 
-  // Debug loading states
-  console.log('[App] loading:', loading, 'dataLoading:', dataLoading, 'user:', user?.id || 'null', 'onboardingComplete:', onboardingComplete);
+  // Debug loading states (dev only)
+  if (import.meta.env.DEV) {
+    console.log('[App] loading:', loading, 'dataLoading:', dataLoading, 'user:', user?.id || 'null', 'onboardingComplete:', onboardingComplete);
+  }
 
   if (loading || dataLoading) {
     return <LoadingScreen message="Loading your data..." subMessage="Setting up your personalized experience" />;
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return (
+      <Suspense fallback={<LoadingScreen message="Loading..." />}>
+        <LoginScreen />
+      </Suspense>
+    );
   }
 
   // Show error state with retry option
@@ -127,67 +145,119 @@ const AppContent: React.FC = () => {
 
   // Show onboarding if not completed
   if (onboardingComplete === false) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+    return (
+      <Suspense fallback={<LoadingScreen message="Loading..." />}>
+        <Onboarding onComplete={handleOnboardingComplete} />
+      </Suspense>
+    );
   }
 
+  const LazyFallback = () => (
+    <div className="flex items-center justify-center py-12">
+      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
   const renderContent = () => {
+    if (import.meta.env.DEV) {
+      console.log('[App] renderContent called, currentView:', currentView);
+    }
+
     if (currentView === 'history') {
-      return <WorkoutHistory
-        history={workouts}
-        nutritionLogs={nutritionLogs}
-        nutritionTargets={nutritionTargets}
-        onBack={() => setCurrentView('tabs')}
-        goal={goal}
-      />;
+      return (
+        <Suspense fallback={<LazyFallback />}>
+          <WorkoutHistory
+            history={workouts}
+            nutritionLogs={nutritionLogs}
+            nutritionTargets={nutritionTargets}
+            onBack={() => setCurrentView('tabs')}
+            goal={goal}
+          />
+        </Suspense>
+      );
     }
 
     if (currentView === 'settings') {
-      return <Settings onBack={() => setCurrentView('tabs')} />;
+      if (import.meta.env.DEV) {
+        console.log('[App] Rendering Settings component...');
+      }
+      return (
+        <Suspense fallback={<LazyFallback />}>
+          <Settings onBack={() => setCurrentView('tabs')} />
+        </Suspense>
+      );
     }
 
     if (currentView === 'trainer') {
-      return <TrainerDashboard onBack={() => setCurrentView('tabs')} />;
+      return (
+        <Suspense fallback={<LazyFallback />}>
+          <TrainerDashboard onBack={() => setCurrentView('tabs')} />
+        </Suspense>
+      );
     }
 
     if (currentView === 'myTrainer' && userProfile.trainer_id) {
-      return <ClientTrainerView onBack={() => setCurrentView('tabs')} trainerId={userProfile.trainer_id} />;
+      return (
+        <Suspense fallback={<LazyFallback />}>
+          <ClientTrainerView onBack={() => setCurrentView('tabs')} trainerId={userProfile.trainer_id} />
+        </Suspense>
+      );
     }
 
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard
-          setActiveTab={setActiveTab}
-          addWorkoutToHistory={handleAddWorkoutToHistory}
-          showHistoryView={() => setCurrentView('history')}
-          showTrainerView={userProfile.trainer_id ? () => setCurrentView('myTrainer') : undefined}
-          nutritionLog={nutritionLogs}
-          saveNutritionLog={handleSaveNutritionLog}
-          nutritionTargets={nutritionTargets}
-          goal={goal}
-          workoutHistory={workouts}
-          userProfile={userProfile}
-        />;
+        return (
+          <Suspense fallback={<LazyFallback />}>
+            <Dashboard
+              setActiveTab={setActiveTab}
+              addWorkoutToHistory={handleAddWorkoutToHistory}
+              showHistoryView={() => setCurrentView('history')}
+              showTrainerView={userProfile.trainer_id ? () => setCurrentView('myTrainer') : undefined}
+              nutritionLog={nutritionLogs}
+              saveNutritionLog={handleSaveNutritionLog}
+              nutritionTargets={nutritionTargets}
+              goal={goal}
+              workoutHistory={workouts}
+              userProfile={userProfile}
+            />
+          </Suspense>
+        );
       case 'body':
-        return <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />;
+        return (
+          <Suspense fallback={<LazyFallback />}>
+            <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />
+          </Suspense>
+        );
       case 'meal':
         const todayDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         const todayLog = nutritionLogs.find(l => l.date === todayDate);
-        return <MealTracker
-          userGoal={goal}
-          onLogMeal={addMealToDaily}
-          todayNutrition={todayLog ? { calories: todayLog.calories, protein: todayLog.protein, carbs: todayLog.carbs, fats: todayLog.fats } : undefined}
-          nutritionTargets={nutritionTargets}
-        />;
+        return (
+          <Suspense fallback={<LazyFallback />}>
+            <MealTracker
+              userGoal={goal}
+              onLogMeal={addMealToDaily}
+              todayNutrition={todayLog ? { calories: todayLog.calories, protein: todayLog.protein, carbs: todayLog.carbs, fats: todayLog.fats } : undefined}
+              nutritionTargets={nutritionTargets}
+            />
+          </Suspense>
+        );
       case 'mindset':
-        return <Mindset />;
+        return (
+          <Suspense fallback={<LazyFallback />}>
+            <Mindset />
+          </Suspense>
+        );
       default:
         return null;
     }
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--bg-app)] text-white overflow-hidden">
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+    <div className={`flex flex-col h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden ${!isOnline ? 'pt-10' : ''}`}>
+      {!isOnline && <OfflineBanner />}
+      <Suspense fallback={null}>
+        <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      </Suspense>
       <InstallPrompt />
 
       {/* Mobile Shell Layout */}
@@ -221,13 +291,19 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <ToastProvider>
-          <AppContent />
-        </ToastProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <ToastProvider>
+            <NotificationProvider>
+              <ShopifyProvider>
+                <AppContent />
+              </ShopifyProvider>
+            </NotificationProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 };
 

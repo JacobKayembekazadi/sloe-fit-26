@@ -50,8 +50,7 @@ export const fetchProduct = async (productId: string): Promise<ShopifyProduct | 
         const product = await shopifyClient.product.fetch(productId);
         return product as ShopifyProduct;
     } catch (error) {
-        console.error('Error fetching product:', error);
-        return null;
+                return null;
     }
 };
 
@@ -65,8 +64,7 @@ export const fetchProducts = async (productIds: string[]): Promise<ShopifyProduc
         const products = await Promise.all(productsPromises);
         return products.filter(Boolean) as ShopifyProduct[];
     } catch (error) {
-        console.error('Error fetching products:', error);
-        return [];
+                return [];
     }
 };
 
@@ -79,8 +77,7 @@ export const createCheckout = async () => {
         const checkout = await shopifyClient.checkout.create();
         return checkout;
     } catch (error) {
-        console.error('Error creating checkout:', error);
-        return null;
+                return null;
     }
 };
 
@@ -99,8 +96,7 @@ export const addToCart = async (checkoutId: string, variantId: string, quantity:
         const checkout = await shopifyClient.checkout.addLineItems(checkoutId, lineItemsToAdd);
         return checkout;
     } catch (error) {
-        console.error('Error adding to cart:', error);
-        return null;
+                return null;
     }
 };
 
@@ -113,8 +109,7 @@ export const removeFromCart = async (checkoutId: string, lineItemId: string) => 
         const checkout = await shopifyClient.checkout.removeLineItems(checkoutId, [lineItemId]);
         return checkout;
     } catch (error) {
-        console.error('Error removing from cart:', error);
-        return null;
+                return null;
     }
 };
 
@@ -133,8 +128,7 @@ export const updateCartQuantity = async (checkoutId: string, lineItemId: string,
         const checkout = await shopifyClient.checkout.updateLineItems(checkoutId, lineItemsToUpdate);
         return checkout;
     } catch (error) {
-        console.error('Error updating cart:', error);
-        return null;
+                return null;
     }
 };
 

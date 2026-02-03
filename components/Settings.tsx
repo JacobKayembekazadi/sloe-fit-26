@@ -1,9 +1,57 @@
-'use client';
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/supabaseClient';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { useToast } from '@/contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
+
+// Helper to get auth token from localStorage (bypasses broken Supabase client)
+const getAuthToken = () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    try {
+        const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+        const storageKey = `sb-${projectId}-auth-token`;
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            return parsed?.access_token || supabaseKey;
+        }
+    } catch {
+        // Could not get auth token
+    }
+    return supabaseKey;
+};
+
+// Raw fetch helper (bypasses broken Supabase client)
+const supabaseFetch = async (endpoint: string, options: RequestInit = {}) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const authToken = getAuthToken();
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
+        ...options,
+        headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+            'Prefer': options.method === 'PATCH' ? 'return=minimal' : 'return=representation',
+            ...options.headers,
+        },
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Request failed');
+    }
+
+    // For PATCH with return=minimal, there's no body
+    if (options.method === 'PATCH') {
+        return { data: null, error: null };
+    }
+
+    const data = await response.json();
+    return { data: Array.isArray(data) ? data[0] : data, error: null };
+};
 
 // Skeleton component
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -88,6 +136,10 @@ interface ProfileData {
 
 const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const { user, signOut } = useAuth();
+    const { theme, toggleTheme } = useTheme();
+    const { permission, requestPermission, sendLocalNotification } = useNotifications();
+    const { showToast } = useToast();
+
     const [profile, setProfile] = useState<ProfileData>({
         full_name: '',
         goal: null,
@@ -106,28 +158,34 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
     useEffect(() => {
         const fetchProfile = async () => {
-            if (!user) return;
-
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('full_name, goal, height_inches, weight_lbs, age, training_experience, equipment_access, days_per_week, role')
-                .eq('id', user.id)
-                .single();
-
-            if (data) {
-                setProfile({
-                    full_name: data.full_name || '',
-                    goal: data.goal,
-                    height_inches: data.height_inches,
-                    weight_lbs: data.weight_lbs,
-                    age: data.age,
-                    training_experience: data.training_experience,
-                    equipment_access: data.equipment_access,
-                    days_per_week: data.days_per_week,
-                    role: data.role
-                });
+            if (!user) {
+                setLoading(false);
+                return;
             }
-            setLoading(false);
+
+            try {
+                const { data } = await supabaseFetch(
+                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,role`
+                );
+
+                if (data) {
+                    setProfile({
+                        full_name: data.full_name || '',
+                        goal: data.goal,
+                        height_inches: data.height_inches,
+                        weight_lbs: data.weight_lbs,
+                        age: data.age,
+                        training_experience: data.training_experience,
+                        equipment_access: data.equipment_access,
+                        days_per_week: data.days_per_week,
+                        role: data.role
+                    });
+                }
+            } catch {
+                showToast('Failed to load profile', 'error');
+            } finally {
+                setLoading(false);
+            }
         };
 
         fetchProfile();
@@ -137,24 +195,28 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         if (!user) return;
         setSaving(true);
 
-        const { error } = await supabase
-            .from('profiles')
-            .update({
-                full_name: profile.full_name,
-                goal: profile.goal,
-                height_inches: profile.height_inches,
-                weight_lbs: profile.weight_lbs,
-                age: profile.age,
-                training_experience: profile.training_experience,
-                equipment_access: profile.equipment_access,
-                days_per_week: profile.days_per_week
-            })
-            .eq('id', user.id);
+        try {
+            await supabaseFetch(`profiles?id=eq.${user.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    full_name: profile.full_name,
+                    goal: profile.goal,
+                    height_inches: profile.height_inches,
+                    weight_lbs: profile.weight_lbs,
+                    age: profile.age,
+                    training_experience: profile.training_experience,
+                    equipment_access: profile.equipment_access,
+                    days_per_week: profile.days_per_week
+                })
+            });
 
-        setSaving(false);
-        if (!error) {
             setSaved(true);
+            showToast('Settings saved!', 'success');
             setTimeout(() => setSaved(false), 2000);
+        } catch {
+            showToast('Failed to save settings', 'error');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -172,19 +234,18 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
         setUpgrading(true);
 
-        const { error } = await supabase
-            .from('profiles')
-            .update({ role: 'trainer' })
-            .eq('id', user.id);
+        try {
+            await supabaseFetch(`profiles?id=eq.${user.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ role: 'trainer' })
+            });
 
-        setUpgrading(false);
-
-        if (error) {
-            alert('Failed to upgrade account. Please try again.');
-            console.error('Error upgrading to trainer:', error);
-        } else {
             setProfile({ ...profile, role: 'trainer' });
-            alert('You are now a trainer! You can access the trainer dashboard from the header.');
+            showToast('You are now a trainer!', 'success');
+        } catch {
+            showToast('Failed to upgrade account', 'error');
+        } finally {
+            setUpgrading(false);
         }
     };
 
@@ -304,11 +365,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={g}
                                 onClick={() => setProfile({ ...profile, goal: g })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${
-                                    profile.goal === g
-                                        ? 'bg-[var(--color-primary)] text-black'
-                                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                                }`}
+                                className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${profile.goal === g
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
                             >
                                 {g}
                             </button>
@@ -323,11 +383,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={exp}
                                 onClick={() => setProfile({ ...profile, training_experience: exp })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${
-                                    profile.training_experience === exp
-                                        ? 'bg-[var(--color-primary)] text-black'
-                                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                                }`}
+                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${profile.training_experience === exp
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
                             >
                                 {exp}
                             </button>
@@ -342,11 +401,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={eq}
                                 onClick={() => setProfile({ ...profile, equipment_access: eq })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${
-                                    profile.equipment_access === eq
-                                        ? 'bg-[var(--color-primary)] text-black'
-                                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                                }`}
+                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${profile.equipment_access === eq
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
                             >
                                 {eq}
                             </button>
@@ -361,11 +419,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={days}
                                 onClick={() => setProfile({ ...profile, days_per_week: days })}
-                                className={`flex-1 min-w-[50px] py-3 px-3 rounded-xl font-bold text-sm transition-all ${
-                                    profile.days_per_week === days
-                                        ? 'bg-[var(--color-primary)] text-black'
-                                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                                }`}
+                                className={`flex-1 min-w-[50px] py-3 px-3 rounded-xl font-bold text-sm transition-all ${profile.days_per_week === days
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
                             >
                                 {days}
                             </button>
@@ -443,10 +500,54 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </div>
             )}
 
+            {/* Theme Toggle */}
+            <div className="card flex items-center justify-between">
+                <div>
+                    <h3 className="text-lg font-bold text-[var(--text-primary)]">Dark Mode</h3>
+                    <p className="text-[var(--text-secondary)] text-sm">Toggle app theme</p>
+                </div>
+                <button
+                    onClick={toggleTheme}
+                    className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${theme === 'dark' ? 'bg-[var(--color-primary)]' : 'bg-gray-600'
+                        }`}
+                >
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${theme === 'dark' ? 'translate-x-6' : 'translate-x-0'
+                        }`}></div>
+                </button>
+            </div>
+
+            {/* Notifications Toggle */}
+            <div className="card flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-bold text-[var(--text-primary)]">Notifications</h3>
+                        <p className="text-[var(--text-secondary)] text-sm">Enable daily reminders</p>
+                    </div>
+                    <button
+                        onClick={requestPermission} // From useNotifications
+                        className={`w-14 h-8 rounded-full p-1 transition-colors duration-300 ${permission === 'granted' ? 'bg-[var(--color-primary)]' : 'bg-gray-600'
+                            }`}
+                    >
+                        <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${permission === 'granted' ? 'translate-x-6' : 'translate-x-0'
+                            }`}></div>
+                    </button>
+                </div>
+
+                {permission === 'granted' && (
+                    <button
+                        onClick={() => sendLocalNotification('Time to train!', { body: 'Ready to crush your workout?' })}
+                        className="text-sm text-[var(--color-primary)] font-bold text-left hover:underline flex items-center gap-2"
+                    >
+                        <span className="material-symbols-outlined text-lg">notifications_active</span>
+                        Send Test Notification
+                    </button>
+                )}
+            </div>
+
             {/* Sign Out */}
             <button
                 onClick={handleSignOut}
-                className="w-full py-4 text-red-400 hover:text-red-300 font-bold transition-colors"
+                className="w-full py-4 text-red-500 hover:text-red-400 font-bold transition-colors"
             >
                 Sign Out
             </button>

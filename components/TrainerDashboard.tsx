@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/supabaseClient';
 import { useToast } from '@/contexts/ToastContext';
+import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '@/services/supabaseRawFetch';
 import LoaderIcon from './icons/LoaderIcon';
 
 // Skeleton component for loading states
@@ -350,8 +350,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                 const parsed = JSON.parse(savedTemplates);
                 setWorkoutTemplates([...DEFAULT_TEMPLATES, ...parsed]);
             } catch (e) {
-                console.error('Failed to load custom templates:', e);
-                showToast('Failed to load workout templates', 'error');
+                                showToast('Failed to load workout templates', 'error');
             }
         }
     }, []);
@@ -361,19 +360,15 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         if (!silent) setLoading(true);
 
         try {
-            console.log('[TrainerDashboard] Fetching clients for trainer:', user.id);
+            
+            // Fetch clients with their stats (using raw fetch)
+            const { data: clientData, error: clientError } = await supabaseGet<any[]>(
+                `profiles?trainer_id=eq.${user.id}&select=id,full_name,goal,created_at`
+            );
 
-            // Fetch clients with their stats
-            const { data: clientData, error: clientError } = await supabase
-                .from('profiles')
-                .select('id, full_name, goal, created_at')
-                .eq('trainer_id', user.id);
-
-            console.log('[TrainerDashboard] Client fetch result:', { clientData, clientError });
-
+            
             if (clientError) {
-                console.error('[TrainerDashboard] Error fetching clients:', clientError);
-            }
+                            }
 
             if (clientData) {
                 // Fetch additional stats for each client in parallel
@@ -381,25 +376,13 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                     clientData.map(async (client) => {
                         const weekAgo = new Date();
                         weekAgo.setDate(weekAgo.getDate() - 7);
+                        const weekAgoStr = weekAgo.toISOString().split('T')[0];
 
-                        // Parallel fetch for performance
+                        // Parallel fetch for performance (using raw fetch)
                         const [workoutsResult, nutritionResult, messagesResult] = await Promise.all([
-                            supabase
-                                .from('workouts')
-                                .select('id, date')
-                                .eq('user_id', client.id)
-                                .order('date', { ascending: false }),
-                            supabase
-                                .from('nutrition_logs')
-                                .select('calories')
-                                .eq('user_id', client.id)
-                                .gte('date', weekAgo.toISOString().split('T')[0]),
-                            supabase
-                                .from('trainer_messages')
-                                .select('id')
-                                .eq('sender_id', client.id)
-                                .eq('receiver_id', user.id)
-                                .eq('is_read', false)
+                            supabaseGet<any[]>(`workouts?user_id=eq.${client.id}&select=id,date&order=date.desc`),
+                            supabaseGet<any[]>(`nutrition_logs?user_id=eq.${client.id}&date=gte.${weekAgoStr}&select=calories`),
+                            supabaseGet<any[]>(`trainer_messages?sender_id=eq.${client.id}&receiver_id=eq.${user.id}&is_read=eq.false&select=id`)
                         ]);
 
                         const workouts = workoutsResult.data || [];
@@ -426,29 +409,22 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                 setClients(clientsWithStats);
             }
 
-            // Fetch invites
-            console.log('[TrainerDashboard] Fetching invites...');
-            const { data: inviteData, error: inviteError } = await supabase
-                .from('trainer_invites')
-                .select('*')
-                .eq('trainer_id', user.id)
-                .order('created_at', { ascending: false });
+            // Fetch invites (using raw fetch)
+                        const { data: inviteData, error: inviteError } = await supabaseGet<any[]>(
+                `trainer_invites?trainer_id=eq.${user.id}&select=*&order=created_at.desc`
+            );
 
-            console.log('[TrainerDashboard] Invites fetch result:', { inviteData, inviteError });
-
+            
             if (inviteError) {
-                console.error('[TrainerDashboard] Error fetching invites:', inviteError);
-            }
+                            }
 
             if (inviteData) {
                 setInvites(inviteData);
             }
         } catch (err) {
-            console.error('[TrainerDashboard] Error fetching trainer data:', err);
-            showToast('Failed to load trainer dashboard', 'error');
+                        showToast('Failed to load trainer dashboard', 'error');
         } finally {
-            console.log('[TrainerDashboard] Fetch complete, setting loading=false');
-            if (!silent) setLoading(false);
+                        if (!silent) setLoading(false);
         }
     };
 
@@ -458,32 +434,12 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         setClientDetailTab('progress');
 
         try {
-            // Parallel fetch for better performance
+            // Parallel fetch for better performance (using raw fetch)
             const [workoutsResult, nutritionResult, assignedResult, notesResult] = await Promise.all([
-                supabase
-                    .from('workouts')
-                    .select('*')
-                    .eq('user_id', client.id)
-                    .order('date', { ascending: false })
-                    .limit(20),
-                supabase
-                    .from('nutrition_logs')
-                    .select('*')
-                    .eq('user_id', client.id)
-                    .order('date', { ascending: false })
-                    .limit(14),
-                supabase
-                    .from('assigned_workouts')
-                    .select('*')
-                    .eq('client_id', client.id)
-                    .order('assigned_at', { ascending: false })
-                    .limit(20),
-                supabase
-                    .from('client_notes')
-                    .select('notes')
-                    .eq('trainer_id', user?.id)
-                    .eq('client_id', client.id)
-                    .single()
+                supabaseGet<any[]>(`workouts?user_id=eq.${client.id}&select=*&order=date.desc&limit=20`),
+                supabaseGet<any[]>(`nutrition_logs?user_id=eq.${client.id}&select=*&order=date.desc&limit=14`),
+                supabaseGet<any[]>(`assigned_workouts?client_id=eq.${client.id}&select=*&order=assigned_at.desc&limit=20`),
+                supabaseGetSingle<any>(`client_notes?trainer_id=eq.${user?.id}&client_id=eq.${client.id}&select=notes`)
             ]);
 
             setClientWorkouts(workoutsResult.data || []);
@@ -494,8 +450,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
             // Fetch messages
             await fetchMessages(client.id);
         } catch (err) {
-            console.error('Error fetching client details:', err);
-            showToast('Failed to load client details', 'error');
+                        showToast('Failed to load client details', 'error');
         } finally {
             setLoadingClientData(false);
         }
@@ -505,26 +460,22 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         if (!user) return;
 
         try {
-            const { data } = await supabase
-                .from('trainer_messages')
-                .select('*')
-                .or(`and(sender_id.eq.${user.id},receiver_id.eq.${clientId}),and(sender_id.eq.${clientId},receiver_id.eq.${user.id})`)
-                .order('created_at', { ascending: true });
+            // Using raw fetch with OR filter
+            const { data } = await supabaseGet<any[]>(
+                `trainer_messages?or=(and(sender_id.eq.${user.id},receiver_id.eq.${clientId}),and(sender_id.eq.${clientId},receiver_id.eq.${user.id}))&select=*&order=created_at.asc`
+            );
 
             if (data) {
                 setMessages(data);
 
                 // Mark messages as read
-                await supabase
-                    .from('trainer_messages')
-                    .update({ is_read: true })
-                    .eq('sender_id', clientId)
-                    .eq('receiver_id', user.id)
-                    .eq('is_read', false);
+                await supabaseUpdate(
+                    `trainer_messages?sender_id=eq.${clientId}&receiver_id=eq.${user.id}&is_read=eq.false`,
+                    { is_read: true }
+                );
             }
         } catch (err) {
-            console.log('Messages table may not exist:', err);
-            setMessages([]);
+                        setMessages([]);
             // Don't show toast - messages feature may not be set up yet
         }
     };
@@ -534,22 +485,19 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         setSendingMessage(true);
 
         try {
-            const { error } = await supabase
-                .from('trainer_messages')
-                .insert({
-                    sender_id: user.id,
-                    receiver_id: selectedClient.id,
-                    content: newMessage.trim(),
-                    is_read: false
-                });
+            const { error } = await supabaseInsert('trainer_messages', {
+                sender_id: user.id,
+                receiver_id: selectedClient.id,
+                content: newMessage.trim(),
+                is_read: false
+            });
 
             if (!error) {
                 setNewMessage('');
                 await fetchMessages(selectedClient.id);
             }
         } catch (err) {
-            console.error('Error sending message:', err);
-            showToast('Failed to send message', 'error');
+                        showToast('Failed to send message', 'error');
         } finally {
             setSendingMessage(false);
         }
@@ -560,16 +508,14 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         setAssigningWorkout(true);
 
         try {
-            const { error } = await supabase
-                .from('assigned_workouts')
-                .insert({
-                    trainer_id: user.id,
-                    client_id: selectedClient.id,
-                    template_name: template.name,
-                    exercises: template.exercises,
-                    status: 'pending',
-                    assigned_at: new Date().toISOString()
-                });
+            const { error } = await supabaseInsert('assigned_workouts', {
+                trainer_id: user.id,
+                client_id: selectedClient.id,
+                template_name: template.name,
+                exercises: template.exercises,
+                status: 'pending',
+                assigned_at: new Date().toISOString()
+            });
 
             if (!error) {
                 setAssignedSuccess(template.name);
@@ -577,28 +523,22 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                 showToast('Workout assigned!', 'success');
 
                 // Refresh assigned workouts
-                const { data } = await supabase
-                    .from('assigned_workouts')
-                    .select('*')
-                    .eq('client_id', selectedClient.id)
-                    .order('assigned_at', { ascending: false })
-                    .limit(20);
+                const { data } = await supabaseGet<any[]>(
+                    `assigned_workouts?client_id=eq.${selectedClient.id}&select=*&order=assigned_at.desc&limit=20`
+                );
 
                 if (data) setAssignedWorkouts(data);
 
                 // Send notification message
-                await supabase
-                    .from('trainer_messages')
-                    .insert({
-                        sender_id: user.id,
-                        receiver_id: selectedClient.id,
-                        content: `📋 New workout assigned: "${template.name}" - Check your assigned workouts!`,
-                        is_read: false
-                    });
+                await supabaseInsert('trainer_messages', {
+                    sender_id: user.id,
+                    receiver_id: selectedClient.id,
+                    content: `📋 New workout assigned: "${template.name}" - Check your assigned workouts!`,
+                    is_read: false
+                });
             }
         } catch (err) {
-            console.error('Error assigning workout:', err);
-            showToast('Failed to assign workout', 'error');
+                        showToast('Failed to assign workout', 'error');
         } finally {
             setAssigningWorkout(false);
         }
@@ -609,14 +549,12 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         setSavingNotes(true);
 
         try {
-            const { error } = await supabase
-                .from('client_notes')
-                .upsert({
-                    trainer_id: user.id,
-                    client_id: selectedClient.id,
-                    notes: clientNotes,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'trainer_id,client_id' });
+            const { error } = await supabaseUpsert('client_notes', {
+                trainer_id: user.id,
+                client_id: selectedClient.id,
+                notes: clientNotes,
+                updated_at: new Date().toISOString()
+            }, 'trainer_id,client_id');
 
             if (!error) {
                 setNotesSaved(true);
@@ -624,8 +562,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                 showToast('Notes saved', 'success');
             }
         } catch (err) {
-            console.error('Error saving notes:', err);
-            showToast('Failed to save notes', 'error');
+                        showToast('Failed to save notes', 'error');
         } finally {
             setSavingNotes(false);
         }
@@ -690,22 +627,19 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
         try {
             const code = `SLOE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-            const { error } = await supabase
-                .from('trainer_invites')
-                .insert({
-                    trainer_id: user.id,
-                    invite_code: code,
-                    max_uses: 10,
-                    is_active: true
-                });
+            const { error } = await supabaseInsert('trainer_invites', {
+                trainer_id: user.id,
+                invite_code: code,
+                max_uses: 10,
+                is_active: true
+            });
 
             if (!error) {
                 await fetchData();
                 showToast('Invite link created!', 'success');
             }
         } catch (err) {
-            console.error('Error creating invite:', err);
-            showToast('Failed to create invite link', 'error');
+                        showToast('Failed to create invite link', 'error');
         } finally {
             setCreatingInvite(false);
         }
@@ -719,10 +653,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
     };
 
     const deactivateInvite = async (inviteId: string) => {
-        await supabase
-            .from('trainer_invites')
-            .update({ is_active: false })
-            .eq('id', inviteId);
+        await supabaseUpdate(`trainer_invites?id=eq.${inviteId}`, { is_active: false });
         await fetchData();
     };
 

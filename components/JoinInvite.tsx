@@ -61,7 +61,6 @@ const JoinInvite: React.FC<JoinInviteProps> = ({ inviteCode: initialCode, onSucc
                 setError(result.error || 'Invalid invite code');
             }
         } catch (err) {
-            console.error('Error joining:', err);
             setError('Something went wrong. Please try again.');
             showToast('Failed to join trainer', 'error');
         } finally {

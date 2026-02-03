@@ -39,17 +39,33 @@ sloe-fit-ai-coach/
 │   ├── BodyAnalysis.tsx  # Photo upload & AI body analysis
 │   ├── MealTracker.tsx   # Food photo analysis
 │   ├── Mindset.tsx       # 30-day mindset content
-│   ├── ProgressTracker.tsx # Progress photo tracking
 │   ├── WorkoutHistory.tsx  # Completed workouts view
+│   ├── Settings.tsx      # User settings
+│   ├── TrainerDashboard.tsx # Trainer management view
+│   ├── ClientTrainerView.tsx # Client view of assigned trainer
+│   ├── InstallPrompt.tsx # PWA install prompt
+│   ├── LoginScreen.tsx   # Auth login/signup
+│   ├── Onboarding.tsx    # User onboarding flow
 │   └── icons/            # SVG icon components
 ├── services/
-│   └── geminiService.ts  # Gemini AI API integration
-├── data/
-│   └── exercises.ts      # Exercise database
-├── utils/
-│   └── fileUtils.ts      # File handling utilities
+│   ├── geminiService.ts  # Gemini AI API integration
+│   ├── openaiService.ts  # OpenAI API integration
+│   ├── shopifyService.ts # Shopify e-commerce
+│   ├── storageService.ts # File storage
+│   └── workoutService.ts # Workout data service
+├── contexts/
+│   ├── AuthContext.tsx   # Supabase authentication
+│   ├── ShopifyContext.tsx # Cart state management
+│   └── ToastContext.tsx  # Notifications
+├── hooks/
+│   ├── useUserData.ts    # User data persistence
+│   └── useLocalStorage.ts # Local storage hook
+├── public/
+│   ├── icon-192x192.png  # PWA icon
+│   └── icon-512x512.png  # PWA splash icon
 ├── prompts.ts            # AI system prompts
 ├── App.tsx               # Main application component
+├── vite.config.ts        # Vite + PWA configuration
 └── index.tsx             # Entry point
 ```
 
@@ -79,29 +95,32 @@ sloe-fit-ai-coach/
 
 ## 🚀 Sprint Backlog
 
-### Sprint 1: Core Features (Current State) ✅
+### Sprint 1: Core Features ✅
 - [x] Project scaffolding with Vite + React + TypeScript
 - [x] Gemini AI service integration
 - [x] Body analysis with photo upload
 - [x] Meal tracking with photo analysis
 - [x] Dashboard with workout logging
-- [x] Progress tracker with metrics
 - [x] 30-day mindset content
 - [x] Workout history tracking
 
-### Sprint 2: Enhancements (Planned)
-- [ ] Local storage persistence for workout history
-- [ ] User profile management
-- [ ] Multiple workout plan templates
-- [ ] Dark/Light theme toggle
-- [ ] PWA support for mobile
+### Sprint 2: Authentication & Persistence ✅
+- [x] Supabase Auth integration
+- [x] User profile management
+- [x] Cloud data sync
+- [x] Shopify e-commerce integration
 
-### Sprint 3: Advanced Features (Future)
-- [ ] User authentication
-- [ ] Cloud data sync
+### Sprint 3: PWA & Trainer Features ✅
+- [x] PWA manifest and service worker
+- [x] Install prompt for mobile
+- [x] Trainer dashboard
+- [x] Client-trainer relationships
+- [x] Offline support with workbox caching
+
+### Sprint 4: Polish (Planned)
+- [ ] Dark/Light theme toggle
+- [ ] Push notifications
 - [ ] Social sharing of progress
-- [ ] Supplement store integration
-- [ ] Push notifications for reminders
 
 ---
 
@@ -170,8 +189,8 @@ interface CompletedWorkout {
   log: ExerciseLog[];
 }
 
-type Tab = 'dashboard' | 'body' | 'meal' | 'mindset' | 'progress';
-type View = 'tabs' | 'history';
+type Tab = 'dashboard' | 'body' | 'meal' | 'mindset';
+type View = 'tabs' | 'history' | 'settings' | 'trainer' | 'myTrainer';
 ```
 
 ---
@@ -196,4 +215,4 @@ type View = 'tabs' | 'history';
 
 ---
 
-*Last Updated: January 2026*
+*Last Updated: February 2026*

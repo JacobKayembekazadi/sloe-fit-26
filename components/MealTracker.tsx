@@ -68,11 +68,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [todaysMeals, setTodaysMeals] = useState<{ name: string; calories: number; time: string }[]>([]);
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
 
-  // Mock data for favorites and recent - in production, fetch from Supabase
-  const [favorites] = useState<SavedMeal[]>([
-    { id: '1', name: 'Chicken & Rice', calories: 450, protein: 40, carbs: 45, fats: 8, isFavorite: true },
-    { id: '2', name: 'Protein Shake', calories: 180, protein: 25, carbs: 8, fats: 3, isFavorite: true },
-  ]);
+  // Empty arrays - in production, fetch from Supabase user_saved_meals table
+  const [favorites] = useState<SavedMeal[]>([]);
   const [recentMeals] = useState<SavedMeal[]>([]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {

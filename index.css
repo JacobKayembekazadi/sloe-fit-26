@@ -7,6 +7,31 @@
   --bg-card-hover: #2C2C2E;
   --text-primary: #FFFFFF;
   --text-secondary: #8E8E93;
+  /* Workout UI tokens */
+  --color-background-light: #f5f7f8;
+  --color-background-dark: #101922;
+  --font-family-display: 'Lexend', sans-serif;
+}
+
+:root {
+  /* Default Dark Mode */
+  --color-primary: #D4FF00;
+  --bg-app: #000000;
+  --bg-card: #1C1C1E;
+  --bg-card-hover: #2C2C2E;
+  --text-primary: #FFFFFF;
+  --text-secondary: #8E8E93;
+}
+
+:root.light {
+  /* Light Mode Overrides */
+  --color-primary: #76A900;
+  /* Darker volt for better contrast on white */
+  --bg-app: #F2F2F7;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #E5E5EA;
+  --text-primary: #1C1C1E;
+  --text-secondary: #636366;
 }
 
 @layer base {
@@ -36,12 +61,17 @@
   }
 
   /* Minimum touch target sizes (44x44px recommended by Apple/Google) */
-  button, a, input[type="file"] + label, .nav-item {
+  button,
+  a,
+  input[type="file"]+label,
+  .nav-item {
     min-height: 44px;
   }
 
   /* Prevent zoom on input focus (iOS) */
-  input, select, textarea {
+  input,
+  select,
+  textarea {
     font-size: 16px !important;
   }
 }
@@ -64,12 +94,12 @@
 
   /* Secondary Button (Glass) */
   .btn-secondary {
-    @apply bg-white/10 text-white font-bold py-3 px-6 rounded-xl hover:bg-white/20 transition-all active:scale-95 backdrop-blur-md cursor-pointer;
+    @apply bg-white/10 text-[var(--text-primary)] font-bold py-3 px-6 rounded-xl hover:bg-white/20 transition-all active:scale-95 backdrop-blur-md cursor-pointer;
   }
 
   /* Input Field */
   .input-field {
-    @apply bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] outline-none transition-all placeholder:text-gray-600;
+    @apply bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] outline-none transition-all placeholder:text-gray-600;
   }
 
   /* Navigation Item */
@@ -121,9 +151,11 @@
     0% {
       transform: translateX(-100%);
     }
+
     50% {
       transform: translateX(200%);
     }
+
     100% {
       transform: translateX(-100%);
     }

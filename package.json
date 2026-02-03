@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.38.0",
     "@shopify/buy-button-js": "^3.0.6",
     "@supabase/supabase-js": "^2.91.1",
     "openai": "^6.16.0",

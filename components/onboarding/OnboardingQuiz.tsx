@@ -1,0 +1,139 @@
+import React, { useState } from 'react';
+import GoalSelector, { FitnessGoal } from './GoalSelector';
+import PhysiqueEstimator from './PhysiqueEstimator';
+import HurdleIdentifier, { Hurdle } from './HurdleIdentifier';
+import TrajectoryGraph from './TrajectoryGraph';
+
+interface OnboardingQuizProps {
+    onComplete: (data: OnboardingData) => void;
+    onBack: () => void;
+}
+
+export interface OnboardingData {
+    goal: FitnessGoal;
+    weight: number;
+    bodyFat: number;
+    hurdle: Hurdle;
+}
+
+const OnboardingQuiz: React.FC<OnboardingQuizProps> = ({ onComplete, onBack }) => {
+    const [step, setStep] = useState<number>(1);
+    const [data, setData] = useState<OnboardingData>({
+        goal: 'CUT', // Default
+        weight: 180,
+        bodyFat: 20,
+        hurdle: 'CONSISTENCY'
+    });
+
+    const totalSteps = 4;
+
+    const nextStep = () => {
+        if (step < totalSteps) {
+            setStep(step + 1);
+        } else {
+            // Complete
+            onComplete(data);
+        }
+    };
+
+    const prevStep = () => {
+        if (step > 1) {
+            setStep(step - 1);
+        } else {
+            onBack();
+        }
+    };
+
+    const updateData = (updates: Partial<OnboardingData>) => {
+        setData(prev => ({ ...prev, ...updates }));
+    };
+
+    const renderStep = () => {
+        switch (step) {
+            case 1:
+                return (
+                    <GoalSelector
+                        selectedGoal={data.goal}
+                        onSelect={(goal) => {
+                            updateData({ goal });
+                            // Small delay for effect
+                            setTimeout(nextStep, 300);
+                        }}
+                    />
+                );
+            case 2:
+                return (
+                    <PhysiqueEstimator
+                        weight={data.weight}
+                        bodyFatInfo={{ percentage: data.bodyFat, visualLabel: 'Average' }}
+                        onUpdate={(updates) => updateData(updates as any)}
+                    />
+                );
+            case 3:
+                return (
+                    <HurdleIdentifier
+                        selectedHurdle={data.hurdle}
+                        onSelect={(hurdle) => {
+                            updateData({ hurdle });
+                            setTimeout(nextStep, 300);
+                        }}
+                    />
+                );
+            case 4:
+                // Calculate a dummy projected date 3 months from now
+                const date = new Date();
+                date.setMonth(date.getMonth() + 3);
+                const dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+
+                return <TrajectoryGraph currentWeight={data.weight} goal={data.goal} projectedDate={dateStr} />;
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-black text-white flex flex-col font-['Lexend']">
+            {/* Header / Progress */}
+            <div className="px-6 py-6 flex items-center justify-between">
+                <button
+                    onClick={prevStep}
+                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+                >
+                    <span className="material-symbols-outlined">arrow_back</span>
+                </button>
+
+                {/* Progress Bar */}
+                <div className="flex gap-2">
+                    {[1, 2, 3, 4].map(i => (
+                        <div
+                            key={i}
+                            className={`h-1.5 w-8 rounded-full transition-all duration-300 ${i <= step ? 'bg-[var(--color-primary)]' : 'bg-gray-800'}`}
+                        />
+                    ))}
+                </div>
+
+                <div className="w-10"></div> {/* Spacer for symmetry */}
+            </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20 overflow-y-auto">
+                {renderStep()}
+            </div>
+
+            {/* Sticky Bottom Actions (Only for non-auto-advancing steps like sliders or final graph) */}
+            {(step === 2 || step === 4) && (
+                <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent z-20">
+                    <button
+                        onClick={nextStep}
+                        className="w-full btn-primary h-14 text-lg font-bold shadow-lg shadow-[var(--color-primary)]/20 uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                        {step === 4 ? 'Save Your Plan' : 'Continue'}
+                        <span className="material-symbols-outlined">arrow_forward</span>
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default OnboardingQuiz;

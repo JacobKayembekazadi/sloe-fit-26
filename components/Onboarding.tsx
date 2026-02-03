@@ -194,7 +194,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             onComplete();
         } catch (err: any) {
             clearTimeout(timeout);
-            console.error('Onboarding error:', err);
 
             // Provide helpful error messages
             if (err.message?.includes('network') || err.message?.includes('fetch')) {

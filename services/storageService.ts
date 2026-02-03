@@ -70,8 +70,7 @@ export const uploadImage = async (
             });
 
         if (uploadError) {
-            console.error('Upload error:', uploadError);
-            return { success: false, error: uploadError.message };
+                        return { success: false, error: uploadError.message };
         }
 
         // Get public URL
@@ -85,8 +84,7 @@ export const uploadImage = async (
             path
         };
     } catch (error) {
-        console.error('Storage error:', error);
-        return {
+                return {
             success: false,
             error: error instanceof Error ? error.message : 'Failed to upload image'
         };
@@ -180,13 +178,11 @@ export const deleteImage = async (path: string): Promise<boolean> => {
             .remove([path]);
 
         if (error) {
-            console.error('Delete error:', error);
-            return false;
+                        return false;
         }
         return true;
     } catch (error) {
-        console.error('Delete error:', error);
-        return false;
+                return false;
     }
 };
 
@@ -242,7 +238,6 @@ export const getProgressPhotosHistory = async (
 
         return results;
     } catch (error) {
-        console.error('Error fetching progress history:', error);
-        return [];
+                return [];
     }
 };

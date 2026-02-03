@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { uploadImage, validateImage } from '../services/storageService';
 import { supabase } from '../supabaseClient';
+import { supabaseGet, supabaseInsert, supabaseDelete } from '../services/supabaseRawFetch';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -59,17 +60,14 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
     setLoading(true);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('progress_photos')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const { data, error: fetchError } = await supabaseGet<ProgressPhotoEntry[]>(
+        `progress_photos?user_id=eq.${user.id}&select=*&order=created_at.desc`
+      );
 
       if (fetchError) throw fetchError;
       setPhotos(data || []);
     } catch (err) {
-      console.error('Error fetching photos:', err);
-      setError('Failed to load photos');
+            setError('Failed to load photos');
       setRetryAction(() => fetchPhotos);
       showToast('Failed to load photos', 'error');
     } finally {
@@ -126,8 +124,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
         setCameraActive(true);
       }
     } catch (err) {
-      console.error('Camera error:', err);
-      setError('Could not access camera. Please use file upload instead.');
+            setError('Could not access camera. Please use file upload instead.');
       showToast('Camera access denied', 'error');
     }
   };
@@ -184,16 +181,14 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       }
 
       // Save metadata to database
-      const { error: dbError } = await supabase
-        .from('progress_photos')
-        .insert({
-          user_id: user.id,
-          photo_url: uploadResult.url,
-          storage_path: uploadResult.path,
-          photo_type: captureType,
-          weight_lbs: weight ? parseFloat(weight) : null,
-          notes: notes || null
-        });
+      const { error: dbError } = await supabaseInsert('progress_photos', {
+        user_id: user.id,
+        photo_url: uploadResult.url,
+        storage_path: uploadResult.path,
+        photo_type: captureType,
+        weight_lbs: weight ? parseFloat(weight) : null,
+        notes: notes || null
+      });
 
       if (dbError) throw dbError;
 
@@ -206,8 +201,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       onPhotoSaved?.();
 
     } catch (err) {
-      console.error('Upload error:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
+            const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
       setError(errorMsg);
       setRetryAction(() => handleUpload);
       showToast(errorMsg, 'error');
@@ -221,11 +215,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
     if (!confirm('Delete this progress photo?')) return;
 
     try {
-      // Delete from storage
+      // Delete from storage (storage API is fine)
       await supabase.storage.from('user-photos').remove([photo.storage_path]);
 
-      // Delete from database
-      await supabase.from('progress_photos').delete().eq('id', photo.id);
+      // Delete from database using raw fetch
+      await supabaseDelete(`progress_photos?id=eq.${photo.id}`);
 
       // Refresh
       await fetchPhotos();
@@ -235,8 +229,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       if (comparePhotos[1]?.id === photo.id) setComparePhotos([comparePhotos[0], null]);
 
     } catch (err) {
-      console.error('Delete error:', err);
-      setError('Failed to delete photo');
+            setError('Failed to delete photo');
       showToast('Failed to delete photo', 'error');
     }
   };

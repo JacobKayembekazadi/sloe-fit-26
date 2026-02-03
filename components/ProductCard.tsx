@@ -21,7 +21,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ productId, showDescription = 
                 const data = await fetchProduct(productId);
                 setProduct(data);
             } catch (error) {
-                console.error('Error loading product:', error);
             } finally {
                 setLoadingProduct(false);
             }
