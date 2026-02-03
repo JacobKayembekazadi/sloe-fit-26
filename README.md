@@ -47,5 +47,7 @@ Ready for Vercel or Netlify. Ensure environment variables are set in the deploym
 
 ## 📚 Documentation
 For detailed architectural context and project state for AI assistants, see:
-- [LLM Context](docs/LLM_CONTEXT.md)
+- [Product Requirements Document (PRD)](docs/PRD.md) - Full product specifications
+- [LLM Context](docs/LLM_CONTEXT.md) - Complete project context for AI assistants
+- [Change Log](docs/CHANGELOG.md) - All changes and component inventory
 
