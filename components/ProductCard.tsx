@@ -18,9 +18,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ productId, showDescription = 
             try {
                 // Import the fetch function dynamically to avoid circular deps
                 const { fetchProduct } = await import('../services/shopifyService');
-                const data = await fetchProduct(productId);
-                setProduct(data);
+                const response = await fetchProduct(productId);
+                if (response.data) {
+                    setProduct(response.data);
+                }
             } catch (error) {
+                // Product failed to load - will show null state
             } finally {
                 setLoadingProduct(false);
             }
@@ -50,9 +53,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ productId, showDescription = 
         return null; // Don't show anything if product fails to load
     }
 
-    const defaultVariant = product.variants[0];
-    const price = defaultVariant?.price || '0.00';
-    const image = product.images[0]?.src || '';
+    const defaultVariant = product.variants?.[0];
+    const price = defaultVariant?.price?.amount || '0.00';
+    const image = product.images?.[0]?.src || '';
 
     return (
         <div className="card group p-0 overflow-hidden hover:border-[var(--color-primary)]/50">

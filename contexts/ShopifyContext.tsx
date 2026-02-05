@@ -51,11 +51,10 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
                 }
 
                 // Create new checkout
-                const newCheckout = await createCheckout();
-                setCheckout(newCheckout);
-
-                if (newCheckout) {
-                    localStorage.setItem('shopify_checkout_id', newCheckout.id);
+                const response = await createCheckout();
+                if (response.data) {
+                    setCheckout(response.data);
+                    localStorage.setItem('shopify_checkout_id', response.data.id);
                 }
             } catch (error) {
                 console.error('Failed to initialize checkout:', error);
@@ -72,9 +71,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
 
         try {
             setIsLoading(true);
-            const updatedCheckout = await addToCartService(checkout.id, variantId, quantity);
-            if (updatedCheckout) {
-                setCheckout(updatedCheckout);
+            const response = await addToCartService(checkout.id, variantId, quantity);
+            if (response.data) {
+                setCheckout(response.data);
             }
         } catch (error) {
             console.error('Failed to add to cart:', error);
@@ -88,9 +87,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
 
         try {
             setIsLoading(true);
-            const updatedCheckout = await removeFromCart(checkout.id, lineItemId);
-            if (updatedCheckout) {
-                setCheckout(updatedCheckout);
+            const response = await removeFromCart(checkout.id, lineItemId);
+            if (response.data) {
+                setCheckout(response.data);
             }
         } catch (error) {
             console.error('Failed to remove from cart:', error);
@@ -104,9 +103,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
 
         try {
             setIsLoading(true);
-            const updatedCheckout = await updateCartQuantity(checkout.id, lineItemId, quantity);
-            if (updatedCheckout) {
-                setCheckout(updatedCheckout);
+            const response = await updateCartQuantity(checkout.id, lineItemId, quantity);
+            if (response.data) {
+                setCheckout(response.data);
             }
         } catch (error) {
             console.error('Failed to update quantity:', error);
