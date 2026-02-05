@@ -1,5 +1,5 @@
-import React, { useState, useCallback, ChangeEvent, memo } from 'react';
-import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/openaiService';
+import React, { useState, useCallback, ChangeEvent, memo, useMemo } from 'react';
+import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
@@ -11,6 +11,7 @@ import DailyNutritionRing from './DailyNutritionRing';
 import TextMealInput from './TextMealInput';
 import QuickAddMeal, { SavedMeal } from './QuickAddMeal';
 import { PRODUCT_IDS } from '../services/shopifyService';
+import { MealEntry, FavoriteFood } from '../hooks/useUserData';
 
 type InputMode = 'text' | 'photo' | 'quick';
 
@@ -19,6 +20,21 @@ interface MealTrackerProps {
   onLogMeal: (macros: { calories: number; protein: number; carbs: number; fats: number }) => Promise<void>;
   todayNutrition?: { calories: number; protein: number; carbs: number; fats: number };
   nutritionTargets?: { calories: number; protein: number; carbs: number; fats: number };
+  // New props for meal persistence
+  mealEntries?: MealEntry[];
+  favorites?: FavoriteFood[];
+  onSaveMealEntry?: (entry: {
+    description: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+    mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    inputMethod?: 'photo' | 'text' | 'quick_add';
+    photoUrl?: string;
+  }) => Promise<MealEntry | null>;
+  onDeleteMealEntry?: (entryId: string) => Promise<boolean>;
+  onAddToFavorites?: (meal: { name: string; calories: number; protein: number; carbs: number; fats: number }) => Promise<boolean>;
 }
 
 // Skeleton component for loading states
@@ -53,7 +69,12 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   userGoal,
   onLogMeal,
   todayNutrition = { calories: 0, protein: 0, carbs: 0, fats: 0 },
-  nutritionTargets = { calories: 2200, protein: 180, carbs: 220, fats: 70 }
+  nutritionTargets = { calories: 2200, protein: 180, carbs: 220, fats: 70 },
+  mealEntries = [],
+  favorites: favoritesProp = [],
+  onSaveMealEntry,
+  onDeleteMealEntry,
+  onAddToFavorites
 }) => {
   const { showToast } = useToast();
   const [inputMode, setInputMode] = useState<InputMode>('text');
@@ -65,12 +86,65 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLogged, setIsLogged] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
-  const [todaysMeals, setTodaysMeals] = useState<{ name: string; calories: number; time: string }[]>([]);
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
+  const [mealDescription, setMealDescription] = useState<string>('');
+  const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
 
-  // Empty arrays - in production, fetch from Supabase user_saved_meals table
-  const [favorites] = useState<SavedMeal[]>([]);
-  const [recentMeals] = useState<SavedMeal[]>([]);
+  // Derive today's meals from mealEntries - Bug #3 fix
+  const todaysMeals = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return mealEntries
+      .filter(m => m.date === today)
+      .map(m => ({
+        id: m.id,
+        name: m.description || 'Meal',
+        calories: m.calories,
+        protein: m.protein,
+        carbs: m.carbs,
+        fats: m.fats,
+        time: new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        mealType: m.meal_type
+      }));
+  }, [mealEntries]);
+
+  // Convert favorites to SavedMeal format for QuickAddMeal component
+  const favorites: SavedMeal[] = useMemo(() =>
+    favoritesProp.map(f => ({
+      id: f.id,
+      name: f.name,
+      calories: f.calories,
+      protein: f.protein,
+      carbs: f.carbs,
+      fats: f.fats,
+      isFavorite: true,
+      timesLogged: f.times_logged
+    }))
+  , [favoritesProp]);
+
+  // Get recent meals (last 10 unique meals, excluding favorites)
+  const recentMeals: SavedMeal[] = useMemo(() => {
+    const seenNames = new Set(favoritesProp.map(f => f.name.toLowerCase()));
+    const recent: SavedMeal[] = [];
+
+    for (const m of mealEntries) {
+      if (!m.description) continue;
+      const name = m.description.toLowerCase();
+      if (seenNames.has(name)) continue;
+      seenNames.add(name);
+      recent.push({
+        id: m.id,
+        name: m.description,
+        calories: m.calories,
+        protein: m.protein,
+        carbs: m.carbs,
+        fats: m.fats,
+        isFavorite: false
+      });
+      if (recent.length >= 10) break;
+    }
+
+    return recent;
+  }, [mealEntries, favoritesProp]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -116,6 +190,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       } else {
         setResult(analysisResult.markdown);
         setMacros(analysisResult.macros);
+        // Extract description from photo analysis - Bug #6 fix
+        // Try to extract food items from the markdown response
+        const foodMatch = analysisResult.markdown.match(/(?:identified|detected|found|see):\s*(.+?)(?:\n|$)/i);
+        const description = foodMatch ? foodMatch[1].trim() : 'Photo meal';
+        setMealDescription(description);
       }
     } catch (err) {
       setError('Failed to analyze photo. Please check your connection and try again.');
@@ -127,22 +206,32 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
   const handleTextAnalysisComplete = (analysisResult: TextMealAnalysisResult) => {
     setMacros(analysisResult.totals);
+    // Extract description from food names - Bug #6 fix
+    const description = analysisResult.foods.map(f => f.name).join(', ');
+    setMealDescription(description);
     setResult(`**Analyzed Meal**\n\n${analysisResult.foods.map(f => `- ${f.name} (${f.portion}): ${f.calories} cal, ${f.protein}g protein`).join('\n')}\n\n**Confidence:** ${analysisResult.confidence}\n\n${analysisResult.notes}`);
   };
 
   const handleQuickAdd = async (meal: SavedMeal) => {
     try {
-      await onLogMeal({
-        calories: meal.calories,
-        protein: meal.protein,
-        carbs: meal.carbs,
-        fats: meal.fats
-      });
-      setTodaysMeals(prev => [...prev, {
-        name: meal.name,
-        calories: meal.calories,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      }]);
+      // Use saveMealEntry if available, otherwise fall back to onLogMeal
+      if (onSaveMealEntry) {
+        await onSaveMealEntry({
+          description: meal.name,
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fats: meal.fats,
+          inputMethod: 'quick_add'
+        });
+      } else {
+        await onLogMeal({
+          calories: meal.calories,
+          protein: meal.protein,
+          carbs: meal.carbs,
+          fats: meal.fats
+        });
+      }
       showToast(`Added ${meal.name} - ${meal.calories} cal`, 'success');
     } catch {
       showToast('Failed to log meal. Please try again.', 'error');
@@ -153,20 +242,27 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     if (!macros) return;
     setIsLogging(true);
     try {
-      await onLogMeal(macros);
+      // Use saveMealEntry if available for proper persistence - Bug #1 fix
+      if (onSaveMealEntry) {
+        await onSaveMealEntry({
+          description: mealDescription || 'Logged Meal',
+          calories: macros.calories,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fats: macros.fats,
+          inputMethod: inputMode === 'photo' ? 'photo' : 'text'
+        });
+      } else {
+        await onLogMeal(macros);
+      }
       setIsLogged(true);
-      setTodaysMeals(prev => [...prev, {
-        name: 'Logged Meal',
-        calories: macros.calories,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      }]);
       showToast(`Logged ${macros.calories} calories`, 'success');
     } catch {
       showToast('Failed to log meal. Please try again.', 'error');
     } finally {
       setIsLogging(false);
     }
-  }, [macros, onLogMeal, showToast]);
+  }, [macros, onLogMeal, onSaveMealEntry, mealDescription, inputMode, showToast]);
 
   const resetForNextMeal = () => {
     setFile(null);
@@ -177,6 +273,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setIsLoading(false);
     setIsLogged(false);
     setAnalyzeRetry(null);
+    setMealDescription('');
+    setSelectedMeal(null);
   };
 
   const dismissError = () => {
@@ -417,6 +515,87 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         </div>
       )}
 
+      {/* Meal Detail Modal - Bug #4 fix */}
+      {selectedMeal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setSelectedMeal(null)}>
+          <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-bold text-white">{selectedMeal.description || 'Meal'}</h3>
+              <button onClick={() => setSelectedMeal(null)} className="text-gray-500 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="text-gray-400 text-sm mb-4">
+              {new Date(selectedMeal.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              {selectedMeal.meal_type && ` • ${selectedMeal.meal_type}`}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-gray-800 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-[var(--color-primary)]">{selectedMeal.calories}</div>
+                <div className="text-xs text-gray-500 uppercase">Calories</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-blue-400">{selectedMeal.protein}g</div>
+                <div className="text-xs text-gray-500 uppercase">Protein</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-yellow-400">{selectedMeal.carbs}g</div>
+                <div className="text-xs text-gray-500 uppercase">Carbs</div>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-pink-400">{selectedMeal.fats}g</div>
+                <div className="text-xs text-gray-500 uppercase">Fats</div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {onAddToFavorites && (
+                <button
+                  onClick={async () => {
+                    if (selectedMeal.description) {
+                      await onAddToFavorites({
+                        name: selectedMeal.description,
+                        calories: selectedMeal.calories,
+                        protein: selectedMeal.protein,
+                        carbs: selectedMeal.carbs,
+                        fats: selectedMeal.fats
+                      });
+                      showToast('Added to favorites', 'success');
+                    }
+                  }}
+                  className="flex-1 py-2 px-4 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>★</span> Favorite
+                </button>
+              )}
+              {onDeleteMealEntry && (
+                <button
+                  onClick={async () => {
+                    const success = await onDeleteMealEntry(selectedMeal.id);
+                    if (success) {
+                      showToast('Meal deleted', 'success');
+                      setSelectedMeal(null);
+                    } else {
+                      showToast('Failed to delete meal', 'error');
+                    }
+                  }}
+                  className="flex-1 py-2 px-4 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Today's Meals List */}
       {todaysMeals.length > 0 && !result && (
         <div className="card">
@@ -427,20 +606,30 @@ const MealTracker: React.FC<MealTrackerProps> = ({
             Today's Meals
           </h3>
           <div className="space-y-2">
-            {todaysMeals.map((meal, idx) => (
-              <div
-                key={idx}
-                className="flex justify-between items-center py-3 px-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
+            {todaysMeals.map((meal) => (
+              <button
+                key={meal.id}
+                onClick={() => {
+                  // Find the full meal entry to show in modal
+                  const fullMeal = mealEntries.find(m => m.id === meal.id);
+                  if (fullMeal) setSelectedMeal(fullMeal);
+                }}
+                className="w-full flex justify-between items-center py-3 px-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-xl">🍽️</span>
-                  <div>
+                  <div className="text-left">
                     <span className="text-white font-medium">{meal.name}</span>
                     <span className="text-gray-500 text-xs ml-2">{meal.time}</span>
                   </div>
                 </div>
-                <span className="text-[var(--color-primary)] font-bold">{meal.calories} cal</span>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--color-primary)] font-bold">{meal.calories} cal</span>
+                  <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
             ))}
           </div>
         </div>

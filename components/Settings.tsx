@@ -265,7 +265,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 <button
                     onClick={onBack}
                     aria-label="Go back"
-                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] rounded-lg"
+                    className="p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] rounded-lg"
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -364,7 +364,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={g}
                                 onClick={() => setProfile({ ...profile, goal: g })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm transition-all ${profile.goal === g
+                                className={`py-3 px-4 min-h-[44px] rounded-xl font-bold text-sm transition-all ${profile.goal === g
                                     ? 'bg-[var(--color-primary)] text-black'
                                     : 'bg-gray-800 text-gray-400 hover:text-white'
                                     }`}
@@ -382,7 +382,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={exp}
                                 onClick={() => setProfile({ ...profile, training_experience: exp })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${profile.training_experience === exp
+                                className={`py-3 px-4 min-h-[44px] rounded-xl font-bold text-sm capitalize transition-all ${profile.training_experience === exp
                                     ? 'bg-[var(--color-primary)] text-black'
                                     : 'bg-gray-800 text-gray-400 hover:text-white'
                                     }`}
@@ -400,7 +400,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={eq}
                                 onClick={() => setProfile({ ...profile, equipment_access: eq })}
-                                className={`py-3 px-4 rounded-xl font-bold text-sm capitalize transition-all ${profile.equipment_access === eq
+                                className={`py-3 px-4 min-h-[44px] rounded-xl font-bold text-sm capitalize transition-all ${profile.equipment_access === eq
                                     ? 'bg-[var(--color-primary)] text-black'
                                     : 'bg-gray-800 text-gray-400 hover:text-white'
                                     }`}
@@ -418,7 +418,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             <button
                                 key={days}
                                 onClick={() => setProfile({ ...profile, days_per_week: days })}
-                                className={`flex-1 min-w-[50px] py-3 px-3 rounded-xl font-bold text-sm transition-all ${profile.days_per_week === days
+                                className={`flex-1 min-w-[44px] min-h-[44px] py-3 px-3 rounded-xl font-bold text-sm transition-all ${profile.days_per_week === days
                                     ? 'bg-[var(--color-primary)] text-black'
                                     : 'bg-gray-800 text-gray-400 hover:text-white'
                                     }`}

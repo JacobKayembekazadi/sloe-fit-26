@@ -78,7 +78,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ productId, showDescription = 
                 <button
                     onClick={handleAddToCart}
                     disabled={isLoading || !product.availableForSale}
-                    className="w-full btn-secondary text-sm py-2 flex items-center justify-center gap-2 group-hover:bg-[var(--color-primary)] group-hover:text-black transition-all"
+                    className="w-full btn-secondary text-sm py-2 min-h-[44px] flex items-center justify-center gap-2 group-hover:bg-[var(--color-primary)] group-hover:text-black transition-all"
                 >
                     <ShopIcon className="w-4 h-4" />
                     {isLoading ? 'Adding...' : 'Add to Cart'}

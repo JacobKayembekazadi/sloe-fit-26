@@ -92,12 +92,12 @@ const OnboardingQuiz: React.FC<OnboardingQuizProps> = ({ onComplete, onBack }) =
     };
 
     return (
-        <div className="min-h-screen bg-black text-white flex flex-col font-['Lexend']">
+        <div className="min-h-[100dvh] bg-black text-white flex flex-col font-['Lexend']">
             {/* Header / Progress */}
-            <div className="px-6 py-6 flex items-center justify-between">
+            <div className="px-6 py-6 pt-[max(1.5rem,env(safe-area-inset-top))] flex items-center justify-between">
                 <button
                     onClick={prevStep}
-                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+                    className="p-2.5 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white transition-colors"
                 >
                     <span className="material-symbols-outlined">arrow_back</span>
                 </button>
@@ -122,7 +122,7 @@ const OnboardingQuiz: React.FC<OnboardingQuizProps> = ({ onComplete, onBack }) =
 
             {/* Sticky Bottom Actions (Only for non-auto-advancing steps like sliders or final graph) */}
             {(step === 2 || step === 4) && (
-                <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent z-20">
+                <div className="fixed bottom-0 left-0 right-0 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black via-black to-transparent z-20">
                     <button
                         onClick={nextStep}
                         className="w-full btn-primary h-14 text-lg font-bold shadow-lg shadow-[var(--color-primary)]/20 uppercase tracking-widest flex items-center justify-center gap-2"

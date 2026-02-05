@@ -10,6 +10,22 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      headers: {
+        // Security headers for dev server
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=()',
+      },
+      proxy: {
+        '/api/shopify': {
+          target: 'https://sloe-fit.myshopify.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/shopify/, '/api/2025-01/graphql.json'),
+          secure: true,
+        }
+      }
     },
     plugins: [
       react(),

@@ -40,7 +40,8 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose }) => {
                         </h2>
                         <button
                             onClick={onClose}
-                            className="text-gray-400 hover:text-white text-2xl"
+                            aria-label="Close cart"
+                            className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white text-2xl rounded-full hover:bg-white/10 transition-colors"
                         >
                             ×
                         </button>
@@ -72,24 +73,27 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose }) => {
 
                                     {/* Quantity Controls */}
                                     <div className="flex items-center gap-3">
-                                        <div className="flex items-center bg-black/50 rounded-lg p-1 border border-white/10">
+                                        <div className="flex items-center bg-black/50 rounded-lg border border-white/10">
                                             <button
                                                 onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                                                className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white"
+                                                aria-label="Decrease quantity"
+                                                className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white"
                                             >
                                                 −
                                             </button>
                                             <span className="text-white w-6 text-center text-xs font-bold">{item.quantity}</span>
                                             <button
                                                 onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                                                className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white"
+                                                aria-label="Increase quantity"
+                                                className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white"
                                             >
                                                 +
                                             </button>
                                         </div>
                                         <button
                                             onClick={() => removeLineItem(item.id)}
-                                            className="ml-auto text-gray-600 hover:text-red-500 transition-colors"
+                                            aria-label="Remove item"
+                                            className="ml-auto size-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-red-500 transition-colors"
                                         >
                                             <TrashIcon className="w-4 h-4" />
                                         </button>

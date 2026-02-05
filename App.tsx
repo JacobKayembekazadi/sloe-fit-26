@@ -66,7 +66,7 @@ const AppContent: React.FC = () => {
   const isOnline = useOnlineStatus();
 
   // Supabase Data Hook
-  const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, updateGoal, addWorkout, saveNutrition, addMealToDaily, refetchProfile, loading: dataLoading, error: dataError, retry: retryData } = useUserData();
+  const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, mealEntries, favorites, updateGoal, addWorkout, saveNutrition, addMealToDaily, saveMealEntry, deleteMealEntry, addToFavorites, refetchProfile, loading: dataLoading, error: dataError, retry: retryData } = useUserData();
   const { user, loading } = useAuth();
 
   // Fetch user's name for avatar
@@ -218,6 +218,7 @@ const AppContent: React.FC = () => {
               nutritionTargets={nutritionTargets}
               onBack={() => setActiveTab('dashboard')}
               goal={goal}
+              mealEntries={mealEntries}
             />
           </Suspense>
         );
@@ -237,6 +238,11 @@ const AppContent: React.FC = () => {
               onLogMeal={addMealToDaily}
               todayNutrition={todayLog ? { calories: todayLog.calories, protein: todayLog.protein, carbs: todayLog.carbs, fats: todayLog.fats } : undefined}
               nutritionTargets={nutritionTargets}
+              mealEntries={mealEntries}
+              favorites={favorites}
+              onSaveMealEntry={saveMealEntry}
+              onDeleteMealEntry={deleteMealEntry}
+              onAddToFavorites={addToFavorites}
             />
           </Suspense>
         );

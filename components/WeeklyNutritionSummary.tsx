@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import type { NutritionLog } from '../App';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
-import { analyzeWeeklyNutrition, WeeklyNutritionInsights } from '../services/openaiService';
+import { analyzeWeeklyNutrition, WeeklyNutritionInsights } from '../services/aiService';
 
 interface WeeklyNutritionSummaryProps {
     nutritionLogs: NutritionLog[];

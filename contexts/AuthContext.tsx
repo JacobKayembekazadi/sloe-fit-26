@@ -58,8 +58,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLoading(false);
         }, 10000);
 
+        // Helper to clear invalid auth state
+        const clearInvalidSession = () => {
+            // Clear any stored tokens that might be invalid
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            try {
+                const projectId = supabaseUrl?.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+                if (projectId) {
+                    localStorage.removeItem(`sb-${projectId}-auth-token`);
+                }
+            } catch {
+                // Ignore localStorage errors
+            }
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+        };
+
         // Check active sessions and sets the user
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+            // Handle invalid refresh token error
+            if (error) {
+                if (error.message?.includes('Invalid Refresh Token') ||
+                    error.message?.includes('Refresh Token Not Found')) {
+                    clearInvalidSession();
+                    return;
+                }
+            }
+
             setSession(session);
             setUser(session?.user ?? null);
 
@@ -69,12 +95,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             setLoading(false);
-        }).catch(() => {
-            setLoading(false);
+        }).catch((error) => {
+            // Handle any auth errors by clearing invalid state
+            if (error?.message?.includes('Invalid Refresh Token') ||
+                error?.message?.includes('Refresh Token Not Found')) {
+                clearInvalidSession();
+            } else {
+                setLoading(false);
+            }
         });
 
         // Listen for changes on auth state (logged in, signed out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            // Handle token refresh failures
+            if (event === 'TOKEN_REFRESHED' && !session) {
+                clearInvalidSession();
+                return;
+            }
+
             setSession(session);
             setUser(session?.user ?? null);
 

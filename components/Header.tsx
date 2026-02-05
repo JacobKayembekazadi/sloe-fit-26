@@ -30,7 +30,7 @@ const Header: React.FC<HeaderProps> = ({ onCartClick, onSettingsClick, onTrainer
         {/* Profile Avatar */}
         <button
           onClick={onSettingsClick}
-          className="w-10 h-10 bg-gradient-to-br from-[var(--color-primary)] to-purple-600 rounded-full flex items-center justify-center hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] bg-gradient-to-br from-[var(--color-primary)] to-purple-600 rounded-full flex items-center justify-center hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           title="Settings"
           aria-label="Open settings"
         >
@@ -48,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({ onCartClick, onSettingsClick, onTrainer
         {isTrainer && onTrainerClick && (
           <button
             onClick={onTrainerClick}
-            className="p-2 text-gray-400 hover:text-white transition-colors bg-white/5 rounded-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+            className="p-2.5 min-w-[44px] min-h-[44px] text-gray-400 hover:text-white transition-colors bg-white/5 rounded-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] flex items-center justify-center"
             title="Trainer Dashboard"
             aria-label="Open trainer dashboard"
           >
@@ -61,7 +61,7 @@ const Header: React.FC<HeaderProps> = ({ onCartClick, onSettingsClick, onTrainer
         {hasTrainer && !isTrainer && onMyTrainerClick && (
           <button
             onClick={onMyTrainerClick}
-            className="p-2 text-purple-400 hover:text-purple-300 transition-colors bg-purple-500/10 rounded-full focus-visible:ring-2 focus-visible:ring-purple-400"
+            className="p-2.5 min-w-[44px] min-h-[44px] text-purple-400 hover:text-purple-300 transition-colors bg-purple-500/10 rounded-full focus-visible:ring-2 focus-visible:ring-purple-400 flex items-center justify-center"
             title="My Trainer"
             aria-label="View my trainer"
           >
@@ -73,7 +73,7 @@ const Header: React.FC<HeaderProps> = ({ onCartClick, onSettingsClick, onTrainer
 
         <button
           onClick={onCartClick}
-          className="relative p-2 text-gray-400 hover:text-white transition-colors bg-white/5 rounded-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+          className="relative p-2.5 min-w-[44px] min-h-[44px] text-gray-400 hover:text-white transition-colors bg-white/5 rounded-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] flex items-center justify-center"
           aria-label={`Shopping cart${lineItemsCount > 0 ? ` with ${lineItemsCount} items` : ''}`}
         >
           <CartIcon className="w-5 h-5" />

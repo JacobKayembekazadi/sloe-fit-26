@@ -31,6 +31,13 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
 
     // Initialize Shopify client and checkout on mount
     useEffect(() => {
+        // Skip Shopify initialization in development to avoid CORS errors
+        if (import.meta.env.DEV) {
+            console.info('[Shopify] Disabled in development mode to avoid CORS issues');
+            setIsLoading(false);
+            return;
+        }
+
         const initCheckout = async () => {
             try {
                 initializeShopifyClient();

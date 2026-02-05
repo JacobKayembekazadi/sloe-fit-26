@@ -7,7 +7,7 @@ import CheckIcon from './icons/CheckIcon';
 import ListIcon from './icons/ListIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import { getTodaysWorkout } from '../services/workoutService';
-import { generateWorkout, GeneratedWorkout } from '../services/openaiService';
+import { generateWorkout, GeneratedWorkout } from '../services/aiService';
 import RecoveryCheckIn, { RecoveryState } from './RecoveryCheckIn';
 import WorkoutSession, { WorkoutDraft } from './WorkoutSession';
 import { supabase } from '../supabaseClient';
@@ -426,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         </div>
                         <div className="space-y-6">
                             <ProgressBar label="Calories" currentValue={nutritionData.calories.current} targetValue={nutritionData.calories.target} unit="kcal" />
-                            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 <ProgressBar label="Protein" currentValue={nutritionData.protein.current} targetValue={nutritionData.protein.target} unit="g" />
                                 <ProgressBar label="Carbs" currentValue={nutritionData.carbs.current} targetValue={nutritionData.carbs.target} unit="g" />
                             </div>
@@ -492,7 +492,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                     )}
 
                     {/* Quick Actions Grid */}
-                    <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         <button
                             onClick={() => setActiveTab('meal')}
                             aria-label="Log a meal"

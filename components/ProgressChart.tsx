@@ -69,12 +69,13 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
 
     // Check if container has valid dimensions before rendering chart
     useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
         const checkDimensions = () => {
-            if (containerRef.current) {
-                const { offsetWidth, offsetHeight } = containerRef.current;
-                if (offsetWidth > 0 && offsetHeight > 0) {
-                    setIsReady(true);
-                }
+            const { offsetWidth, offsetHeight } = container;
+            if (offsetWidth > 0 && offsetHeight > 0) {
+                setIsReady(true);
             }
         };
 
@@ -82,7 +83,23 @@ const ProgressChart: React.FC<ProgressChartProps> = ({
         checkDimensions();
         const frameId = requestAnimationFrame(checkDimensions);
 
-        return () => cancelAnimationFrame(frameId);
+        // Also use ResizeObserver to detect when container becomes visible
+        let resizeObserver: ResizeObserver | null = null;
+        if (typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver((entries) => {
+                for (const entry of entries) {
+                    if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+                        setIsReady(true);
+                    }
+                }
+            });
+            resizeObserver.observe(container);
+        }
+
+        return () => {
+            cancelAnimationFrame(frameId);
+            resizeObserver?.disconnect();
+        };
     }, []);
 
     // Memoize formatted data to prevent recalculation

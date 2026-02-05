@@ -254,7 +254,8 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
             <header className="flex items-center gap-4">
                 <button
                     onClick={onBack}
-                    className="p-2 -ml-2 text-gray-400 hover:text-white transition-colors"
+                    aria-label="Go back"
+                    className="p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white transition-colors rounded-lg"
                 >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -293,7 +294,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
             <div className="flex gap-2">
                 <button
                     onClick={() => setActiveTab('workouts')}
-                    className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                    className={`flex-1 py-3 min-h-[44px] rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
                         activeTab === 'workouts'
                             ? 'bg-[var(--color-primary)] text-black'
                             : 'bg-gray-800 text-gray-400'
@@ -311,7 +312,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                 </button>
                 <button
                     onClick={() => { setActiveTab('messages'); fetchMessages(); }}
-                    className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                    className={`flex-1 py-3 min-h-[44px] rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
                         activeTab === 'messages'
                             ? 'bg-[var(--color-primary)] text-black'
                             : 'bg-gray-800 text-gray-400'
@@ -379,7 +380,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                                                     <button
                                                         onClick={() => updateWorkoutStatus(workout.id, 'completed')}
                                                         disabled={updatingWorkout === workout.id}
-                                                        className="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl disabled:opacity-50 transition-all hover:bg-green-600 flex items-center justify-center gap-2"
+                                                        className="flex-1 py-3 min-h-[44px] bg-green-500 text-white font-bold rounded-xl disabled:opacity-50 transition-all hover:bg-green-600 flex items-center justify-center gap-2"
                                                     >
                                                         {updatingWorkout === workout.id ? (
                                                             <LoaderIcon className="w-5 h-5 animate-spin" />
@@ -393,7 +394,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                                                     <button
                                                         onClick={() => updateWorkoutStatus(workout.id, 'skipped')}
                                                         disabled={updatingWorkout === workout.id}
-                                                        className="px-4 py-3 bg-gray-700 text-gray-300 font-bold rounded-xl disabled:opacity-50 transition-all hover:bg-gray-600"
+                                                        className="px-4 py-3 min-h-[44px] bg-gray-700 text-gray-300 font-bold rounded-xl disabled:opacity-50 transition-all hover:bg-gray-600"
                                                     >
                                                         Skip
                                                     </button>
@@ -495,7 +496,7 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                             <button
                                 key={msg}
                                 onClick={() => setNewMessage(msg)}
-                                className="flex-shrink-0 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-full hover:bg-gray-700 transition-colors"
+                                className="flex-shrink-0 px-3 py-2.5 min-h-[44px] bg-gray-800 text-gray-400 text-xs rounded-full hover:bg-gray-700 transition-colors"
                             >
                                 {msg}
                             </button>
@@ -515,7 +516,8 @@ const ClientTrainerView: React.FC<ClientTrainerViewProps> = ({ onBack, trainerId
                         <button
                             onClick={sendMessage}
                             disabled={sendingMessage || !newMessage.trim()}
-                            className="px-6 bg-[var(--color-primary)] text-black font-bold rounded-xl disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
+                            aria-label="Send message"
+                            className="px-6 min-h-[44px] bg-[var(--color-primary)] text-black font-bold rounded-xl disabled:opacity-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center"
                         >
                             {sendingMessage ? (
                                 <LoaderIcon className="w-5 h-5 animate-spin" />

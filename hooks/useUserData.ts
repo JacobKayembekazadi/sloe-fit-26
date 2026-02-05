@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
 import { CompletedWorkout, NutritionLog } from '../App';
@@ -27,12 +27,44 @@ export interface UserProfile {
     full_name: string | null;
 }
 
+// Meal entry type matching database schema
+export interface MealEntry {
+    id: string;
+    user_id: string;
+    date: string;
+    meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null;
+    input_method: 'photo' | 'text' | 'quick_add' | null;
+    description: string | null;
+    photo_url: string | null;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+    created_at: string;
+}
+
+// Favorite food type matching database schema
+export interface FavoriteFood {
+    id: string;
+    user_id: string;
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+    times_logged: number;
+    created_at: string;
+    updated_at: string;
+}
+
 interface DataState {
     profile: UserProfile;
     goal: string | null;
     onboardingComplete: boolean | null;
     workouts: CompletedWorkout[];
     nutritionLogs: NutritionLog[];
+    mealEntries: MealEntry[];
+    favorites: FavoriteFood[];
 }
 
 type LoadingState = 'idle' | 'loading' | 'success' | 'error';
@@ -65,7 +97,9 @@ const INITIAL_STATE: DataState = {
     goal: null,
     onboardingComplete: null,
     workouts: [],
-    nutritionLogs: []
+    nutritionLogs: [],
+    mealEntries: [],
+    favorites: []
 };
 
 // Timeout for data fetching (prevents infinite loading)
@@ -232,12 +266,18 @@ export const useUserData = () => {
 
             const nutritionFetch = rawFetch(`nutrition_logs?select=*&user_id=eq.${userId}&order=date.desc&limit=30`);
 
-            const fetchPromise = Promise.all([profileFetch, workoutsFetch, nutritionFetch]);
+            // Fetch meal entries (individual meals) - Bug #1 & #3 fix
+            const mealEntriesFetch = rawFetch(`meal_entries?select=*&user_id=eq.${userId}&order=created_at.desc&limit=100`);
 
-            const [profileResult, workoutsResult, nutritionResult] = await Promise.race([
+            // Fetch favorite foods - Bug #2 fix
+            const favoritesFetch = rawFetch(`favorite_foods?select=*&user_id=eq.${userId}&order=times_logged.desc&limit=20`);
+
+            const fetchPromise = Promise.all([profileFetch, workoutsFetch, nutritionFetch, mealEntriesFetch, favoritesFetch]);
+
+            const [profileResult, workoutsResult, nutritionResult, mealEntriesResult, favoritesResult] = await Promise.race([
                 fetchPromise,
                 timeoutPromise
-            ]) as [any, any, any];
+            ]) as [any, any, any, any, any];
 
             // Check if request was aborted or user changed
             if (signal.aborted || currentUserIdRef.current !== userId) {
@@ -303,6 +343,42 @@ export const useUserData = () => {
                 }));
             }
 
+            // Process meal entries - Bug #1 & #3 fix
+            let mealEntries: MealEntry[] = [];
+            if (mealEntriesResult.data && !mealEntriesResult.error) {
+                mealEntries = mealEntriesResult.data.map((m: any) => ({
+                    id: m.id,
+                    user_id: m.user_id,
+                    date: m.date,
+                    meal_type: m.meal_type,
+                    input_method: m.input_method,
+                    description: m.description,
+                    photo_url: m.photo_url,
+                    calories: m.calories || 0,
+                    protein: m.protein || 0,
+                    carbs: m.carbs || 0,
+                    fats: m.fats || 0,
+                    created_at: m.created_at
+                }));
+            }
+
+            // Process favorites - Bug #2 fix
+            let favorites: FavoriteFood[] = [];
+            if (favoritesResult.data && !favoritesResult.error) {
+                favorites = favoritesResult.data.map((f: any) => ({
+                    id: f.id,
+                    user_id: f.user_id,
+                    name: f.name,
+                    calories: f.calories || 0,
+                    protein: f.protein || 0,
+                    carbs: f.carbs || 0,
+                    fats: f.fats || 0,
+                    times_logged: f.times_logged || 1,
+                    created_at: f.created_at,
+                    updated_at: f.updated_at
+                }));
+            }
+
             // Update state atomically
             if (isMountedRef.current && currentUserIdRef.current === userId) {
                 setData({
@@ -310,7 +386,9 @@ export const useUserData = () => {
                     goal,
                     onboardingComplete,
                     workouts,
-                    nutritionLogs
+                    nutritionLogs,
+                    mealEntries,
+                    favorites
                 });
                 setLoadingState('success');
                 hasFetchedRef.current = true;
@@ -527,6 +605,317 @@ export const useUserData = () => {
         await saveNutrition(updatedLog);
     }, [user, data.nutritionLogs, saveNutrition]);
 
+    // Save individual meal entry - Bug #1 fix
+    const saveMealEntry = useCallback(async (entry: {
+        description: string;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fats: number;
+        mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+        inputMethod?: 'photo' | 'text' | 'quick_add';
+        photoUrl?: string;
+    }): Promise<MealEntry | null> => {
+        if (!user) return null;
+
+        const today = formatDateForDB();
+        const now = new Date().toISOString();
+
+        // Create optimistic entry
+        const optimisticEntry: MealEntry = {
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            date: today,
+            meal_type: entry.mealType || null,
+            input_method: entry.inputMethod || 'text',
+            description: entry.description,
+            photo_url: entry.photoUrl || null,
+            calories: entry.calories,
+            protein: entry.protein,
+            carbs: entry.carbs,
+            fats: entry.fats,
+            created_at: now
+        };
+
+        // Optimistic update
+        setData(prev => ({
+            ...prev,
+            mealEntries: [optimisticEntry, ...prev.mealEntries]
+        }));
+
+        try {
+            const { data: savedData, error } = await supabaseInsert('meal_entries', {
+                user_id: user.id,
+                date: today,
+                meal_type: entry.mealType || null,
+                input_method: entry.inputMethod || 'text',
+                description: entry.description,
+                photo_url: entry.photoUrl || null,
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fats: entry.fats
+            });
+
+            if (error) {
+                // Revert optimistic update on error
+                setData(prev => ({
+                    ...prev,
+                    mealEntries: prev.mealEntries.filter(m => m.id !== optimisticEntry.id)
+                }));
+                return null;
+            }
+
+            // Also update daily totals
+            await addMealToDaily({
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fats: entry.fats
+            });
+
+            // Update with real ID from database if available
+            if (savedData && Array.isArray(savedData) && savedData[0]?.id) {
+                setData(prev => ({
+                    ...prev,
+                    mealEntries: prev.mealEntries.map(m =>
+                        m.id === optimisticEntry.id ? { ...m, id: savedData[0].id } : m
+                    )
+                }));
+                return { ...optimisticEntry, id: savedData[0].id };
+            }
+
+            return optimisticEntry;
+        } catch {
+            // Revert on error
+            setData(prev => ({
+                ...prev,
+                mealEntries: prev.mealEntries.filter(m => m.id !== optimisticEntry.id)
+            }));
+            return null;
+        }
+    }, [user, addMealToDaily]);
+
+    // Delete meal entry - Bug #4 fix
+    const deleteMealEntry = useCallback(async (entryId: string): Promise<boolean> => {
+        if (!user) return false;
+
+        // Find the entry to get its macros for subtracting from daily total
+        const entryToDelete = data.mealEntries.find(m => m.id === entryId);
+        if (!entryToDelete) return false;
+
+        // Optimistic update
+        setData(prev => ({
+            ...prev,
+            mealEntries: prev.mealEntries.filter(m => m.id !== entryId)
+        }));
+
+        try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            let authToken = supabaseKey;
+            try {
+                const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+                const storageKey = `sb-${projectId}-auth-token`;
+                const stored = localStorage.getItem(storageKey);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    authToken = parsed?.access_token || supabaseKey;
+                }
+            } catch {
+                // Use anon key
+            }
+
+            const response = await fetch(`${supabaseUrl}/rest/v1/meal_entries?id=eq.${entryId}`, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                // Revert on error
+                setData(prev => ({
+                    ...prev,
+                    mealEntries: [entryToDelete, ...prev.mealEntries]
+                }));
+                return false;
+            }
+
+            // Subtract from daily totals if same day
+            const today = formatDateForDB();
+            if (entryToDelete.date === today) {
+                const existingLog = data.nutritionLogs.find(l =>
+                    l.date === today || l.date.split('T')[0] === today
+                );
+                if (existingLog) {
+                    await saveNutrition({
+                        date: today,
+                        calories: Math.max(0, existingLog.calories - entryToDelete.calories),
+                        protein: Math.max(0, existingLog.protein - entryToDelete.protein),
+                        carbs: Math.max(0, existingLog.carbs - entryToDelete.carbs),
+                        fats: Math.max(0, existingLog.fats - entryToDelete.fats)
+                    });
+                }
+            }
+
+            return true;
+        } catch {
+            // Revert on error
+            setData(prev => ({
+                ...prev,
+                mealEntries: [entryToDelete, ...prev.mealEntries]
+            }));
+            return false;
+        }
+    }, [user, data.mealEntries, data.nutritionLogs, saveNutrition]);
+
+    // Add to favorites - Bug #7 fix
+    const addToFavorites = useCallback(async (meal: {
+        name: string;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fats: number;
+    }): Promise<boolean> => {
+        if (!user) return false;
+
+        const now = new Date().toISOString();
+
+        // Check if already in favorites
+        const existing = data.favorites.find(f =>
+            f.name.toLowerCase() === meal.name.toLowerCase()
+        );
+
+        if (existing) {
+            // Update times_logged
+            setData(prev => ({
+                ...prev,
+                favorites: prev.favorites.map(f =>
+                    f.id === existing.id
+                        ? { ...f, times_logged: f.times_logged + 1, updated_at: now }
+                        : f
+                )
+            }));
+
+            try {
+                await supabaseUpdate(
+                    `favorite_foods?id=eq.${existing.id}`,
+                    { times_logged: existing.times_logged + 1, updated_at: now }
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        // Create new favorite
+        const optimisticFavorite: FavoriteFood = {
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            name: meal.name,
+            calories: meal.calories,
+            protein: meal.protein,
+            carbs: meal.carbs,
+            fats: meal.fats,
+            times_logged: 1,
+            created_at: now,
+            updated_at: now
+        };
+
+        setData(prev => ({
+            ...prev,
+            favorites: [optimisticFavorite, ...prev.favorites]
+        }));
+
+        try {
+            const { error } = await supabaseInsert('favorite_foods', {
+                user_id: user.id,
+                name: meal.name,
+                calories: meal.calories,
+                protein: meal.protein,
+                carbs: meal.carbs,
+                fats: meal.fats,
+                times_logged: 1
+            });
+
+            if (error) {
+                setData(prev => ({
+                    ...prev,
+                    favorites: prev.favorites.filter(f => f.id !== optimisticFavorite.id)
+                }));
+                return false;
+            }
+
+            return true;
+        } catch {
+            setData(prev => ({
+                ...prev,
+                favorites: prev.favorites.filter(f => f.id !== optimisticFavorite.id)
+            }));
+            return false;
+        }
+    }, [user, data.favorites]);
+
+    // Remove from favorites
+    const removeFromFavorites = useCallback(async (favoriteId: string): Promise<boolean> => {
+        if (!user) return false;
+
+        const favoriteToRemove = data.favorites.find(f => f.id === favoriteId);
+        if (!favoriteToRemove) return false;
+
+        setData(prev => ({
+            ...prev,
+            favorites: prev.favorites.filter(f => f.id !== favoriteId)
+        }));
+
+        try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            let authToken = supabaseKey;
+            try {
+                const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+                const storageKey = `sb-${projectId}-auth-token`;
+                const stored = localStorage.getItem(storageKey);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    authToken = parsed?.access_token || supabaseKey;
+                }
+            } catch {
+                // Use anon key
+            }
+
+            const response = await fetch(`${supabaseUrl}/rest/v1/favorite_foods?id=eq.${favoriteId}`, {
+                method: 'DELETE',
+                headers: {
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                setData(prev => ({
+                    ...prev,
+                    favorites: [favoriteToRemove, ...prev.favorites]
+                }));
+                return false;
+            }
+
+            return true;
+        } catch {
+            setData(prev => ({
+                ...prev,
+                favorites: [favoriteToRemove, ...prev.favorites]
+            }));
+            return false;
+        }
+    }, [user, data.favorites]);
+
     // Refetch profile (called after onboarding)
     const refetchProfile = useCallback(async () => {
         if (!user) return;
@@ -570,14 +959,12 @@ export const useUserData = () => {
         }
     }, [user]);
 
-    // Computed values
-    const nutritionTargets = calculateNutritionTargets(data.profile);
+    // Computed values - memoize to prevent recalculation
+    const nutritionTargets = useMemo(
+        () => calculateNutritionTargets(data.profile),
+        [data.profile.weight_lbs, data.profile.height_inches, data.profile.age, data.profile.goal]
+    );
     const loading = loadingState === 'loading' || loadingState === 'idle';
-
-    // Debug: log loading state on each render (dev only)
-    if (import.meta.env.DEV) {
-        console.log('[useUserData] Render - loadingState:', loadingState, 'computed loading:', loading, 'onboardingComplete:', data.onboardingComplete);
-    }
 
     return {
         // Data
@@ -587,6 +974,8 @@ export const useUserData = () => {
         nutritionTargets,
         workouts: data.workouts,
         nutritionLogs: data.nutritionLogs,
+        mealEntries: data.mealEntries,
+        favorites: data.favorites,
 
         // State
         loading,
@@ -598,6 +987,10 @@ export const useUserData = () => {
         addWorkout,
         saveNutrition,
         addMealToDaily,
+        saveMealEntry,
+        deleteMealEntry,
+        addToFavorites,
+        removeFromFavorites,
         refetchProfile,
         retry
     };

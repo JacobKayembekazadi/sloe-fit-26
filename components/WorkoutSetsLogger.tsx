@@ -98,10 +98,10 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                                 inputMode="numeric"
                             />
                         </div>
-                        <div className="w-11 sm:w-12 flex justify-end">
+                        <div className="w-12 flex justify-end">
                             <button
                                 onClick={() => onToggleSet(set.id)}
-                                className={`size-9 sm:size-10 flex items-center justify-center rounded-lg border-2 transition-colors ${set.completed
+                                className={`size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border-2 transition-colors ${set.completed
                                         ? 'bg-green-500 border-green-500 text-white'
                                         : 'bg-transparent border-[#314d68] text-transparent hover:border-[var(--color-primary)]'
                                     }`}

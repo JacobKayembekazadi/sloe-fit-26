@@ -270,7 +270,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
-            className={`flex-1 py-2 px-4 rounded-lg font-bold text-sm uppercase transition-all ${
+            className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
               viewMode === mode
                 ? 'bg-[var(--color-primary)] text-black'
                 : 'text-gray-400 hover:text-white'
@@ -309,7 +309,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
                 <button
                   key={type}
                   onClick={() => setCaptureType(type)}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                  className={`flex-1 py-2.5 min-h-[44px] px-3 rounded-lg text-sm font-medium transition-all ${
                     captureType === type
                       ? 'bg-[var(--color-primary)]/20 border border-[var(--color-primary)] text-[var(--color-primary)]'
                       : 'bg-gray-800 text-gray-400 border border-gray-700'

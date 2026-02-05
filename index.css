@@ -37,6 +37,9 @@
     scroll-behavior: smooth;
     /* Prevent text size adjustment on iOS */
     -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
   }
 
   body {
@@ -46,14 +49,23 @@
     -webkit-tap-highlight-color: transparent;
     /* Better touch scrolling */
     -webkit-overflow-scrolling: touch;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
   }
 
   /* Minimum touch target sizes (44x44px recommended by Apple/Google) */
   button,
   a,
   input[type="file"]+label,
-  .nav-item {
+  .nav-item,
+  [role="button"] {
     min-height: 44px;
+  }
+
+  /* Prevent double-tap zoom on buttons */
+  button,
+  [role="button"] {
+    touch-action: manipulation;
   }
 
   /* Prevent zoom on input focus (iOS) */

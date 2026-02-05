@@ -144,7 +144,7 @@ const LoginScreen: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 animate-fade-in relative overflow-hidden">
+        <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] animate-fade-in relative overflow-hidden">
             {/* Background Glow */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-primary)]/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -ml-20 -mb-20 pointer-events-none"></div>
@@ -207,6 +207,7 @@ const LoginScreen: React.FC = () => {
                                 }}
                                 className={`input-field w-full ${fieldErrors.email ? 'border-red-500' : ''}`}
                                 placeholder="you@example.com"
+                                autoComplete="email"
                             />
                             {fieldErrors.email && (
                                 <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
@@ -223,6 +224,7 @@ const LoginScreen: React.FC = () => {
                                 }}
                                 className={`input-field w-full ${fieldErrors.password ? 'border-red-500' : ''}`}
                                 placeholder="••••••••"
+                                autoComplete={isSignUp ? "new-password" : "current-password"}
                             />
                             {fieldErrors.password && (
                                 <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>

@@ -7,7 +7,7 @@ interface WelcomeScreenProps {
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onLogin }) => {
     return (
-        <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-black text-white font-['Lexend']">
+        <div className="relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-black text-white font-['Lexend']">
             {/* Hero Background Image Section */}
             <div className="absolute inset-0 z-0">
                 <div
@@ -25,7 +25,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onLogin }) 
             </div>
 
             {/* Content Layer */}
-            <div className="relative z-10 flex flex-col h-full min-h-screen">
+            <div className="relative z-10 flex flex-col h-full min-h-[100dvh]">
                 {/* Branding Header */}
                 <div className="flex flex-col items-center pt-16 pb-6 animate-fade-in-down">
                     <div className="flex items-center gap-3">
@@ -74,7 +74,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onLogin }) 
                             Already have an account?
                             <button
                                 onClick={onLogin}
-                                className="text-[var(--color-primary)] font-bold ml-1.5 cursor-pointer hover:underline focus:outline-none"
+                                className="text-[var(--color-primary)] font-bold ml-1.5 cursor-pointer hover:underline focus:outline-none min-h-[44px] inline-flex items-center"
                             >
                                 Log In
                             </button>
@@ -83,7 +83,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onLogin }) 
                 </div>
 
                 {/* Bottom iOS Safe Area Spacer */}
-                <div className="h-safe-bottom"></div>
+                <div className="pb-[env(safe-area-inset-bottom)]"></div>
             </div>
         </div>
     );

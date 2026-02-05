@@ -1,5 +1,5 @@
 import React, { useState, useCallback, ChangeEvent, memo } from 'react';
-import { analyzeBodyPhoto } from '../services/openaiService';
+import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';

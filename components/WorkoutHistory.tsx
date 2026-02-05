@@ -1,12 +1,12 @@
 import React, { useState, useMemo, memo, useCallback } from 'react';
 import type { CompletedWorkout, NutritionLog } from '../App';
-import type { NutritionTargets } from '../hooks/useUserData';
+import type { NutritionTargets, MealEntry } from '../hooks/useUserData';
 import ProgressChart from './ProgressChart';
 import WeeklyNutritionSummary from './WeeklyNutritionSummary';
 
 // -- Interfaces --
 
-type ViewMode = 'workouts' | 'charts';
+type ViewMode = 'workouts' | 'charts' | 'meals';
 
 interface WorkoutHistoryProps {
     history: CompletedWorkout[];
@@ -14,6 +14,7 @@ interface WorkoutHistoryProps {
     nutritionTargets: NutritionTargets;
     onBack: () => void;
     goal?: string | null;
+    mealEntries?: MealEntry[];
 }
 
 // Pure helper function outside component to avoid recreation
@@ -27,11 +28,12 @@ const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
     }, 0);
 };
 
-const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack, goal }) => {
+const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack, goal, mealEntries = [] }) => {
     const [viewMode, setViewMode] = useState<ViewMode>('workouts');
     const [selectedFilter, setSelectedFilter] = useState<'All' | 'Strength' | 'Cardio' | 'Mindset'>('All');
     const [showAllWorkouts, setShowAllWorkouts] = useState(false);
     const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkout | null>(null);
+    const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
 
     // -- Derived Data (Memoized) --
 
@@ -127,9 +129,39 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
         [nutritionLogs, nutritionTargets.calories]
     );
 
+    // Group meal entries by date for display - Bug #5 fix
+    const mealsByDate = useMemo(() => {
+        const grouped: { [date: string]: MealEntry[] } = {};
+        for (const meal of mealEntries) {
+            const date = meal.date;
+            if (!grouped[date]) {
+                grouped[date] = [];
+            }
+            grouped[date].push(meal);
+        }
+        // Sort dates descending and return as array
+        return Object.entries(grouped)
+            .sort(([a], [b]) => b.localeCompare(a))
+            .map(([date, meals]) => ({
+                date,
+                displayDate: new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                }),
+                meals: meals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+                totalCalories: meals.reduce((sum, m) => sum + m.calories, 0),
+                totalProtein: meals.reduce((sum, m) => sum + m.protein, 0)
+            }));
+    }, [mealEntries]);
+
     // Memoize callbacks to prevent child re-renders
-    const toggleViewMode = useCallback(() => {
-        setViewMode(prev => prev === 'workouts' ? 'charts' : 'workouts');
+    const cycleViewMode = useCallback(() => {
+        setViewMode(prev => {
+            if (prev === 'workouts') return 'meals';
+            if (prev === 'meals') return 'charts';
+            return 'workouts';
+        });
     }, []);
 
 
@@ -141,15 +173,20 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
             {/* Top Navigation Bar */}
             <header className="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-white/5">
                 <div className="flex items-center p-4 justify-between">
-                    <button onClick={onBack} className="flex size-10 shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
+                    <button onClick={onBack} className="flex size-11 min-w-[44px] min-h-[44px] shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
                         <span className="material-symbols-outlined text-2xl">arrow_back_ios</span>
                     </button>
-                    <h1 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Training History</h1>
+                    <h1 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">
+                        {viewMode === 'workouts' ? 'Training History' : viewMode === 'meals' ? 'Meal History' : 'Nutrition Charts'}
+                    </h1>
                     <button
-                        onClick={toggleViewMode}
-                        className={`flex size-10 items-center justify-center cursor-pointer rounded-full transition-colors ${viewMode === 'charts' ? 'bg-[var(--color-primary)] text-black' : 'hover:bg-white/10'}`}
+                        onClick={cycleViewMode}
+                        className={`flex size-11 min-w-[44px] min-h-[44px] items-center justify-center cursor-pointer rounded-full transition-colors ${viewMode !== 'workouts' ? 'bg-[var(--color-primary)] text-black' : 'hover:bg-white/10'}`}
+                        title={viewMode === 'workouts' ? 'View Meals' : viewMode === 'meals' ? 'View Charts' : 'View Workouts'}
                     >
-                        <span className="material-symbols-outlined text-2xl">insights</span>
+                        <span className="material-symbols-outlined text-2xl">
+                            {viewMode === 'workouts' ? 'restaurant' : viewMode === 'meals' ? 'insights' : 'fitness_center'}
+                        </span>
                     </button>
                 </div>
             </header>
@@ -166,7 +203,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                             </div>
                             <button
                                 onClick={() => setSelectedWorkout(null)}
-                                className="size-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                                className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
                             >
                                 <span className="material-symbols-outlined">close</span>
                             </button>
@@ -276,7 +313,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                                     <button
                                         key={filter}
                                         onClick={() => setSelectedFilter(filter as any)}
-                                        className={`flex h-9 shrink-0 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors ${selectedFilter === filter
+                                        className={`flex h-11 min-h-[44px] shrink-0 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors ${selectedFilter === filter
                                                 ? 'bg-[var(--color-primary)] text-black shadow-sm'
                                                 : 'bg-[#223649] text-white border border-transparent'
                                             }`}
@@ -341,6 +378,72 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                             )}
                         </div>
                     </>
+                ) : viewMode === 'meals' ? (
+                    /* Meal History View - Bug #5 fix */
+                    <div className="px-4 py-6 space-y-4">
+                        {mealsByDate.length === 0 ? (
+                            <div className="p-8 text-center text-gray-500">
+                                <span className="text-4xl mb-4 block">🍽️</span>
+                                <p>No meals logged yet.</p>
+                                <p className="text-sm mt-1">Start tracking your nutrition!</p>
+                            </div>
+                        ) : (
+                            mealsByDate.map(({ date, displayDate, meals, totalCalories, totalProtein }) => (
+                                <div key={date} className="bg-[#1C1C1E] rounded-xl overflow-hidden border border-white/5">
+                                    {/* Date Header */}
+                                    <button
+                                        onClick={() => setSelectedMealDate(selectedMealDate === date ? null : date)}
+                                        className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center justify-center rounded-xl bg-orange-500/10 text-orange-400 shrink-0 size-10">
+                                                <span className="material-symbols-outlined text-xl">restaurant</span>
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="font-bold text-white">{displayDate}</p>
+                                                <p className="text-gray-500 text-sm">{meals.length} meal{meals.length !== 1 ? 's' : ''}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                                <p className="text-[var(--color-primary)] font-bold">{totalCalories} cal</p>
+                                                <p className="text-blue-400 text-sm">{totalProtein}g protein</p>
+                                            </div>
+                                            <span className={`material-symbols-outlined text-gray-500 transition-transform ${selectedMealDate === date ? 'rotate-180' : ''}`}>
+                                                expand_more
+                                            </span>
+                                        </div>
+                                    </button>
+
+                                    {/* Expanded Meals */}
+                                    {selectedMealDate === date && (
+                                        <div className="border-t border-white/5">
+                                            {meals.map((meal) => (
+                                                <div key={meal.id} className="px-4 py-3 border-b border-white/5 last:border-b-0">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <p className="font-medium text-white">{meal.description || 'Meal'}</p>
+                                                            <p className="text-gray-500 text-xs mt-1">
+                                                                {new Date(meal.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                                                {meal.meal_type && ` • ${meal.meal_type}`}
+                                                                {meal.input_method && ` • ${meal.input_method.replace('_', ' ')}`}
+                                                            </p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[var(--color-primary)] font-medium">{meal.calories} cal</p>
+                                                            <p className="text-xs text-gray-500">
+                                                                P:{meal.protein}g C:{meal.carbs}g F:{meal.fats}g
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
                 ) : (
                     /* Charts View */
                     <div className="space-y-6 px-4 py-6">

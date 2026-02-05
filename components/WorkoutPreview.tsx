@@ -25,7 +25,7 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     return (
         <div className="relative flex min-h-screen w-full flex-col overflow-y-auto pb-44 bg-background-dark font-display text-white transition-colors duration-300">
             {/* Top App Bar Overlay */}
-            <div className="fixed top-0 left-0 right-0 z-[60] flex items-center bg-transparent p-3 sm:p-4 pb-2 justify-between">
+            <div className="fixed top-0 left-0 right-0 z-[60] flex items-center bg-transparent p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 justify-between">
                 <button
                     onClick={onBack}
                     aria-label="Back"

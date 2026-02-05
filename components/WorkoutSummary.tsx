@@ -25,8 +25,8 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
         <div className="relative flex h-auto min-h-screen w-full max-w-md sm:max-w-lg mx-auto flex-col overflow-x-hidden pb-10 bg-background-dark font-display text-white transition-colors duration-300">
 
             {/* TopAppBar */}
-            <div className="flex items-center p-3 sm:p-4 pb-2 justify-between sticky top-0 z-50 bg-background-dark">
-                <button onClick={onClose} className="text-white flex size-10 sm:size-12 shrink-0 items-center justify-start">
+            <div className="flex items-center p-3 sm:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 justify-between sticky top-0 z-50 bg-background-dark">
+                <button onClick={onClose} className="text-white flex size-11 min-w-[44px] min-h-[44px] shrink-0 items-center justify-start">
                     <span className="material-symbols-outlined cursor-pointer text-xl sm:text-2xl">close</span>
                 </button>
                 <h2 className="text-base sm:text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Workout Summary</h2>
@@ -93,7 +93,7 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
                             disabled={isSaving}
                             className={`flex flex-col items-center gap-1 sm:gap-2 group transition-transform active:scale-95 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <div className="size-9 sm:size-12 rounded-full bg-background-dark flex items-center justify-center text-slate-400 group-hover:bg-[var(--color-primary)]/20 group-hover:text-[var(--color-primary)] transition-colors">
+                            <div className="size-11 min-w-[44px] min-h-[44px] sm:size-12 rounded-full bg-background-dark flex items-center justify-center text-slate-400 group-hover:bg-[var(--color-primary)]/20 group-hover:text-[var(--color-primary)] transition-colors">
                                 <span className="material-symbols-outlined text-xl sm:text-2xl">{icon}</span>
                             </div>
                             <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase">{['Hard', 'Tough', 'Good', 'Strong', 'Elite'][i]}</span>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 interface RestTimerProps {
     initialTime: number; // seconds
@@ -16,19 +16,27 @@ const RestTimer: React.FC<RestTimerProps> = ({
     onSubtract
 }) => {
     const [timeLeft, setTimeLeft] = useState(initialTime);
+    const [isComplete, setIsComplete] = useState(false);
     const totalTimeRef = useRef(initialTime);
+    const onCompleteRef = useRef(onComplete);
+
+    // Keep onComplete ref up to date
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
 
     // Update local state when prop changes, but only if it's a manual adjustment
     useEffect(() => {
         setTimeLeft(initialTime);
     }, [initialTime]);
 
+    // Timer countdown effect
     useEffect(() => {
         const interval = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
                     clearInterval(interval);
-                    onComplete();
+                    setIsComplete(true);
                     return 0;
                 }
                 return prev - 1;
@@ -36,7 +44,14 @@ const RestTimer: React.FC<RestTimerProps> = ({
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [onComplete]);
+    }, []);
+
+    // Handle completion in a separate effect to avoid setState during render
+    useEffect(() => {
+        if (isComplete) {
+            onCompleteRef.current();
+        }
+    }, [isComplete]);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -50,7 +65,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-background-dark font-display text-white transition-colors duration-300">
             {/* Top Bar */}
-            <div className="flex items-center p-4 pb-2 justify-between shrink-0">
+            <div className="flex items-center p-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))] justify-between shrink-0">
                 <button onClick={onSkip} className="flex size-12 shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
                     <span className="material-symbols-outlined">close</span>
                 </button>
@@ -82,10 +97,10 @@ const RestTimer: React.FC<RestTimerProps> = ({
 
                     {/* Adjusters */}
                     <div className="absolute bottom-2 sm:bottom-4 flex gap-6 sm:gap-8">
-                        <button onClick={() => onSubtract(10)} className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
+                        <button onClick={() => onSubtract(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
                             <span className="material-symbols-outlined text-xl">remove</span>
                         </button>
-                        <button onClick={() => onAdd(10)} className="flex items-center justify-center size-9 sm:size-10 rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
+                        <button onClick={() => onAdd(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
                             <span className="material-symbols-outlined text-xl">add</span>
                         </button>
                     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
-import { analyzeTextMeal, TextMealAnalysisResult, transcribeAudio } from '../services/openaiService';
+import { analyzeTextMeal, TextMealAnalysisResult, transcribeAudio } from '../services/aiService';
 import LoaderIcon from './icons/LoaderIcon';
 import MicrophoneIcon from './icons/MicrophoneIcon';
 

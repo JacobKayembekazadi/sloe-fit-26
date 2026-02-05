@@ -85,6 +85,12 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   const [restTimerOpen, setRestTimerOpen] = useState(false);
   const [restDuration, setRestDuration] = useState(90); // Default 90s
 
+  // Memoized callbacks for RestTimer to prevent re-renders triggering setState during render
+  const handleRestComplete = useCallback(() => setRestTimerOpen(false), []);
+  const handleRestSkip = useCallback(() => setRestTimerOpen(false), []);
+  const handleRestAdd = useCallback((s: number) => setRestDuration(prev => prev + s), []);
+  const handleRestSubtract = useCallback((s: number) => setRestDuration(prev => Math.max(0, prev - s)), []);
+
   // Elapsed time tracker
   useEffect(() => {
     if (isPaused || restTimerOpen) return;
@@ -268,10 +274,10 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       {restTimerOpen && (
         <RestTimer
           initialTime={restDuration}
-          onComplete={() => setRestTimerOpen(false)}
-          onSkip={() => setRestTimerOpen(false)}
-          onAdd={(s) => setRestDuration(prev => prev + s)}
-          onSubtract={(s) => setRestDuration(prev => Math.max(0, prev - s))}
+          onComplete={handleRestComplete}
+          onSkip={handleRestSkip}
+          onAdd={handleRestAdd}
+          onSubtract={handleRestSubtract}
         />
       )}
 
@@ -279,7 +285,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       {!restTimerOpen && (
         <>
           {/* Compact Top Bar with Timer */}
-          <div className="shrink-0 z-10 bg-background-dark border-b border-slate-800">
+          <div className="shrink-0 z-10 bg-background-dark border-b border-slate-800 pt-[env(safe-area-inset-top)]">
             <div className="flex items-center p-3 sm:p-4 justify-between">
               <button onClick={handleCancel} aria-label="Cancel workout" className="text-white flex size-12 shrink-0 items-center justify-center rounded-xl hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]">
                 <span className="material-symbols-outlined text-xl">close</span>
@@ -309,7 +315,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
                 onClick={() => activeExerciseIndex > 0 && setActiveExerciseIndex(prev => prev - 1)}
                 disabled={activeExerciseIndex === 0}
                 aria-label="Previous exercise"
-                className="size-10 bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                className="size-11 min-w-[44px] min-h-[44px] bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
               >
                 <span className="material-symbols-outlined text-lg">chevron_left</span>
               </button>
@@ -324,7 +330,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
                 onClick={() => activeExerciseIndex < exercises.length - 1 && setActiveExerciseIndex(prev => prev + 1)}
                 disabled={activeExerciseIndex === exercises.length - 1}
                 aria-label="Next exercise"
-                className="size-10 bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                className="size-11 min-w-[44px] min-h-[44px] bg-[#223649] rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-[#2a435a] transition-colors shrink-0 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
               >
                 <span className="material-symbols-outlined text-lg">chevron_right</span>
               </button>

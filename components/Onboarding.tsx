@@ -295,7 +295,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         : `opacity-100 scale-100 ${transitionDirection === 'forward' ? 'animate-slide-up' : 'animate-slide-down'}`;
 
     return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] relative overflow-hidden">
             {/* Background Effects */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -ml-48 -mb-48 pointer-events-none"></div>
