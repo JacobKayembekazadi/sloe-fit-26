@@ -1,6 +1,7 @@
 import React, { useState, useCallback, ChangeEvent, memo } from 'react';
 import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
+import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import ResultDisplay from './ResultDisplay';
@@ -45,12 +46,14 @@ const AnalysisResultSkeleton = () => (
 );
 
 const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
+  const { showToast } = useToast();
   const [tabMode, setTabMode] = useState<TabMode>('analyze');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -83,16 +86,27 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setAnalyzeRetry(null);
 
-    const analysisResult = await analyzeBodyPhoto(file);
-    if (analysisResult.startsWith('An error occurred') || analysisResult.startsWith('Error:')) {
-      setError(analysisResult);
-    } else {
-      setResult(analysisResult);
-      onAnalysisComplete(analysisResult);
+    try {
+      const analysisResult = await analyzeBodyPhoto(file);
+      if (analysisResult.startsWith('An error occurred') || analysisResult.startsWith('Error:')) {
+        setError(analysisResult);
+        setAnalyzeRetry(() => handleAnalyze);
+        showToast('Body analysis failed', 'error');
+      } else {
+        setResult(analysisResult);
+        onAnalysisComplete(analysisResult);
+        showToast('Analysis complete', 'success');
+      }
+    } catch {
+      setError('Body analysis failed. Please check your connection and try again.');
+      setAnalyzeRetry(() => handleAnalyze);
+      showToast('Body analysis failed', 'error');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }, [file, onAnalysisComplete]);
+  }, [file, onAnalysisComplete, showToast]);
 
   const resetState = () => {
     setFile(null);
@@ -100,6 +114,12 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setResult(null);
     setError(null);
     setIsLoading(false);
+    setAnalyzeRetry(null);
+  };
+
+  const dismissError = () => {
+    setError(null);
+    setAnalyzeRetry(null);
   };
 
   return (
@@ -197,8 +217,42 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         </div>
       )}
 
-      {tabMode === 'analyze' && error && (
-        <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl text-center font-medium">{error}</div>
+      {tabMode === 'analyze' && error && !isLoading && (
+        <div className="card border border-red-500/30 bg-red-500/5">
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-red-500/20 rounded-full">
+              <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-red-400 mb-1">Analysis Failed</h3>
+              <p className="text-gray-400 text-sm">{error}</p>
+              <div className="flex gap-2 mt-4">
+                {analyzeRetry && (
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      analyzeRetry();
+                    }}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Try Again
+                  </button>
+                )}
+                <button
+                  onClick={dismissError}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {tabMode === 'analyze' && result && (

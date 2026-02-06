@@ -32,6 +32,7 @@ export interface TextMealAnalysisResult {
   totals: { calories: number; protein: number; carbs: number; fats: number };
   confidence: 'high' | 'medium' | 'low';
   notes: string;
+  markdown: string;
 }
 
 export interface MealAnalysisResult {
@@ -87,6 +88,11 @@ export interface WeeklyNutritionInput {
   logs: { date: string; calories: number; protein: number; carbs: number; fats: number }[];
   targets: { calories: number; protein: number; carbs: number; fats: number };
   goal: string | null;
+}
+
+export interface TranscribeResult {
+  text: string | null;
+  unsupported?: boolean;
 }
 
 // ============================================================================
@@ -301,7 +307,7 @@ export const analyzeTextMeal = async (description: string, userGoal: string | nu
 /**
  * Transcribe audio to text
  */
-export const transcribeAudio = async (audioBlob: Blob): Promise<string | null> => {
+export const transcribeAudio = async (audioBlob: Blob): Promise<TranscribeResult> => {
   const audioBase64 = await blobToBase64(audioBlob);
   const result = await callAPI<string>('/transcribe', {
     audioBase64,
@@ -309,10 +315,13 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string | null> =
   }, 'transcribeAudio');
 
   if (result.success && result.data) {
-    return result.data;
+    return { text: result.data };
   }
   console.error('Error transcribing audio:', result.error);
-  return null;
+  if (result.error?.type === 'invalid_request' && result.error?.retryable === false) {
+    return { text: null, unsupported: true };
+  }
+  return { text: null };
 };
 
 /**

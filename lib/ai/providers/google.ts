@@ -180,6 +180,7 @@ function validateAndCorrectMealAnalysis(result: unknown): TextMealAnalysis | nul
     },
     confidence,
     notes,
+    markdown: '',
   };
 }
 
@@ -359,7 +360,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         ? `User's goal: ${userGoal}. Adjust portion estimates accordingly.`
         : 'No specific goal set. Use standard portion estimates.';
 
-      const prompt = `Analyze this meal: "${description}"\n\n${goalContext}\n\nRespond with ONLY valid JSON, no markdown code blocks.`;
+      const prompt = `Analyze this meal: "${description}"\n\n${goalContext}`;
 
       try {
         const content = await this.chat(
@@ -367,15 +368,19 @@ export function createGoogleProvider(apiKey: string): AIProvider {
             { role: 'system', content: TEXT_MEAL_ANALYSIS_PROMPT },
             { role: 'user', content: prompt },
           ],
-          { temperature: 0.3, maxTokens: 1500, jsonMode: true }
+          { temperature: 0.3, maxTokens: 2000 }
         );
 
         if (content) {
-          // Gemini might still include markdown, so extract JSON
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            return validateAndCorrectMealAnalysis(parsed);
+          // Parse the JSON block from the markdown+JSON response
+          const jsonMatch = content.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
+          if (jsonMatch && jsonMatch[1]) {
+            const parsed = JSON.parse(jsonMatch[1]);
+            const validated = validateAndCorrectMealAnalysis(parsed);
+            if (validated) {
+              validated.markdown = stripMacrosBlock(content);
+              return validated;
+            }
           }
         }
         return null;

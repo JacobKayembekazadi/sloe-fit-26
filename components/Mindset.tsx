@@ -1,10 +1,11 @@
-import React, { useState, memo } from 'react';
+import React, { memo } from 'react';
 import { MINDSET_CONTENT } from '../prompts';
+import { useLocalStorage, STORAGE_KEYS } from '../hooks/useLocalStorage';
 import ArrowLeftIcon from './icons/ArrowLeftIcon';
 import ArrowRightIcon from './icons/ArrowRightIcon';
 
 const Mindset: React.FC = () => {
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentIndex, setCurrentIndex] = useLocalStorage<number>(STORAGE_KEYS.CURRENT_DAY, 0);
 
     const handlePrevious = () => {
         setCurrentIndex((prevIndex) => Math.max(0, prevIndex - 1));

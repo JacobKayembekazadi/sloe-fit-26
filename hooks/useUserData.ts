@@ -633,8 +633,10 @@ export const useUserData = () => {
     }, [user, fetchAllData]);
 
     // Update goal
-    const updateGoal = useCallback(async (newGoal: string) => {
-        if (!user) return;
+    const updateGoal = useCallback(async (newGoal: string): Promise<boolean> => {
+        if (!user) return false;
+
+        const oldGoal = data.goal;
 
         // Optimistic update
         setData(prev => ({
@@ -650,12 +652,23 @@ export const useUserData = () => {
             );
 
             if (error) {
-                // Could revert here, but keeping optimistic for better UX
+                setData(prev => ({
+                    ...prev,
+                    goal: oldGoal,
+                    profile: { ...prev.profile, goal: oldGoal }
+                }));
+                return false;
             }
+            return true;
         } catch {
-            // Goal update failed silently - optimistic UI kept
+            setData(prev => ({
+                ...prev,
+                goal: oldGoal,
+                profile: { ...prev.profile, goal: oldGoal }
+            }));
+            return false;
         }
-    }, [user]);
+    }, [user, data.goal]);
 
     // Add workout - returns true if saved successfully, false otherwise
     const addWorkout = useCallback(async (title: string, exercises: any[], recoveryRating?: number): Promise<boolean> => {
@@ -702,8 +715,8 @@ export const useUserData = () => {
     }, [user]);
 
     // Save nutrition (upsert)
-    const saveNutrition = useCallback(async (log: NutritionLog) => {
-        if (!user) return;
+    const saveNutrition = useCallback(async (log: NutritionLog): Promise<boolean> => {
+        if (!user) return false;
 
         // Normalize date format
         const normalizedDate = log.date.includes('T')
@@ -711,6 +724,9 @@ export const useUserData = () => {
             : log.date;
 
         const normalizedLog = { ...log, date: normalizedDate };
+
+        // Capture previous state for revert
+        const previousLogs = [...data.nutritionLogs];
 
         // Optimistic update
         setData(prev => {
@@ -739,10 +755,12 @@ export const useUserData = () => {
                 carbs: log.carbs,
                 fats: log.fats
             }, 'user_id,date');
+            return true;
         } catch {
-            // Nutrition save failed silently - optimistic UI kept
+            setData(prev => ({ ...prev, nutritionLogs: previousLogs }));
+            return false;
         }
-    }, [user]);
+    }, [user, data.nutritionLogs]);
 
     // Add meal to daily totals
     const addMealToDaily = useCallback(async (macros: { calories: number; protein: number; carbs: number; fats: number }) => {
@@ -1172,8 +1190,8 @@ export const useUserData = () => {
     }, [user, data.favorites]);
 
     // Refetch profile (called after onboarding)
-    const refetchProfile = useCallback(async () => {
-        if (!user) return;
+    const refetchProfile = useCallback(async (): Promise<boolean> => {
+        if (!user) return false;
 
         // Optimistically set onboarding complete
         setData(prev => ({
@@ -1187,7 +1205,8 @@ export const useUserData = () => {
             );
 
             if (error) {
-                return;
+                setData(prev => ({ ...prev, onboardingComplete: false }));
+                return false;
             }
 
             if (profile && isMountedRef.current) {
@@ -1209,8 +1228,10 @@ export const useUserData = () => {
                     }
                 }));
             }
+            return true;
         } catch {
-            // Profile refetch failed silently
+            setData(prev => ({ ...prev, onboardingComplete: false }));
+            return false;
         }
     }, [user]);
 

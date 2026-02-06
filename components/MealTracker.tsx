@@ -222,7 +222,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     const description = analysisResult.foods.map(f => f.name).join(', ');
     setMealDescription(description);
     setOriginalDescription(description);
-    setResult(`**Analyzed Meal**\n\n${analysisResult.foods.map(f => `- ${f.name} (${f.portion}): ${f.calories} cal, ${f.protein}g protein`).join('\n')}\n\n**Confidence:** ${analysisResult.confidence}\n\n${analysisResult.notes}`);
+    setResult(analysisResult.markdown);
   };
 
   const handleQuickAdd = async (meal: SavedMeal) => {

@@ -76,6 +76,7 @@ export interface TextMealAnalysis {
   totals: MacroTotals;
   confidence: 'high' | 'medium' | 'low';
   notes: string;
+  markdown: string;
 }
 
 export interface PhotoMealAnalysis {

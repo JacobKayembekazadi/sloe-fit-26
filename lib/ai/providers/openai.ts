@@ -205,6 +205,7 @@ function validateAndCorrectMealAnalysis(result: unknown): TextMealAnalysis | nul
     },
     confidence,
     notes,
+    markdown: '',
   };
 }
 
@@ -310,12 +311,20 @@ export function createOpenAIProvider(apiKey: string): AIProvider {
             { role: 'system', content: TEXT_MEAL_ANALYSIS_PROMPT },
             { role: 'user', content: prompt },
           ],
-          { temperature: 0.3, maxTokens: 1500, jsonMode: true }
+          { temperature: 0.3, maxTokens: 2000 }
         );
 
         if (content) {
-          const parsed = JSON.parse(content);
-          return validateAndCorrectMealAnalysis(parsed);
+          // Parse the JSON block from the markdown+JSON response
+          const jsonMatch = content.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
+          if (jsonMatch && jsonMatch[1]) {
+            const parsed = JSON.parse(jsonMatch[1]);
+            const validated = validateAndCorrectMealAnalysis(parsed);
+            if (validated) {
+              validated.markdown = stripMacrosBlock(content);
+              return validated;
+            }
+          }
         }
         return null;
       } catch {

@@ -806,30 +806,6 @@ You are an expert nutritionist AI for sloe fit. Analyze meal descriptions and pr
 After calculating, verify: calories ≈ (protein × 4) + (carbs × 4) + (fats × 9)
 If off by more than 10%, recalculate.
 
-## OUTPUT FORMAT
-Return ONLY valid JSON:
-
-{
-  "foods": [
-    {
-      "name": "Grilled chicken breast",
-      "portion": "6 oz (170g)",
-      "calories": 248,
-      "protein": 47,
-      "carbs": 0,
-      "fats": 5
-    }
-  ],
-  "totals": {
-    "calories": 248,
-    "protein": 47,
-    "carbs": 0,
-    "fats": 5
-  },
-  "confidence": "high",
-  "notes": "6oz chicken at 31g protein per 4oz = 47g protein. Standard grilled prep adds minimal fat."
-}
-
 ## CONFIDENCE LEVELS
 - "high": Common foods, clear portions, simple preparation
 - "medium": Some estimation required (unspecified portions, restaurant food)
@@ -858,7 +834,83 @@ Return ONLY valid JSON:
 | Oatmeal + protein powder | 350 | 30g | 45g | 6g | 1 cup oats + 1 scoop |
 | Peanut butter sandwich | 380 | 14g | 38g | 20g | 2 tbsp PB, 2 slices bread |
 
-IMPORTANT: Return ONLY the JSON object. No markdown code blocks, no explanations.
+## OUTPUT FORMAT
+Structure your response as rich markdown EXACTLY like this:
+
+---
+
+### 🍽️ MEAL BREAKDOWN
+
+| Food | Portion | Calories | Protein | Carbs | Fat |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| [Food 1] | [portion] | [cal] | [Xg] | [Xg] | [Xg] |
+| [Food 2] | [portion] | [cal] | [Xg] | [Xg] | [Xg] |
+| [Hidden/Added ingredients like oils, sauces] | [portion] | [cal] | [Xg] | [Xg] | [Xg] |
+
+---
+
+### 📊 NUTRITIONAL ANALYSIS
+
+**Total Calories:** [XXX] kcal
+
+**Macros:**
+| Nutrient | Amount | % of Total |
+| :--- | :--- | :--- |
+| **Protein** | [XX]g | [XX]% |
+| **Carbs** | [XX]g | [XX]% |
+| **Fats** | [XX]g | [XX]% |
+
+**Estimation Confidence:** [HIGH/MEDIUM/LOW]
+[Brief explanation of confidence level]
+
+---
+
+### 💡 NUTRITION INTEL
+
+**Meal Quality Assessment:**
+[2-3 sentences on overall meal composition.]
+
+**For Your [CUT/BULK/RECOMP] Goal:**
+
+[Provide goal-specific feedback. If the goal is not provided, give general advice.]
+
+**IF CUTTING:**
+- Is this meal appropriate?
+- Optimization suggestions
+- Protein check
+- Watch outs
+
+**IF BULKING:**
+- Is this meal appropriate?
+- Optimization suggestions
+- Protein check
+
+**IF RECOMP:**
+- Is this meal appropriate?
+- Optimization suggestions
+- Protein check
+
+---
+
+### 🎯 QUICK WINS
+
+[1-2 immediate actionable suggestions specific to this meal.]
+
+---
+
+## IMPORTANT: STRUCTURED DATA OUTPUT
+At the very end of your response, you MUST include a JSON block with the detailed data in this exact format:
+
+---MACROS_JSON---
+{"foods": [{"name": "Grilled chicken breast", "portion": "6 oz (170g)", "calories": 248, "protein": 47, "carbs": 0, "fats": 5}], "totals": {"calories": 248, "protein": 47, "carbs": 0, "fats": 5}, "confidence": "high", "notes": "6oz chicken at 31g protein per 4oz = 47g protein."}
+---END_MACROS---
+
+Replace the example values with your actual calculated values.
+- The "foods" array MUST list each food item with name, portion, calories, protein, carbs, fats
+- The "totals" object MUST have calories, protein, carbs, fats as integers
+- "confidence" MUST be "high", "medium", or "low"
+- "notes" should explain your calculation reasoning
+This data will be used to auto-log the meal.
 `;
 
 export const MINDSET_CONTENT = [

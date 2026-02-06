@@ -242,10 +242,11 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                 setAiInsights(insights);
             } else {
                 setAiInsights(localInsights);
+                showToast('Using local analysis — AI unavailable', 'info');
             }
         } catch (error) {
             setAiInsights(localInsights);
-            // Don't show toast - gracefully fallback to local insights
+            showToast('Using local analysis — AI unavailable', 'info');
         } finally {
             setLoadingInsights(false);
         }

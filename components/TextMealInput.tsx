@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
-import { analyzeTextMeal, TextMealAnalysisResult, transcribeAudio } from '../services/aiService';
+import { analyzeTextMeal, TextMealAnalysisResult, transcribeAudio, TranscribeResult } from '../services/aiService';
 import LoaderIcon from './icons/LoaderIcon';
 import MicrophoneIcon from './icons/MicrophoneIcon';
 
@@ -27,6 +27,7 @@ const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisCompl
     const [audioLevel, setAudioLevel] = useState(0);
     const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
     const [successFeedback, setSuccessFeedback] = useState(false);
+    const [voiceSupported, setVoiceSupported] = useState(true);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
@@ -113,12 +114,16 @@ const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisCompl
 
                 setIsTranscribing(true);
                 try {
-                    const transcription = await transcribeAudio(audioBlob);
-                    if (transcription) {
-                        setDescription(prev => prev ? `${prev} ${transcription}` : transcription);
+                    const result = await transcribeAudio(audioBlob);
+                    if (result.text) {
+                        setDescription(prev => prev ? `${prev} ${result.text}` : result.text!);
                         // Success feedback
                         setSuccessFeedback(true);
                         setTimeout(() => setSuccessFeedback(false), 1000);
+                    } else if (result.unsupported) {
+                        setVoiceSupported(false);
+                        setError('Voice input is not available with the current AI provider.');
+                        setRetryAction(null);
                     } else {
                         setError('Could not transcribe audio. Please try again or type your meal.');
                         setRetryAction(() => startRecording);
@@ -238,24 +243,26 @@ const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisCompl
                 />
 
                 {/* Voice input button */}
-                <button
-                    onClick={toggleRecording}
-                    disabled={isLoading || isTranscribing}
-                    className={`absolute bottom-3 right-3 p-3 rounded-full transition-all duration-200 ${
-                        isRecording
-                            ? 'bg-red-500 text-white scale-110 shadow-lg shadow-red-500/30'
-                            : isTranscribing
-                                ? 'bg-gray-700 text-gray-400 cursor-wait'
-                                : 'bg-gray-800 text-gray-400 hover:bg-[var(--color-primary)] hover:text-black hover:scale-105 active:scale-95'
-                    }`}
-                    title={isRecording ? 'Tap to stop' : isTranscribing ? 'Processing...' : 'Voice input'}
-                >
-                    {isTranscribing ? (
-                        <LoaderIcon className="w-5 h-5 animate-spin" />
-                    ) : (
-                        <MicrophoneIcon className="w-5 h-5" />
-                    )}
-                </button>
+                {voiceSupported && (
+                    <button
+                        onClick={toggleRecording}
+                        disabled={isLoading || isTranscribing}
+                        className={`absolute bottom-3 right-3 p-3 rounded-full transition-all duration-200 ${
+                            isRecording
+                                ? 'bg-red-500 text-white scale-110 shadow-lg shadow-red-500/30'
+                                : isTranscribing
+                                    ? 'bg-gray-700 text-gray-400 cursor-wait'
+                                    : 'bg-gray-800 text-gray-400 hover:bg-[var(--color-primary)] hover:text-black hover:scale-105 active:scale-95'
+                        }`}
+                        title={isRecording ? 'Tap to stop' : isTranscribing ? 'Processing...' : 'Voice input'}
+                    >
+                        {isTranscribing ? (
+                            <LoaderIcon className="w-5 h-5 animate-spin" />
+                        ) : (
+                            <MicrophoneIcon className="w-5 h-5" />
+                        )}
+                    </button>
+                )}
 
                 {/* Clear button */}
                 {description && !isLoading && !isRecording && !isTranscribing && (

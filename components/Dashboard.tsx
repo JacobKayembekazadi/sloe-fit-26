@@ -266,6 +266,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                 // Fallback to static workout
                 setWorkoutLog(fallbackWorkout.exercises);
                 setWorkoutTitle(fallbackWorkout.title);
+                showToast('Using fallback workout — AI unavailable', 'info');
             }
         } catch (error) {
             setWorkoutLog(fallbackWorkout.exercises);
