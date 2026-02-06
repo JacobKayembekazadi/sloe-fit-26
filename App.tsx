@@ -32,6 +32,12 @@ import { ShopifyProvider } from './contexts/ShopifyContext';
 // Lazy load LoginScreen - only needed for unauthenticated users
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
 
+const LazyFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
+  </div>
+);
+
 type Tab = 'dashboard' | 'history' | 'body' | 'meal' | 'mindset';
 type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer';
 
@@ -163,12 +169,6 @@ const AppContent: React.FC = () => {
       </Suspense>
     );
   }
-
-  const LazyFallback = () => (
-    <div className="flex items-center justify-center py-12">
-      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
-    </div>
-  );
 
   const renderContent = () => {
     if (import.meta.env.DEV) {
