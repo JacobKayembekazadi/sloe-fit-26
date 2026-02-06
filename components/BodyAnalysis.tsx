@@ -156,7 +156,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [file, onAnalysisComplete, showToast]);
+  }, [file, preview, onAnalysisComplete, showToast]);
 
   const resetState = () => {
     setFile(null);
