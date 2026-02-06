@@ -5,6 +5,7 @@ import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingScreen from './components/LoadingScreen';
 import InstallPrompt from './components/InstallPrompt';
+import UpdatePrompt from './components/UpdatePrompt';
 import OfflineBanner from './components/OfflineBanner';
 import { useUserData } from './hooks/useUserData';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -264,6 +265,7 @@ const AppContent: React.FC = () => {
         <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       </Suspense>
       <InstallPrompt />
+      <UpdatePrompt />
 
       {/* Mobile Shell Layout */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">

@@ -18,6 +18,7 @@ import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
 import WorkoutPreview from './WorkoutPreview';
 import WorkoutSummary from './WorkoutSummary';
 import SupplementRecommendationCard from './SupplementRecommendationCard';
+import AddToHomeScreenButton from './AddToHomeScreenButton';
 import { getRecommendations } from '../services/supplementService';
 
 const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
@@ -542,6 +543,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                             <SupplementRecommendationCard key={rec.id} recommendation={rec} />
                         ))}
                     </div>
+
+                    {/* Add to Home Screen - for iOS users */}
+                    <AddToHomeScreenButton />
                 </>
             )}
         </div>
