@@ -37,10 +37,7 @@ interface MealTrackerProps {
   onAddToFavorites?: (meal: { name: string; calories: number; protein: number; carbs: number; fats: number }) => Promise<boolean>;
 }
 
-// Skeleton component for loading states
-const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
-);
+import Skeleton from './ui/Skeleton';
 
 // Loading skeleton for analysis results
 const AnalysisSkeleton = () => (

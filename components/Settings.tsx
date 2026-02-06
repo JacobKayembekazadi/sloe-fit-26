@@ -52,10 +52,7 @@ const supabaseFetch = async (endpoint: string, options: RequestInit = {}) => {
     return { data: Array.isArray(data) ? data[0] : data, error: null };
 };
 
-// Skeleton component
-const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
-);
+import Skeleton from './ui/Skeleton';
 
 // Settings loading skeleton
 const SettingsSkeleton = () => (

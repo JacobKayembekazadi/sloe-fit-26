@@ -6,10 +6,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate } from '@/services/supabaseRawFetch';
 import LoaderIcon from './icons/LoaderIcon';
 
-// Skeleton component
-const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <div className={`animate-pulse bg-gray-800 rounded ${className}`} />
-);
+import Skeleton from './ui/Skeleton';
 
 // Loading skeleton for trainer view
 const TrainerViewSkeleton = () => (

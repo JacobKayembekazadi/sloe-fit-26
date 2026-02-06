@@ -17,6 +17,7 @@ import type { ExerciseLog, NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
 import WorkoutPreview from './WorkoutPreview';
 import WorkoutSummary from './WorkoutSummary';
+import Skeleton from './ui/Skeleton';
 import SupplementRecommendationCard from './SupplementRecommendationCard';
 import AddToHomeScreenButton from './AddToHomeScreenButton';
 import { getRecommendations } from '../services/supplementService';
@@ -459,10 +460,27 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                             </div>
                         ) : workoutStatus === 'generating' ? (
                             // AI is generating workout
-                            <div className="py-12 text-center">
-                                <LoaderIcon className="w-12 h-12 text-[var(--color-primary)] animate-spin motion-reduce:animate-none mx-auto mb-4" />
-                                <p className="text-xl font-black text-white animate-pulse motion-reduce:animate-none">GENERATING WORKOUT...</p>
-                                <p className="text-gray-400 text-sm mt-2">Personalizing based on your recovery</p>
+                            <div className="py-6 space-y-4">
+                                <div className="text-center">
+                                    <p className="text-xl font-black text-white animate-pulse motion-reduce:animate-none">GENERATING WORKOUT...</p>
+                                    <p className="text-gray-400 text-sm mt-1">Personalizing based on your recovery</p>
+                                </div>
+                                {/* Content-shaped skeleton matching workout card layout */}
+                                <div className="space-y-3 px-2">
+                                    <Skeleton className="h-6 w-3/5 mx-auto" />
+                                    <div className="space-y-2">
+                                        {[...Array(4)].map((_, i) => (
+                                            <div key={i} className="flex items-center gap-3 p-3 bg-gray-800/30 rounded-lg">
+                                                <Skeleton className="w-8 h-8 rounded-lg flex-shrink-0" />
+                                                <div className="flex-1 space-y-1.5">
+                                                    <Skeleton className="h-4 w-3/4" />
+                                                    <Skeleton className="h-3 w-1/3" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <Skeleton className="h-12 w-full rounded-xl" />
+                                </div>
                             </div>
                         ) : null}
                     </div>

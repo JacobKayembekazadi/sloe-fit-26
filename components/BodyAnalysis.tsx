@@ -1,4 +1,4 @@
-import React, { useState, useCallback, ChangeEvent, memo } from 'react';
+import React, { useState, useCallback, useEffect, ChangeEvent, memo } from 'react';
 import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
@@ -15,10 +15,16 @@ interface BodyAnalysisProps {
 
 type TabMode = 'analyze' | 'progress';
 
-// Skeleton component for loading states
-const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`animate-pulse motion-reduce:animate-none bg-gray-800 rounded ${className}`} />
-);
+const STORAGE_KEY = 'sloefit_body_analysis';
+const STALENESS_DAYS = 30;
+
+interface StoredAnalysis {
+  result: string;
+  timestamp: number;
+  photoPreview: string | null;
+}
+
+import Skeleton from './ui/Skeleton';
 
 // Analysis result skeleton
 const AnalysisResultSkeleton = () => (
@@ -54,6 +60,36 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
+  const [isRestored, setIsRestored] = useState(false);
+  const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
+
+  // Restore previous analysis from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) return;
+
+      const parsed: StoredAnalysis = JSON.parse(stored);
+      if (!parsed.result || !parsed.timestamp) return;
+
+      const ageMs = Date.now() - parsed.timestamp;
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+      if (ageDays > STALENESS_DAYS) {
+        // Too old to auto-restore — clear it
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      setResult(parsed.result);
+      setPreview(parsed.photoPreview);
+      setIsRestored(true);
+      setRestoredTimestamp(parsed.timestamp);
+    } catch {
+      // Corrupted data — clear and move on
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -96,8 +132,22 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         showToast('Body analysis failed', 'error');
       } else {
         setResult(analysisResult);
+        setIsRestored(false);
+        setRestoredTimestamp(null);
         onAnalysisComplete(analysisResult);
         showToast('Analysis complete', 'success');
+
+        // Persist to localStorage
+        try {
+          const toStore: StoredAnalysis = {
+            result: analysisResult,
+            timestamp: Date.now(),
+            photoPreview: preview,
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+        } catch {
+          // localStorage full or unavailable — fail silently
+        }
       }
     } catch {
       setError('Body analysis failed. Please check your connection and try again.');
@@ -115,6 +165,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setError(null);
     setIsLoading(false);
     setAnalyzeRetry(null);
+    setIsRestored(false);
+    setRestoredTimestamp(null);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const dismissError = () => {
@@ -257,6 +310,14 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
 
       {tabMode === 'analyze' && result && (
         <div className="space-y-6">
+          {isRestored && restoredTimestamp && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center justify-between">
+              <p className="text-sm text-blue-300">
+                Previous analysis from {new Date(restoredTimestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+          )}
+
           <div className="card">
             <ResultDisplay result={result} />
           </div>
@@ -265,7 +326,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             onClick={resetState}
             className="btn-secondary w-full"
           >
-            Scan New Photo
+            {isRestored ? 'New Analysis' : 'Scan New Photo'}
           </button>
 
           {/* Supplement Recommendations */}

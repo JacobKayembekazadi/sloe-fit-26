@@ -7,10 +7,7 @@ interface LoadingScreenProps {
     showSkeleton?: boolean;
 }
 
-// Skeleton placeholder component
-const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
-    <div className={`animate-pulse bg-gray-800 rounded ${className}`} />
-);
+import Skeleton from './ui/Skeleton';
 
 // Dashboard-like skeleton for initial load
 const DashboardSkeleton = () => (

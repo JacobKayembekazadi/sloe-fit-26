@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import type { NutritionLog } from '../App';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
+import Skeleton from './ui/Skeleton';
 import { analyzeWeeklyNutrition, WeeklyNutritionInsights } from '../services/aiService';
 
 interface WeeklyNutritionSummaryProps {
@@ -419,7 +420,7 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                         <div className="flex items-start gap-3">
                             <div className="w-10 h-10 bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center flex-shrink-0">
                                 {loadingInsights ? (
-                                    <LoaderIcon className="w-5 h-5 text-[var(--color-primary)] animate-spin" />
+                                    <LoaderIcon className="w-5 h-5 text-[var(--color-primary)] animate-spin motion-reduce:animate-none" />
                                 ) : (
                                     <span className="text-lg">🤖</span>
                                 )}
@@ -458,7 +459,21 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                         </span>
                     </button>
 
-                    {showDetails && (
+                    {loadingInsights && (
+                        <div className="space-y-3">
+                            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 space-y-2">
+                                <Skeleton className="h-3 w-24" />
+                                <Skeleton className="h-3 w-4/5" />
+                                <Skeleton className="h-3 w-3/5" />
+                            </div>
+                            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 space-y-2">
+                                <Skeleton className="h-3 w-20" />
+                                <Skeleton className="h-3 w-full" />
+                            </div>
+                        </div>
+                    )}
+
+                    {showDetails && !loadingInsights && (
                         <div className="space-y-3 animate-slide-up">
                             {/* Wins */}
                             {aiInsights.wins.length > 0 && (
