@@ -186,7 +186,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       <div className="flex gap-2 p-1 bg-black/30 rounded-xl">
         <button
           onClick={() => setTabMode('analyze')}
-          className={`flex-1 py-3 px-4 rounded-lg font-bold text-sm uppercase transition-all ${
+          className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
             tabMode === 'analyze'
               ? 'bg-[var(--color-primary)] text-black'
               : 'text-gray-400 hover:text-white'
@@ -196,7 +196,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         </button>
         <button
           onClick={() => setTabMode('progress')}
-          className={`flex-1 py-3 px-4 rounded-lg font-bold text-sm uppercase transition-all ${
+          className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
             tabMode === 'progress'
               ? 'bg-[var(--color-primary)] text-black'
               : 'text-gray-400 hover:text-white'
