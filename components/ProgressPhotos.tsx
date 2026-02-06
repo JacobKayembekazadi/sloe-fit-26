@@ -229,7 +229,10 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
     try {
       // Delete from storage (storage API is fine)
-      await supabase.storage.from('user-photos').remove([photo.storage_path]);
+      const { error: storageError } = await supabase.storage.from('user-photos').remove([photo.storage_path]);
+      if (storageError) {
+        console.warn('Failed to delete storage file, continuing with DB delete:', storageError);
+      }
 
       // Delete from database using raw fetch
       await supabaseDelete(`progress_photos?id=eq.${photo.id}`);
