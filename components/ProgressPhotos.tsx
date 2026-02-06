@@ -255,10 +255,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   // Select photo for comparison
   const selectForCompare = (photo: ProgressPhotoEntry) => {
     if (compareSelectingSlot === null) return;
-
-    const newCompare = [...comparePhotos] as [ProgressPhotoEntry | null, ProgressPhotoEntry | null];
-    newCompare[compareSelectingSlot] = photo;
-    setComparePhotos(newCompare);
+    setComparePhotos(prev => {
+      const newCompare = [...prev] as [ProgressPhotoEntry | null, ProgressPhotoEntry | null];
+      newCompare[compareSelectingSlot] = photo;
+      return newCompare;
+    });
     setCompareSelectingSlot(null);
   };
 

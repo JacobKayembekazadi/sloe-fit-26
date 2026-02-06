@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -84,25 +84,35 @@ const AppContent: React.FC = () => {
     fetchName();
   }, [user]);
 
-  const handleGoalUpdate = (goalText: string) => {
+  const handleGoalUpdate = useCallback((goalText: string) => {
     const goalMatch = goalText.match(/RECOMMENDED GOAL: \[(.+)\]/);
     if (goalMatch && goalMatch[1]) {
       updateGoal(goalMatch[1]);
     }
-  };
+  }, [updateGoal]);
 
-  const handleAddWorkoutToHistory = async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
+  const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
     const validLog = log.filter(ex => ex.name);
     return await addWorkout(title, validLog, rating);
-  };
+  }, [addWorkout]);
 
-  const handleSaveNutritionLog = (data: NutritionLog) => {
+  const handleSaveNutritionLog = useCallback((data: NutritionLog) => {
     saveNutrition(data);
-  };
+  }, [saveNutrition]);
 
-  const handleOnboardingComplete = () => {
+  const handleOnboardingComplete = useCallback(() => {
     refetchProfile();
-  };
+  }, [refetchProfile]);
+
+  // Stable callbacks for memo'd children
+  const showHistoryView = useCallback(() => setActiveTab('history'), []);
+  const showDashboard = useCallback(() => setActiveTab('dashboard'), []);
+  const showMyTrainer = useCallback(() => setCurrentView('myTrainer'), []);
+  const showSettings = useCallback(() => setCurrentView('settings'), []);
+  const showTrainer = useCallback(() => setCurrentView('trainer'), []);
+  const showTabs = useCallback(() => setCurrentView('tabs'), []);
+  const openCart = useCallback(() => setIsCartOpen(true), []);
+  const closeCart = useCallback(() => setIsCartOpen(false), []);
 
   // Debug loading states (dev only)
   if (import.meta.env.DEV) {
@@ -171,7 +181,7 @@ const AppContent: React.FC = () => {
       }
       return (
         <Suspense fallback={<LazyFallback />}>
-          <Settings onBack={() => setCurrentView('tabs')} />
+          <Settings onBack={showTabs} />
         </Suspense>
       );
     }
@@ -179,7 +189,7 @@ const AppContent: React.FC = () => {
     if (currentView === 'trainer') {
       return (
         <Suspense fallback={<LazyFallback />}>
-          <TrainerDashboard onBack={() => setCurrentView('tabs')} />
+          <TrainerDashboard onBack={showTabs} />
         </Suspense>
       );
     }
@@ -187,7 +197,7 @@ const AppContent: React.FC = () => {
     if (currentView === 'myTrainer' && userProfile.trainer_id) {
       return (
         <Suspense fallback={<LazyFallback />}>
-          <ClientTrainerView onBack={() => setCurrentView('tabs')} trainerId={userProfile.trainer_id} />
+          <ClientTrainerView onBack={showTabs} trainerId={userProfile.trainer_id} />
         </Suspense>
       );
     }
@@ -199,8 +209,8 @@ const AppContent: React.FC = () => {
             <Dashboard
               setActiveTab={setActiveTab}
               addWorkoutToHistory={handleAddWorkoutToHistory}
-              showHistoryView={() => setActiveTab('history')}
-              showTrainerView={userProfile.trainer_id ? () => setCurrentView('myTrainer') : undefined}
+              showHistoryView={showHistoryView}
+              showTrainerView={userProfile.trainer_id ? showMyTrainer : undefined}
               nutritionLog={nutritionLogs}
               saveNutritionLog={handleSaveNutritionLog}
               nutritionTargets={nutritionTargets}
@@ -217,7 +227,7 @@ const AppContent: React.FC = () => {
               history={workouts}
               nutritionLogs={nutritionLogs}
               nutritionTargets={nutritionTargets}
-              onBack={() => setActiveTab('dashboard')}
+              onBack={showDashboard}
               goal={goal}
               mealEntries={mealEntries}
             />
@@ -262,7 +272,7 @@ const AppContent: React.FC = () => {
     <div className={`flex flex-col h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden ${!isOnline ? 'pt-10' : ''}`}>
       {!isOnline && <OfflineBanner />}
       <Suspense fallback={null}>
-        <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+        <CartDrawer isOpen={isCartOpen} onClose={closeCart} />
       </Suspense>
       <InstallPrompt />
       <UpdatePrompt />
@@ -271,10 +281,10 @@ const AppContent: React.FC = () => {
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         <div className="w-full max-w-lg mx-auto p-4 sm:p-6">
           <Header
-            onCartClick={() => setIsCartOpen(true)}
-            onSettingsClick={() => setCurrentView('settings')}
-            onTrainerClick={() => setCurrentView('trainer')}
-            onMyTrainerClick={() => setCurrentView('myTrainer')}
+            onCartClick={openCart}
+            onSettingsClick={showSettings}
+            onTrainerClick={showTrainer}
+            onMyTrainerClick={showMyTrainer}
             isTrainer={userProfile.role === 'trainer'}
             hasTrainer={!!userProfile.trainer_id}
             userName={userName}
