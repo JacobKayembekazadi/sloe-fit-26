@@ -123,7 +123,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         startOfWeek.setHours(0, 0, 0, 0);
 
         return workoutHistory.filter(w => {
-            const workoutDate = new Date(w.date);
+            const workoutDate = new Date(w.rawDate || w.date);
             return workoutDate >= startOfWeek;
         }).length;
     }, [workoutHistory]);
@@ -169,7 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const recentWorkouts = useMemo(() => {
         return workoutHistory.slice(0, 3).map(w => ({
             title: w.title,
-            date: w.date,
+            date: w.rawDate || w.date,
             muscles: extractMuscleGroups(w.title)
         }));
     }, [workoutHistory]);

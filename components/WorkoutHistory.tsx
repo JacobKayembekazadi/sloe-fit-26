@@ -35,11 +35,14 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
     const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkout | null>(null);
     const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
 
-    // Lock body scroll when modal is open
+    // Lock scroll on the actual scroll container when modal is open
     useEffect(() => {
         if (selectedWorkout) {
-            document.body.style.overflow = 'hidden';
-            return () => { document.body.style.overflow = ''; };
+            const scrollContainer = document.querySelector('.overflow-y-auto') as HTMLElement | null;
+            if (scrollContainer) {
+                scrollContainer.style.overflow = 'hidden';
+                return () => { scrollContainer.style.overflow = ''; };
+            }
         }
     }, [selectedWorkout]);
 
@@ -179,7 +182,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
         <div className="flex flex-col min-h-full bg-background-dark font-display text-white transition-colors duration-300">
 
             {/* Top Navigation Bar */}
-            <header className="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-white/5">
+            <header className="z-50 bg-background-dark/80 border-b border-white/5">
                 <div className="flex items-center p-4 justify-between">
                     <button onClick={onBack} className="flex size-11 min-w-[44px] min-h-[44px] shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
                         <span className="material-symbols-outlined text-2xl">arrow_back_ios</span>
