@@ -35,7 +35,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   const { showToast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('capture');
   const [photos, setPhotos] = useState<ProgressPhotoEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
@@ -54,6 +54,9 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   // AI analysis state
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // Generation counter to cancel stale in-flight analysis
+  const analysisGenRef = useRef(0);
 
   // Camera capture ref
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -112,6 +115,9 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       const reader = new FileReader();
       reader.onloadend = () => setPreview(reader.result as string);
       reader.readAsDataURL(file);
+
+      // Reset input so re-selecting the same file triggers onChange
+      e.target.value = '';
 
       // Stop camera if it was active
       stopCamera();
@@ -261,12 +267,15 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       return newCompare;
     });
     setCompareSelectingSlot(null);
+    setAnalysisResult(null);
   };
 
   // Handle AI progress analysis
   const handleAnalyzeProgress = useCallback(async () => {
     if (!comparePhotos[0] || !comparePhotos[1]) return;
+    if (analysisLoading) return;
 
+    const gen = ++analysisGenRef.current;
     setAnalysisLoading(true);
     setAnalysisResult(null);
 
@@ -300,17 +309,21 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
       const result = await analyzeProgress(files, metrics.join('\n'));
 
+      if (gen !== analysisGenRef.current) return;
       if (result.startsWith('Error:')) {
         showToast('Progress analysis failed', 'error');
       } else {
         setAnalysisResult(result);
       }
     } catch {
+      if (gen !== analysisGenRef.current) return;
       showToast('Failed to analyze progress. Please try again.', 'error');
     } finally {
-      setAnalysisLoading(false);
+      if (gen === analysisGenRef.current) {
+        setAnalysisLoading(false);
+      }
     }
-  }, [comparePhotos, showToast]);
+  }, [comparePhotos, analysisLoading, showToast]);
 
   // Group photos by date for timeline
   const photosByDate = photos.reduce((acc, photo) => {
@@ -708,6 +721,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
           {(comparePhotos[0] || comparePhotos[1]) && compareSelectingSlot === null && (
             <button
               onClick={() => {
+                analysisGenRef.current++;
                 setComparePhotos([null, null]);
                 setAnalysisResult(null);
                 setAnalysisLoading(false);
