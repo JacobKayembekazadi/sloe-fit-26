@@ -747,7 +747,7 @@ export const useUserData = () => {
 
         try {
             // Use upsert to avoid race conditions
-            await supabaseUpsert('nutrition_logs', {
+            const { error } = await supabaseUpsert('nutrition_logs', {
                 user_id: user.id,
                 date: normalizedDate,
                 calories: log.calories,
@@ -755,6 +755,12 @@ export const useUserData = () => {
                 carbs: log.carbs,
                 fats: log.fats
             }, 'user_id,date');
+
+            if (error) {
+                console.error('[saveNutrition] Upsert error:', error);
+                setData(prev => ({ ...prev, nutritionLogs: previousLogs }));
+                return false;
+            }
             return true;
         } catch {
             setData(prev => ({ ...prev, nutritionLogs: previousLogs }));
@@ -763,6 +769,8 @@ export const useUserData = () => {
     }, [user, data.nutritionLogs]);
 
     // Add meal to daily totals
+    // Uses functional setData updater to avoid stale closure over data.nutritionLogs.
+    // Display is handled by computedNutritionLogs memo; this function only persists to DB.
     const addMealToDaily = useCallback(async (macros: { calories: number; protein: number; carbs: number; fats: number }) => {
         console.log('[addMealToDaily] Called with macros:', macros);
         if (!user) {
@@ -771,26 +779,61 @@ export const useUserData = () => {
         }
 
         const today = formatDateForDB();
-        console.log('[addMealToDaily] Today:', today);
 
-        // Find existing log for today
-        const existingLog = data.nutritionLogs.find(l =>
-            l.date === today ||
-            l.date.split('T')[0] === today
-        );
-        console.log('[addMealToDaily] Existing log:', existingLog);
+        // Compute today's totals from the latest mealEntries (via functional updater to avoid stale closure)
+        let updatedLog: NutritionLog | null = null;
+        setData(prev => {
+            const todayMeals = prev.mealEntries.filter(m => m.date === today);
+            const totals = todayMeals.reduce(
+                (acc, m) => ({
+                    calories: acc.calories + (m.calories || 0),
+                    protein: acc.protein + (m.protein || 0),
+                    carbs: acc.carbs + (m.carbs || 0),
+                    fats: acc.fats + (m.fats || 0),
+                }),
+                { calories: 0, protein: 0, carbs: 0, fats: 0 }
+            );
+            updatedLog = {
+                date: today,
+                calories: Math.round(totals.calories),
+                protein: Math.round(totals.protein),
+                carbs: Math.round(totals.carbs),
+                fats: Math.round(totals.fats)
+            };
+            console.log('[addMealToDaily] Computed from mealEntries:', updatedLog);
 
-        const updatedLog: NutritionLog = {
-            date: today,
-            calories: Math.round((existingLog?.calories || 0) + macros.calories),
-            protein: Math.round((existingLog?.protein || 0) + macros.protein),
-            carbs: Math.round((existingLog?.carbs || 0) + macros.carbs),
-            fats: Math.round((existingLog?.fats || 0) + macros.fats)
-        };
-        console.log('[addMealToDaily] Updated log:', updatedLog);
+            // Update nutritionLogs in state for DB persistence
+            const existingIdx = prev.nutritionLogs.findIndex(l =>
+                l.date === today || l.date.split('T')[0] === today
+            );
+            const newLogs = [...prev.nutritionLogs];
+            if (existingIdx >= 0) {
+                newLogs[existingIdx] = updatedLog!;
+            } else {
+                newLogs.unshift(updatedLog!);
+            }
+            return { ...prev, nutritionLogs: newLogs };
+        });
 
-        await saveNutrition(updatedLog);
-    }, [user, data.nutritionLogs, saveNutrition]);
+        // Persist to DB (fire-and-forget for display; computedNutritionLogs handles UI)
+        if (updatedLog) {
+            try {
+                const { error } = await supabaseUpsert('nutrition_logs', {
+                    user_id: user.id,
+                    date: today,
+                    calories: updatedLog.calories,
+                    protein: updatedLog.protein,
+                    carbs: updatedLog.carbs,
+                    fats: updatedLog.fats
+                }, 'user_id,date');
+                if (error) {
+                    console.error('[addMealToDaily] DB upsert error:', error);
+                }
+            } catch (err) {
+                console.error('[addMealToDaily] DB persist error:', err);
+            }
+        }
+    }, [user]);
 
     // Save individual meal entry - Bug #1 fix + Offline queue support
     const saveMealEntry = useCallback(async (entry: {
@@ -1240,6 +1283,59 @@ export const useUserData = () => {
         () => calculateNutritionTargets(data.profile),
         [data.profile.weight_lbs, data.profile.height_inches, data.profile.age, data.profile.goal]
     );
+
+    // Single source of truth: compute daily nutrition totals from mealEntries.
+    // This eliminates the stale-closure / async-pipeline bugs in the old addMealToDaily → saveNutrition chain.
+    // DB-fetched nutritionLogs are preserved for historical dates that have no meal_entries.
+    const computedNutritionLogs = useMemo<NutritionLog[]>(() => {
+        // Group mealEntries by date and sum macros
+        const mealTotalsByDate = new Map<string, NutritionLog>();
+        for (const meal of data.mealEntries) {
+            const date = meal.date.includes('T') ? meal.date.split('T')[0] : meal.date;
+            const existing = mealTotalsByDate.get(date);
+            if (existing) {
+                existing.calories += meal.calories || 0;
+                existing.protein += meal.protein || 0;
+                existing.carbs += meal.carbs || 0;
+                existing.fats += meal.fats || 0;
+            } else {
+                mealTotalsByDate.set(date, {
+                    date,
+                    calories: meal.calories || 0,
+                    protein: meal.protein || 0,
+                    carbs: meal.carbs || 0,
+                    fats: meal.fats || 0
+                });
+            }
+        }
+
+        // Round computed values
+        for (const log of mealTotalsByDate.values()) {
+            log.calories = Math.round(log.calories);
+            log.protein = Math.round(log.protein);
+            log.carbs = Math.round(log.carbs);
+            log.fats = Math.round(log.fats);
+        }
+
+        // Merge: computed values override DB values for dates with meal entries;
+        // DB values preserved for historical dates without meal entries
+        const merged = new Map<string, NutritionLog>();
+
+        // Start with DB-fetched logs
+        for (const log of data.nutritionLogs) {
+            const date = log.date.includes('T') ? log.date.split('T')[0] : log.date;
+            merged.set(date, { ...log, date });
+        }
+
+        // Override with computed-from-mealEntries (source of truth for dates with meals)
+        for (const [date, log] of mealTotalsByDate) {
+            merged.set(date, log);
+        }
+
+        // Sort descending by date
+        return Array.from(merged.values()).sort((a, b) => b.date.localeCompare(a.date));
+    }, [data.mealEntries, data.nutritionLogs]);
+
     const loading = loadingState === 'loading' || loadingState === 'idle';
 
     return {
@@ -1249,7 +1345,7 @@ export const useUserData = () => {
         userProfile: data.profile,
         nutritionTargets,
         workouts: data.workouts,
-        nutritionLogs: data.nutritionLogs,
+        nutritionLogs: computedNutritionLogs,
         mealEntries: data.mealEntries,
         favorites: data.favorites,
 
