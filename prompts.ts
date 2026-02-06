@@ -406,13 +406,15 @@ Examples:
 ---
 
 ## IMPORTANT: STRUCTURED DATA OUTPUT
-At the very end of your response, you MUST include a JSON block with the macro totals in this exact format:
+At the very end of your response, you MUST include a JSON block with the macro totals AND food names in this exact format:
 
 ---MACROS_JSON---
-{"calories": [number], "protein": [number], "carbs": [number], "fats": [number]}
+{"calories": [number], "protein": [number], "carbs": [number], "fats": [number], "foods": ["Food 1", "Food 2", "Food 3"]}
 ---END_MACROS---
 
-Replace [number] with the actual integer values from your analysis. This data will be used to auto-log the meal.
+Replace [number] with the actual integer values from your analysis.
+The "foods" array MUST contain simple food names (no portions, no asterisks, no markdown) - e.g., ["Grilled Chicken", "White Rice", "Broccoli"]
+This data will be used to auto-log the meal with proper food names.
 `;
 
 export const PROGRESS_ANALYSIS_PROMPT = `

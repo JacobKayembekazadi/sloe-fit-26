@@ -81,6 +81,7 @@ export interface TextMealAnalysis {
 export interface PhotoMealAnalysis {
   markdown: string;
   macros: MacroTotals | null;
+  foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
 }
 
 export interface MealAnalysisInput {

@@ -2,6 +2,16 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
 import { CompletedWorkout, NutritionLog } from '../App';
+import {
+    queueMeal,
+    getQueuedMeals,
+    removeFromQueue,
+    incrementRetryCount,
+    onOnline,
+    hasQueuedMeals,
+    getQueuedCount,
+    type QueuedMeal
+} from '../services/offlineQueue';
 
 // ============================================================================
 // Types
@@ -166,6 +176,7 @@ export const useUserData = () => {
     const [data, setData] = useState<DataState>(INITIAL_STATE);
     const [loadingState, setLoadingState] = useState<LoadingState>('idle');
     const [error, setError] = useState<UseUserDataError | null>(null);
+    const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getQueuedCount());
 
     // Refs for cleanup and preventing stale closures
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -454,6 +465,157 @@ export const useUserData = () => {
         };
     }, [user, fetchAllData, resetData]);
 
+    // Sync queued meals when coming back online
+    useEffect(() => {
+        if (!user) return;
+
+        const syncQueued = async () => {
+            const queue = getQueuedMeals();
+            if (queue.length === 0) return;
+
+            console.log(`[useUserData] Back online - syncing ${queue.length} queued meals`);
+            const affectedDates = new Set<string>();
+
+            for (const meal of queue) {
+                if (meal.retryCount >= 3) {
+                    console.warn(`[useUserData] Meal ${meal.id} exceeded max retries, removing`);
+                    removeFromQueue(meal.id);
+                    continue;
+                }
+
+                try {
+                    // Use the stored date from when the meal was originally logged, or fall back to today
+                    const mealDate = meal.payload.date || formatDateForDB();
+                    const { data: savedData, error } = await supabaseInsert('meal_entries', {
+                        user_id: user.id,
+                        date: mealDate,
+                        meal_type: meal.payload.mealType || null,
+                        input_method: meal.payload.inputMethod || 'text',
+                        description: meal.payload.description,
+                        photo_url: meal.payload.photoUrl || null,
+                        calories: meal.payload.calories,
+                        protein: meal.payload.protein,
+                        carbs: meal.payload.carbs,
+                        fats: meal.payload.fats
+                    });
+
+                    if (!error) {
+                        console.log(`[useUserData] Synced queued meal: ${meal.payload.description}`);
+                        removeFromQueue(meal.id);
+                        affectedDates.add(mealDate);
+
+                        // Update local state with the synced entry's real ID
+                        const realId = savedData && Array.isArray(savedData) && savedData[0]?.id
+                            ? savedData[0].id
+                            : meal.id;
+                        setData(prev => ({
+                            ...prev,
+                            mealEntries: prev.mealEntries.map(m =>
+                                m.id === meal.id ? { ...m, id: realId } : m
+                            )
+                        }));
+                    } else {
+                        console.error(`[useUserData] Failed to sync meal ${meal.id}:`, error);
+                        incrementRetryCount(meal.id);
+                    }
+                } catch (err) {
+                    console.error(`[useUserData] Error syncing meal ${meal.id}:`, err);
+                    incrementRetryCount(meal.id);
+                }
+            }
+
+            setOfflineQueueCount(getQueuedCount());
+
+            // Persist nutrition_logs for dates that had meals synced
+            // These were updated optimistically during offline save but the Supabase upsert failed
+            // We fetch meal_entries from the DB directly to get authoritative totals
+            if (affectedDates.size > 0) {
+                console.log(`[useUserData] Persisting nutrition_logs for ${affectedDates.size} date(s)`);
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+                let authToken = supabaseKey;
+                try {
+                    const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
+                    const storageKey = `sb-${projectId}-auth-token`;
+                    const stored = localStorage.getItem(storageKey);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        authToken = parsed?.access_token || supabaseKey;
+                    }
+                } catch {
+                    // Use anon key
+                }
+
+                for (const date of affectedDates) {
+                    try {
+                        // Fetch all meal_entries for this date from DB (source of truth)
+                        const response = await fetch(
+                            `${supabaseUrl}/rest/v1/meal_entries?select=calories,protein,carbs,fats&user_id=eq.${user.id}&date=eq.${date}`,
+                            {
+                                headers: {
+                                    'apikey': supabaseKey,
+                                    'Authorization': `Bearer ${authToken}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            }
+                        );
+                        const meals = await response.json();
+
+                        if (response.ok && Array.isArray(meals)) {
+                            const totals = meals.reduce(
+                                (acc: { calories: number; protein: number; carbs: number; fats: number }, m: { calories: number; protein: number; carbs: number; fats: number }) => ({
+                                    calories: acc.calories + (m.calories || 0),
+                                    protein: acc.protein + (m.protein || 0),
+                                    carbs: acc.carbs + (m.carbs || 0),
+                                    fats: acc.fats + (m.fats || 0),
+                                }),
+                                { calories: 0, protein: 0, carbs: 0, fats: 0 }
+                            );
+
+                            await supabaseUpsert('nutrition_logs', {
+                                user_id: user.id,
+                                date,
+                                ...totals
+                            }, 'user_id,date');
+
+                            // Also update local state to match
+                            setData(prev => {
+                                const existingIdx = prev.nutritionLogs.findIndex(l =>
+                                    l.date === date || l.date.split('T')[0] === date
+                                );
+                                const updatedLog = { date, ...totals };
+                                const newLogs = [...prev.nutritionLogs];
+                                if (existingIdx >= 0) {
+                                    newLogs[existingIdx] = updatedLog;
+                                } else {
+                                    newLogs.unshift(updatedLog);
+                                }
+                                return { ...prev, nutritionLogs: newLogs };
+                            });
+
+                            console.log(`[useUserData] Persisted nutrition_logs for ${date}:`, totals);
+                        }
+                    } catch (err) {
+                        console.error(`[useUserData] Failed to persist nutrition_logs for ${date}:`, err);
+                    }
+                }
+            }
+        };
+
+        // Register online listener
+        const cleanup = onOnline(() => {
+            syncQueued();
+        });
+
+        // Also try to sync on mount if online and there are queued meals
+        if (navigator.onLine && hasQueuedMeals()) {
+            syncQueued();
+        }
+
+        return cleanup;
+    }, [user]);
+
     // Retry function for error recovery
     const retry = useCallback(() => {
         if (!user) return;
@@ -584,15 +746,21 @@ export const useUserData = () => {
 
     // Add meal to daily totals
     const addMealToDaily = useCallback(async (macros: { calories: number; protein: number; carbs: number; fats: number }) => {
-        if (!user) return;
+        console.log('[addMealToDaily] Called with macros:', macros);
+        if (!user) {
+            console.error('[addMealToDaily] No user!');
+            return;
+        }
 
         const today = formatDateForDB();
+        console.log('[addMealToDaily] Today:', today);
 
         // Find existing log for today
         const existingLog = data.nutritionLogs.find(l =>
             l.date === today ||
             l.date.split('T')[0] === today
         );
+        console.log('[addMealToDaily] Existing log:', existingLog);
 
         const updatedLog: NutritionLog = {
             date: today,
@@ -601,11 +769,12 @@ export const useUserData = () => {
             carbs: Math.round((existingLog?.carbs || 0) + macros.carbs),
             fats: Math.round((existingLog?.fats || 0) + macros.fats)
         };
+        console.log('[addMealToDaily] Updated log:', updatedLog);
 
         await saveNutrition(updatedLog);
     }, [user, data.nutritionLogs, saveNutrition]);
 
-    // Save individual meal entry - Bug #1 fix
+    // Save individual meal entry - Bug #1 fix + Offline queue support
     const saveMealEntry = useCallback(async (entry: {
         description: string;
         calories: number;
@@ -616,7 +785,12 @@ export const useUserData = () => {
         inputMethod?: 'photo' | 'text' | 'quick_add';
         photoUrl?: string;
     }): Promise<MealEntry | null> => {
-        if (!user) return null;
+        console.log('[saveMealEntry] Called with:', entry);
+        console.log('[saveMealEntry] User:', user?.id || 'null');
+        if (!user) {
+            console.error('[saveMealEntry] No user - cannot save!');
+            return null;
+        }
 
         const today = formatDateForDB();
         const now = new Date().toISOString();
@@ -637,11 +811,36 @@ export const useUserData = () => {
             created_at: now
         };
 
-        // Optimistic update
+        // Optimistic update - always apply immediately
         setData(prev => ({
             ...prev,
             mealEntries: [optimisticEntry, ...prev.mealEntries]
         }));
+
+        // Check if offline - queue the meal instead of saving
+        if (!navigator.onLine) {
+            console.log('[saveMealEntry] Offline - queuing meal for later sync');
+            queueMeal({
+                description: entry.description,
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fats: entry.fats,
+                mealType: entry.mealType,
+                inputMethod: entry.inputMethod,
+                photoUrl: entry.photoUrl,
+                date: today
+            });
+            setOfflineQueueCount(getQueuedCount());
+            // Still update daily totals locally
+            await addMealToDaily({
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fats: entry.fats
+            });
+            return optimisticEntry; // Return optimistic entry - will sync later
+        }
 
         try {
             const { data: savedData, error } = await supabaseInsert('meal_entries', {
@@ -657,8 +856,34 @@ export const useUserData = () => {
                 fats: entry.fats
             });
 
+            console.log('[saveMealEntry] Supabase response:', { savedData, error });
+
             if (error) {
-                // Revert optimistic update on error
+                console.error('[saveMealEntry] Database error:', error);
+                // Check if it might be a network error (offline status can change)
+                if (!navigator.onLine) {
+                    console.log('[saveMealEntry] Network error - queuing meal');
+                    queueMeal({
+                        description: entry.description,
+                        calories: entry.calories,
+                        protein: entry.protein,
+                        carbs: entry.carbs,
+                        fats: entry.fats,
+                        mealType: entry.mealType,
+                        inputMethod: entry.inputMethod,
+                        photoUrl: entry.photoUrl,
+                        date: today
+                    });
+                    setOfflineQueueCount(getQueuedCount());
+                    await addMealToDaily({
+                        calories: entry.calories,
+                        protein: entry.protein,
+                        carbs: entry.carbs,
+                        fats: entry.fats
+                    });
+                    return optimisticEntry;
+                }
+                // Revert optimistic update on error (online but failed)
                 setData(prev => ({
                     ...prev,
                     mealEntries: prev.mealEntries.filter(m => m.id !== optimisticEntry.id)
@@ -666,6 +891,7 @@ export const useUserData = () => {
                 return null;
             }
 
+            console.log('[saveMealEntry] Saved successfully, updating daily totals...');
             // Also update daily totals
             await addMealToDaily({
                 calories: entry.calories,
@@ -686,7 +912,31 @@ export const useUserData = () => {
             }
 
             return optimisticEntry;
-        } catch {
+        } catch (err) {
+            console.error('[saveMealEntry] Error:', err);
+            // On network error, queue for later
+            if (!navigator.onLine) {
+                console.log('[saveMealEntry] Caught error while offline - queuing meal');
+                queueMeal({
+                    description: entry.description,
+                    calories: entry.calories,
+                    protein: entry.protein,
+                    carbs: entry.carbs,
+                    fats: entry.fats,
+                    mealType: entry.mealType,
+                    inputMethod: entry.inputMethod,
+                    photoUrl: entry.photoUrl,
+                    date: today
+                });
+                setOfflineQueueCount(getQueuedCount());
+                await addMealToDaily({
+                    calories: entry.calories,
+                    protein: entry.protein,
+                    carbs: entry.carbs,
+                    fats: entry.fats
+                });
+                return optimisticEntry;
+            }
             // Revert on error
             setData(prev => ({
                 ...prev,
@@ -746,20 +996,25 @@ export const useUserData = () => {
             }
 
             // Subtract from daily totals if same day
+            // Recalculate totals from remaining meal entries to avoid stale state issues
             const today = formatDateForDB();
             if (entryToDelete.date === today) {
-                const existingLog = data.nutritionLogs.find(l =>
-                    l.date === today || l.date.split('T')[0] === today
+                const remainingTodayMeals = data.mealEntries.filter(m =>
+                    m.id !== entryId && m.date === today
                 );
-                if (existingLog) {
-                    await saveNutrition({
-                        date: today,
-                        calories: Math.max(0, existingLog.calories - entryToDelete.calories),
-                        protein: Math.max(0, existingLog.protein - entryToDelete.protein),
-                        carbs: Math.max(0, existingLog.carbs - entryToDelete.carbs),
-                        fats: Math.max(0, existingLog.fats - entryToDelete.fats)
-                    });
-                }
+                const recalculated = remainingTodayMeals.reduce(
+                    (acc, m) => ({
+                        calories: acc.calories + m.calories,
+                        protein: acc.protein + m.protein,
+                        carbs: acc.carbs + m.carbs,
+                        fats: acc.fats + m.fats,
+                    }),
+                    { calories: 0, protein: 0, carbs: 0, fats: 0 }
+                );
+                await saveNutrition({
+                    date: today,
+                    ...recalculated
+                });
             }
 
             return true;
@@ -771,7 +1026,7 @@ export const useUserData = () => {
             }));
             return false;
         }
-    }, [user, data.mealEntries, data.nutritionLogs, saveNutrition]);
+    }, [user, data.mealEntries, saveNutrition]);
 
     // Add to favorites - Bug #7 fix
     const addToFavorites = useCallback(async (meal: {

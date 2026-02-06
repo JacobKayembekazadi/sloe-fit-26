@@ -60,12 +60,18 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
             // Find matching log (handle different date formats)
             const log = nutritionLogs.find(l => {
                 const logDate = l.date.includes('T') ? l.date.split('T')[0] : l.date;
-                // Also try parsing formatted dates like "February 2, 2026"
+                // Direct YYYY-MM-DD match (most common path)
                 if (logDate === dateStr) return true;
+                // Fallback: parse formatted dates like "February 2, 2026"
                 try {
                     const parsed = new Date(l.date);
+                    if (isNaN(parsed.getTime())) {
+                        console.warn('[WeeklyNutritionSummary] Unparseable date in nutrition log:', l.date);
+                        return false;
+                    }
                     return parsed.toISOString().split('T')[0] === dateStr;
                 } catch {
+                    console.warn('[WeeklyNutritionSummary] Failed to parse date:', l.date);
                     return false;
                 }
             }) || null;
@@ -110,17 +116,17 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
         const avgCarbs = Math.round(totalCarbs / daysTracked);
         const avgFats = Math.round(totalFats / daysTracked);
 
-        const calorieAdherence = Math.min(100, Math.round((avgCalories / targets.calories) * 100));
-        const proteinAdherence = Math.min(100, Math.round((avgProtein / targets.protein) * 100));
-        const carbsAdherence = Math.min(100, Math.round((avgCarbs / targets.carbs) * 100));
-        const fatsAdherence = Math.min(100, Math.round((avgFats / targets.fats) * 100));
+        const calorieAdherence = targets.calories > 0 ? Math.min(100, Math.round((avgCalories / targets.calories) * 100)) : 0;
+        const proteinAdherence = targets.protein > 0 ? Math.min(100, Math.round((avgProtein / targets.protein) * 100)) : 0;
+        const carbsAdherence = targets.carbs > 0 ? Math.min(100, Math.round((avgCarbs / targets.carbs) * 100)) : 0;
+        const fatsAdherence = targets.fats > 0 ? Math.min(100, Math.round((avgFats / targets.fats) * 100)) : 0;
         const overallAdherence = Math.round((calorieAdherence + proteinAdherence) / 2);
 
         // Days where calories are within 85-115% of target
-        const daysOnTarget = logsWithData.filter(l => {
+        const daysOnTarget = targets.calories > 0 ? logsWithData.filter(l => {
             const ratio = l.calories / targets.calories;
             return ratio >= 0.85 && ratio <= 1.15;
-        }).length;
+        }).length : 0;
 
         // Calculate current streak (consecutive days with data from today backwards)
         let streak = 0;

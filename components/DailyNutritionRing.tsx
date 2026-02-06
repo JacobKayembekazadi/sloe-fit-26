@@ -23,13 +23,14 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
 }) => {
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
-    const percentage = Math.min((consumed / target) * 100, 100);
-    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+    const rawPercentage = target > 0 ? (consumed / target) * 100 : 0;
+    const ringPercentage = Math.min(rawPercentage, 100);
+    const strokeDashoffset = circumference - (ringPercentage / 100) * circumference;
 
-    // Determine color based on percentage
+    // Determine color based on uncapped percentage
     const getColor = () => {
-        if (percentage > 100) return '#ef4444'; // red - over
-        if (percentage > 80) return '#eab308'; // yellow - close
+        if (rawPercentage > 100) return '#ef4444'; // red - over
+        if (rawPercentage > 80) return '#eab308'; // yellow - close
         return '#D4FF00'; // primary green - on track
     };
 
@@ -84,7 +85,7 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
                         <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-blue-400 rounded-full transition-all"
-                                style={{ width: `${Math.min((protein.consumed / protein.target) * 100, 100)}%` }}
+                                style={{ width: `${protein.target > 0 ? Math.min((protein.consumed / protein.target) * 100, 100) : 0}%` }}
                             />
                         </div>
                     </div>
@@ -94,7 +95,7 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
                         <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-yellow-400 rounded-full transition-all"
-                                style={{ width: `${Math.min((carbs.consumed / carbs.target) * 100, 100)}%` }}
+                                style={{ width: `${carbs.target > 0 ? Math.min((carbs.consumed / carbs.target) * 100, 100) : 0}%` }}
                             />
                         </div>
                     </div>
@@ -104,7 +105,7 @@ const DailyNutritionRing: React.FC<DailyNutritionRingProps> = ({
                         <div className="w-10 sm:w-12 h-1 bg-gray-700 rounded-full mt-1 overflow-hidden">
                             <div
                                 className="h-full bg-pink-400 rounded-full transition-all"
-                                style={{ width: `${Math.min((fats.consumed / fats.target) * 100, 100)}%` }}
+                                style={{ width: `${fats.target > 0 ? Math.min((fats.consumed / fats.target) * 100, 100) : 0}%` }}
                             />
                         </div>
                     </div>

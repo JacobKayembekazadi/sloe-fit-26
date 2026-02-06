@@ -183,7 +183,12 @@ function validateAndCorrectMealAnalysis(result: unknown): TextMealAnalysis | nul
   };
 }
 
-function parseMacrosFromResponse(text: string): PhotoMealAnalysis['macros'] {
+interface ParsedMacrosResult {
+  macros: PhotoMealAnalysis['macros'];
+  foods: string[];
+}
+
+function parseMacrosFromResponse(text: string): ParsedMacrosResult {
   try {
     const jsonMatch = text.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
     if (jsonMatch && jsonMatch[1]) {
@@ -194,18 +199,30 @@ function parseMacrosFromResponse(text: string): PhotoMealAnalysis['macros'] {
         typeof parsed.carbs === 'number' &&
         typeof parsed.fats === 'number'
       ) {
+        // Extract foods array if present, clean up any markdown artifacts
+        let foods: string[] = [];
+        if (Array.isArray(parsed.foods)) {
+          foods = parsed.foods
+            .filter((f: unknown) => typeof f === 'string')
+            .map((f: string) => f.replace(/\*+/g, '').trim()) // Remove any ** markdown
+            .filter((f: string) => f.length > 0);
+        }
+
         return {
-          calories: Math.round(parsed.calories),
-          protein: Math.round(parsed.protein),
-          carbs: Math.round(parsed.carbs),
-          fats: Math.round(parsed.fats),
+          macros: {
+            calories: Math.round(parsed.calories),
+            protein: Math.round(parsed.protein),
+            carbs: Math.round(parsed.carbs),
+            fats: Math.round(parsed.fats),
+          },
+          foods,
         };
       }
     }
   } catch {
     // Failed to parse
   }
-  return null;
+  return { macros: null, foods: [] };
 }
 
 function stripMacrosBlock(text: string): string {
@@ -381,9 +398,9 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
         );
 
         if (content) {
-          const macros = parseMacrosFromResponse(content);
+          const { macros, foods } = parseMacrosFromResponse(content);
           const markdown = stripMacrosBlock(content);
-          return { markdown, macros };
+          return { markdown, macros, foods: foods.length > 0 ? foods : undefined };
         }
 
         return { markdown: 'Error: No response from model.', macros: null };

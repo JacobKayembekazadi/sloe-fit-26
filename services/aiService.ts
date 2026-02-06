@@ -42,6 +42,7 @@ export interface MealAnalysisResult {
     carbs: number;
     fats: number;
   } | null;
+  foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
 }
 
 export interface GeneratedWorkout {
