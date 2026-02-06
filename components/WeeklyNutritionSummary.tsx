@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import type { NutritionLog } from '../App';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
@@ -260,15 +260,18 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
 
     // Auto-fetch AI insights when sufficient data is available
     const [hasFetchedAI, setHasFetchedAI] = useState(false);
+    const fetchAiInsightsRef = useRef(fetchAiInsights);
+    fetchAiInsightsRef.current = fetchAiInsights;
+
     useEffect(() => {
         if (stats.daysTracked >= 3 && !hasFetchedAI && !loadingInsights) {
             setHasFetchedAI(true);
-            fetchAiInsights();
+            fetchAiInsightsRef.current();
         }
-    }, [stats.daysTracked, hasFetchedAI, loadingInsights, fetchAiInsights]);
+    }, [stats.daysTracked, hasFetchedAI, loadingInsights]);
 
     // Get bar height for chart (relative to target)
-    const getBarHeight = (value: number, target: number, metric: string) => {
+    const getBarHeight = (value: number, target: number) => {
         if (target === 0) return 0;
         const ratio = value / target;
         // Cap at 120% for visual purposes
@@ -353,7 +356,7 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                     {weekData.map((day, idx) => {
                         const value = getMetricValue(day.log);
                         const target = getMetricTarget();
-                        const height = getBarHeight(value, target, selectedMetric);
+                        const height = getBarHeight(value, target);
                         const isToday = idx === weekData.length - 1;
                         const onTarget = day.log && value >= target * 0.85 && value <= target * 1.15;
 
@@ -430,10 +433,7 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                                     <div className="text-xs text-[var(--color-primary)] uppercase font-bold">AI Analysis</div>
                                     {stats.daysTracked >= 2 && (
                                         <button
-                                            onClick={() => {
-                                                setHasFetchedAI(false);
-                                                fetchAiInsights();
-                                            }}
+                                            onClick={() => fetchAiInsights()}
                                             disabled={loadingInsights}
                                             className="text-xs text-gray-500 hover:text-[var(--color-primary)] transition-colors disabled:opacity-50"
                                         >

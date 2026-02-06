@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo, useCallback } from 'react';
+import React, { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import type { CompletedWorkout, NutritionLog } from '../App';
 import type { NutritionTargets, MealEntry } from '../hooks/useUserData';
 import ProgressChart from './ProgressChart';
@@ -35,6 +35,14 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
     const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkout | null>(null);
     const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
 
+    // Lock body scroll when modal is open
+    useEffect(() => {
+        if (selectedWorkout) {
+            document.body.style.overflow = 'hidden';
+            return () => { document.body.style.overflow = ''; };
+        }
+    }, [selectedWorkout]);
+
     // -- Derived Data (Memoized) --
 
     // Calculate monthly volume from actual history
@@ -44,7 +52,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
         return history
-            .filter(w => new Date(w.date) >= monthStart)
+            .filter(w => new Date(w.rawDate || w.date) >= monthStart)
             .reduce((total, workout) => total + calculateWorkoutVolume(workout), 0);
     }, [history]);
 
@@ -64,7 +72,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
 
             const weekVolume = history
                 .filter(w => {
-                    const d = new Date(w.date);
+                    const d = new Date(w.rawDate || w.date);
                     return d >= weekStart && d < weekEnd;
                 })
                 .reduce((total, workout) => total + calculateWorkoutVolume(workout), 0);
@@ -168,7 +176,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
     // -- Render --
 
     return (
-        <div className="flex flex-col h-screen bg-background-dark font-display text-white overflow-hidden transition-colors duration-300">
+        <div className="flex flex-col min-h-full bg-background-dark font-display text-white transition-colors duration-300">
 
             {/* Top Navigation Bar */}
             <header className="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-white/5">
@@ -193,7 +201,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
 
             {/* Workout Detail Modal */}
             {selectedWorkout && (
-                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center">
+                <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={(e) => { if (e.target === e.currentTarget) setSelectedWorkout(null); }}>
                     <div className="bg-background-dark w-full max-w-lg max-h-[85vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between p-4 border-b border-white/10">
@@ -272,7 +280,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                 </div>
             )}
 
-            <main className="flex-1 overflow-y-auto pb-24">
+            <main className="flex-1">
                 {viewMode === 'workouts' ? (
                     <>
                         {/* Monthly Volume Chart Section */}
@@ -349,7 +357,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                             ) : (
                                 displayedHistory.map((workout, index) => (
                                     <button
-                                        key={index}
+                                        key={`${workout.rawDate || workout.date}-${workout.title}-${index}`}
                                         onClick={() => setSelectedWorkout(workout)}
                                         className="flex gap-4 px-4 py-4 hover:bg-white/5 transition-colors cursor-pointer border-b border-white/5 w-full text-left"
                                     >
@@ -365,7 +373,7 @@ const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs,
                                                     )}
                                                 </div>
                                                 <p className="text-[#90adcb] text-sm font-medium mt-0.5">
-                                                    {workout.log.reduce((acc, ex) => acc + parseInt(ex.sets), 0)} Sets • {workout.log.length} Exercises
+                                                    {workout.log.reduce((acc, ex) => acc + (parseInt(ex.sets) || 0), 0)} Sets • {workout.log.length} Exercises
                                                 </p>
                                                 <p className="text-gray-500 text-[12px] mt-1 font-normal">{workout.date}</p>
                                             </div>

@@ -51,6 +51,7 @@ export interface ExerciseLog {
 
 export interface CompletedWorkout {
   date: string;
+  rawDate?: string;  // ISO timestamp for calculations
   title: string;
   log: ExerciseLog[];
 }

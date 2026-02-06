@@ -337,6 +337,7 @@ export const useUserData = () => {
             if (workoutsResult.data && !workoutsResult.error) {
                 workouts = workoutsResult.data.map((w: any) => ({
                     date: formatDateForDisplay(w.date),
+                    rawDate: w.date,
                     title: w.title || 'Workout',
                     log: Array.isArray(w.exercises) ? w.exercises : []
                 }));
@@ -676,6 +677,7 @@ export const useUserData = () => {
 
         const newWorkout: CompletedWorkout = {
             date: formatDateForDisplay(new Date()),
+            rawDate: new Date().toISOString(),
             title,
             log: exercises
         };
