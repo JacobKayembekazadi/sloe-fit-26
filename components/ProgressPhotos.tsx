@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, ChangeEvent, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { uploadImage, validateImage } from '../services/storageService';
+import { uploadImage, validateImage, UploadResult } from '../services/storageService';
 import { supabase } from '../supabaseClient';
 import { supabaseGet, supabaseInsert, supabaseDelete } from '../services/supabaseRawFetch';
 import { analyzeProgress } from '../services/aiService';
@@ -178,10 +178,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
     setUploading(true);
     setError(null);
+    let uploadResult: UploadResult | null = null;
 
     try {
       // Upload to storage
-      const uploadResult = await uploadImage(selectedFile, user.id, 'progress');
+      uploadResult = await uploadImage(selectedFile, user.id, 'progress');
 
       if (!uploadResult.success) {
         throw new Error(uploadResult.error || 'Upload failed');
@@ -209,7 +210,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       onPhotoSaved?.();
 
     } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
+      // Clean up orphaned storage file if upload succeeded but DB insert failed
+      if (uploadResult?.success && uploadResult.path) {
+        supabase.storage.from('user-photos').remove([uploadResult.path]).catch(() => {});
+      }
+      const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
       setError(errorMsg);
       setRetryAction(() => handleUpload);
       showToast(errorMsg, 'error');
