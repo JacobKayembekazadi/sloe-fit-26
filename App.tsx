@@ -229,7 +229,7 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'meal':
-        const todayDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD to match database
         const todayLog = nutritionLogs.find(l => l.date === todayDate);
         return (
           <Suspense fallback={<LazyFallback />}>

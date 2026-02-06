@@ -17,6 +17,8 @@ import type { ExerciseLog, NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
 import WorkoutPreview from './WorkoutPreview';
 import WorkoutSummary from './WorkoutSummary';
+import SupplementRecommendationCard from './SupplementRecommendationCard';
+import { getRecommendations } from '../services/supplementService';
 
 const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
 
@@ -141,11 +143,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const [workoutLog, setWorkoutLog] = useState<ExerciseLog[]>(fallbackWorkout.exercises);
     const [workoutTitle, setWorkoutTitle] = useState<string>(fallbackWorkout.title);
 
-    // Calculate current day in program (based on total workout history)
-    const currentDay = Math.min(workoutHistory.length + 1, 30);
+    // Calculate current day (day of month)
+    const currentDay = new Date().getDate();
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
 
-    // Get today's nutrition from log or use defaults
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    // Get today's nutrition from log or use defaults (YYYY-MM-DD format to match database)
+    const today = new Date().toISOString().split('T')[0];
     const todayNutrition = nutritionLog.find(entry => entry.date === today) || {
         date: today,
         calories: 0,
@@ -412,7 +415,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         </div>
                         <div className="text-right">
                             <span className="text-[var(--color-primary)] font-bold text-xl">Day {currentDay}</span>
-                            <span className="text-white/50 text-xs block">of 30</span>
+                            <span className="text-white/50 text-xs block">of {daysInMonth}</span>
                         </div>
                     </header>
 
@@ -515,6 +518,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         </button>
                     </div>
 
+                    {/* Shopify Store Link */}
                     <a href="https://sloe-fit.com" target="_blank" rel="noopener noreferrer" className="card flex items-center justify-between p-4 bg-gradient-to-r from-[var(--bg-card)] to-[var(--color-primary)]/10 border-0 hover:scale-[1.02] touch-manipulation focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-inset">
                         <div className="flex items-center gap-4">
                             <div className="bg-[var(--color-primary)] text-black p-2 rounded-lg">
@@ -527,6 +531,17 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         </div>
                         <div className="text-gray-400">→</div>
                     </a>
+
+                    {/* Recovery Fuel - Dosage Recommendations */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="w-2 h-6 bg-[var(--color-primary)] rounded-full"></span>
+                            <h3 className="text-lg font-bold text-white">RECOVERY FUEL</h3>
+                        </div>
+                        {getRecommendations(goal).map(rec => (
+                            <SupplementRecommendationCard key={rec.id} recommendation={rec} />
+                        ))}
+                    </div>
                 </>
             )}
         </div>

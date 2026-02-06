@@ -6,11 +6,11 @@ import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import CheckIcon from './icons/CheckIcon';
 import ResultDisplay from './ResultDisplay';
-import ProductCard from './ProductCard';
+import SupplementRecommendationCard from './SupplementRecommendationCard';
 import DailyNutritionRing from './DailyNutritionRing';
 import TextMealInput from './TextMealInput';
 import QuickAddMeal, { SavedMeal } from './QuickAddMeal';
-import { PRODUCT_IDS } from '../services/shopifyService';
+import { getRecommendations } from '../services/supplementService';
 import { MealEntry, FavoriteFood } from '../hooks/useUserData';
 
 type InputMode = 'text' | 'photo' | 'quick';
@@ -216,7 +216,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     try {
       // Use saveMealEntry if available, otherwise fall back to onLogMeal
       if (onSaveMealEntry) {
-        await onSaveMealEntry({
+        const result = await onSaveMealEntry({
           description: meal.name,
           calories: meal.calories,
           protein: meal.protein,
@@ -224,6 +224,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           fats: meal.fats,
           inputMethod: 'quick_add'
         });
+        // Check if save failed (returns null when not logged in)
+        if (!result) {
+          showToast('Please log in to save meals', 'error');
+          return;
+        }
       } else {
         await onLogMeal({
           calories: meal.calories,
@@ -244,7 +249,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     try {
       // Use saveMealEntry if available for proper persistence - Bug #1 fix
       if (onSaveMealEntry) {
-        await onSaveMealEntry({
+        const result = await onSaveMealEntry({
           description: mealDescription || 'Logged Meal',
           calories: macros.calories,
           protein: macros.protein,
@@ -252,6 +257,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           fats: macros.fats,
           inputMethod: inputMode === 'photo' ? 'photo' : 'text'
         });
+        // Check if save failed (returns null when not logged in)
+        if (!result) {
+          showToast('Please log in to save meals', 'error');
+          return;
+        }
       } else {
         await onLogMeal(macros);
       }
@@ -638,14 +648,20 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       {/* Supplement Recommendations */}
       {result && (
         <div className="pt-6 border-t border-white/10">
-          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
             <span className="w-2 h-8 bg-[var(--color-primary)] rounded-full"></span>
-            PERFORMANCE FUEL
+            RECOVERY FUEL
           </h3>
-          <div className="grid grid-cols-1 gap-4">
-            <ProductCard productId={PRODUCT_IDS.CREATINE} />
-            <ProductCard productId={PRODUCT_IDS.PRE_WORKOUT} />
+          <p className="text-gray-400 text-sm mb-4">Personalized for your goals</p>
+          <div className="space-y-3">
+            {getRecommendations(userGoal).map(rec => (
+              <SupplementRecommendationCard key={rec.id} recommendation={rec} />
+            ))}
           </div>
+          <p className="text-gray-500 text-xs mt-4 italic leading-relaxed">
+            These recommendations are general guidelines and not medical advice.
+            Consult a healthcare professional before starting any supplement regimen.
+          </p>
         </div>
       )}
     </div>
