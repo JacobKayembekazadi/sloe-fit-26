@@ -4,9 +4,12 @@ import { useToast } from '../contexts/ToastContext';
 import { uploadImage, validateImage } from '../services/storageService';
 import { supabase } from '../supabaseClient';
 import { supabaseGet, supabaseInsert, supabaseDelete } from '../services/supabaseRawFetch';
+import { analyzeProgress } from '../services/aiService';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import TrashIcon from './icons/TrashIcon';
+import ResultDisplay from './ResultDisplay';
+import Skeleton from './ui/Skeleton';
 
 // Progress photo entry stored in database
 interface ProgressPhotoEntry {
@@ -47,6 +50,10 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   // Compare state
   const [comparePhotos, setComparePhotos] = useState<[ProgressPhotoEntry | null, ProgressPhotoEntry | null]>([null, null]);
   const [compareSelectingSlot, setCompareSelectingSlot] = useState<0 | 1 | null>(null);
+
+  // AI analysis state
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   // Camera capture ref
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -198,6 +205,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       setWeight('');
       setNotes('');
       await fetchPhotos();
+      showToast('Photo saved successfully', 'success');
       onPhotoSaved?.();
 
     } catch (err) {
@@ -243,6 +251,55 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
     setComparePhotos(newCompare);
     setCompareSelectingSlot(null);
   };
+
+  // Handle AI progress analysis
+  const handleAnalyzeProgress = useCallback(async () => {
+    if (!comparePhotos[0] || !comparePhotos[1]) return;
+
+    setAnalysisLoading(true);
+    setAnalysisResult(null);
+
+    try {
+      // Download both photos via Supabase SDK (avoids CORS issues)
+      const paths = [comparePhotos[0].storage_path, comparePhotos[1].storage_path];
+      const files = await Promise.all(
+        paths.map(async (path, i) => {
+          const { data, error } = await supabase.storage
+            .from('user-photos')
+            .download(path);
+          if (error || !data) throw new Error(`Failed to download photo: ${error?.message || 'Unknown error'}`);
+          return new File([data], `progress_${i}.jpg`, { type: data.type || 'image/jpeg' });
+        })
+      );
+
+      // Build metrics string from available data
+      const metrics: string[] = [];
+      if (comparePhotos[0].weight_lbs) metrics.push(`Before weight: ${comparePhotos[0].weight_lbs} lbs`);
+      if (comparePhotos[1].weight_lbs) metrics.push(`After weight: ${comparePhotos[1].weight_lbs} lbs`);
+      if (comparePhotos[0].weight_lbs && comparePhotos[1].weight_lbs) {
+        const delta = comparePhotos[1].weight_lbs - comparePhotos[0].weight_lbs;
+        metrics.push(`Weight change: ${delta > 0 ? '+' : ''}${delta.toFixed(1)} lbs`);
+      }
+      const daysBetween = Math.ceil(
+        (new Date(comparePhotos[1].created_at).getTime() - new Date(comparePhotos[0].created_at).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      metrics.push(`Time between photos: ${daysBetween} days`);
+      metrics.push(`Before date: ${new Date(comparePhotos[0].created_at).toLocaleDateString()}`);
+      metrics.push(`After date: ${new Date(comparePhotos[1].created_at).toLocaleDateString()}`);
+
+      const result = await analyzeProgress(files, metrics.join('\n'));
+
+      if (result.startsWith('Error:')) {
+        showToast('Progress analysis failed', 'error');
+      } else {
+        setAnalysisResult(result);
+      }
+    } catch {
+      showToast('Failed to analyze progress. Please try again.', 'error');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [comparePhotos, showToast]);
 
   // Group photos by date for timeline
   const photosByDate = photos.reduce((acc, photo) => {
@@ -583,10 +640,67 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
             </div>
           )}
 
+          {/* AI Analysis Section */}
+          {comparePhotos[0] && comparePhotos[1] && compareSelectingSlot === null && (
+            <div className="space-y-4">
+              {!analysisResult && !analysisLoading && (
+                <button
+                  onClick={handleAnalyzeProgress}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Analyze Progress with AI
+                </button>
+              )}
+
+              {analysisLoading && (
+                <div className="space-y-4">
+                  <div className="card flex flex-col items-center justify-center text-center p-6">
+                    <div className="relative mb-3">
+                      <div className="w-16 h-16 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin motion-reduce:animate-none" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-2xl">📊</span>
+                      </div>
+                    </div>
+                    <p className="text-lg font-black text-white">ANALYZING PROGRESS...</p>
+                    <p className="text-gray-400 text-sm mt-1">AI is comparing your photos</p>
+                  </div>
+                  <div className="card space-y-3">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                  </div>
+                </div>
+              )}
+
+              {analysisResult && (
+                <div className="space-y-3">
+                  <div className="card">
+                    <ResultDisplay result={analysisResult} />
+                  </div>
+                  <button
+                    onClick={() => setAnalysisResult(null)}
+                    className="btn-secondary w-full text-sm"
+                  >
+                    Analyze Again
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Clear comparison */}
           {(comparePhotos[0] || comparePhotos[1]) && compareSelectingSlot === null && (
             <button
-              onClick={() => setComparePhotos([null, null])}
+              onClick={() => {
+                setComparePhotos([null, null]);
+                setAnalysisResult(null);
+                setAnalysisLoading(false);
+              }}
               className="w-full py-2 text-gray-500 hover:text-white text-sm"
             >
               Clear Comparison
