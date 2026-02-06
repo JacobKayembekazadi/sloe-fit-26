@@ -1008,18 +1008,23 @@ export const useUserData = () => {
     }, [user, addMealToDaily]);
 
     // Delete meal entry - Bug #4 fix
+    // Uses functional setData updater to avoid stale closure over data.mealEntries.
+    // Display updates instantly via computedNutritionLogs; DB persist is fire-and-forget.
     const deleteMealEntry = useCallback(async (entryId: string): Promise<boolean> => {
         if (!user) return false;
 
-        // Find the entry to get its macros for subtracting from daily total
-        const entryToDelete = data.mealEntries.find(m => m.id === entryId);
-        if (!entryToDelete) return false;
+        // Use functional updater to find the entry and remove it atomically (avoids stale closure)
+        let entryToDelete: MealEntry | undefined;
+        setData(prev => {
+            entryToDelete = prev.mealEntries.find(m => m.id === entryId);
+            if (!entryToDelete) return prev;
+            return {
+                ...prev,
+                mealEntries: prev.mealEntries.filter(m => m.id !== entryId)
+            };
+        });
 
-        // Optimistic update
-        setData(prev => ({
-            ...prev,
-            mealEntries: prev.mealEntries.filter(m => m.id !== entryId)
-        }));
+        if (!entryToDelete) return false;
 
         try {
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -1051,43 +1056,64 @@ export const useUserData = () => {
                 // Revert on error
                 setData(prev => ({
                     ...prev,
-                    mealEntries: [entryToDelete, ...prev.mealEntries]
+                    mealEntries: [entryToDelete!, ...prev.mealEntries]
                 }));
                 return false;
             }
 
-            // Subtract from daily totals if same day
-            // Recalculate totals from remaining meal entries to avoid stale state issues
-            const today = formatDateForDB();
-            if (entryToDelete.date === today) {
-                const remainingTodayMeals = data.mealEntries.filter(m =>
-                    m.id !== entryId && m.date === today
-                );
-                const recalculated = remainingTodayMeals.reduce(
+            // Persist updated daily totals to nutrition_logs DB table
+            // Display is already correct via computedNutritionLogs recomputing from mealEntries
+            const entryDate = entryToDelete.date;
+            setData(prev => {
+                const remainingMeals = prev.mealEntries.filter(m => m.date === entryDate);
+                const totals = remainingMeals.reduce(
                     (acc, m) => ({
-                        calories: acc.calories + m.calories,
-                        protein: acc.protein + m.protein,
-                        carbs: acc.carbs + m.carbs,
-                        fats: acc.fats + m.fats,
+                        calories: acc.calories + (m.calories || 0),
+                        protein: acc.protein + (m.protein || 0),
+                        carbs: acc.carbs + (m.carbs || 0),
+                        fats: acc.fats + (m.fats || 0),
                     }),
                     { calories: 0, protein: 0, carbs: 0, fats: 0 }
                 );
-                await saveNutrition({
-                    date: today,
-                    ...recalculated
+                const updatedLog: NutritionLog = {
+                    date: entryDate,
+                    calories: Math.round(totals.calories),
+                    protein: Math.round(totals.protein),
+                    carbs: Math.round(totals.carbs),
+                    fats: Math.round(totals.fats)
+                };
+                const existingIdx = prev.nutritionLogs.findIndex(l =>
+                    l.date === entryDate || l.date.split('T')[0] === entryDate
+                );
+                const newLogs = [...prev.nutritionLogs];
+                if (existingIdx >= 0) {
+                    newLogs[existingIdx] = updatedLog;
+                } else {
+                    newLogs.unshift(updatedLog);
+                }
+
+                // Fire-and-forget DB persist
+                supabaseUpsert('nutrition_logs', {
+                    user_id: user!.id,
+                    date: entryDate,
+                    ...totals
+                }, 'user_id,date').catch(err => {
+                    console.error('[deleteMealEntry] DB persist error:', err);
                 });
-            }
+
+                return { ...prev, nutritionLogs: newLogs };
+            });
 
             return true;
         } catch {
             // Revert on error
             setData(prev => ({
                 ...prev,
-                mealEntries: [entryToDelete, ...prev.mealEntries]
+                mealEntries: [entryToDelete!, ...prev.mealEntries]
             }));
             return false;
         }
-    }, [user, data.mealEntries, saveNutrition]);
+    }, [user]);
 
     // Add to favorites - Bug #7 fix
     const addToFavorites = useCallback(async (meal: {
