@@ -233,8 +233,10 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       await fetchPhotos();
 
       // Clear from compare if selected
-      if (comparePhotos[0]?.id === photo.id) setComparePhotos([null, comparePhotos[1]]);
-      if (comparePhotos[1]?.id === photo.id) setComparePhotos([comparePhotos[0], null]);
+      setComparePhotos(prev => [
+        prev[0]?.id === photo.id ? null : prev[0],
+        prev[1]?.id === photo.id ? null : prev[1]
+      ]);
 
     } catch (err) {
             setError('Failed to delete photo');
