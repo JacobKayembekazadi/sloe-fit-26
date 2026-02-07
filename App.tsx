@@ -12,6 +12,9 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { supabase } from './supabaseClient';
 import { getTodaysWorkout } from './services/workoutService';
 import { generateWorkout, GeneratedWorkout } from './services/aiService';
+import { getExerciseByName } from './data/exercises';
+import { getTemplates, updateLastUsed, templateToExerciseLogs } from './services/templateService';
+import type { WorkoutTemplate } from './services/templateService';
 import type { RecoveryState } from './components/RecoveryCheckIn';
 import type { WorkoutDraft } from './components/WorkoutSession';
 import type { UserProfile } from './hooks/useUserData';
@@ -34,6 +37,8 @@ const RecoveryCheckIn = lazy(() => import('./components/RecoveryCheckIn'));
 const WorkoutPreview = lazy(() => import('./components/WorkoutPreview'));
 const WorkoutSession = lazy(() => import('./components/WorkoutSession'));
 const WorkoutSummary = lazy(() => import('./components/WorkoutSummary'));
+const ExerciseLibrary = lazy(() => import('./components/ExerciseLibrary'));
+const WorkoutBuilder = lazy(() => import('./components/WorkoutBuilder'));
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -62,6 +67,11 @@ export interface ExerciseLog {
   sets: string;
   reps: string;
   weight: string;
+  notes?: string;
+  targetMuscles?: string[];
+  restSeconds?: number;
+  formCues?: string[];
+  exerciseId?: string;
 }
 
 export interface CompletedWorkout {
@@ -81,13 +91,21 @@ export interface NutritionLog {
 
 // Convert AI workout to exercise log format (module-level)
 const aiWorkoutToExerciseLog = (workout: GeneratedWorkout): ExerciseLog[] => {
-    return workout.exercises.map((ex, idx) => ({
-        id: idx + 1,
-        name: ex.name,
-        sets: String(ex.sets),
-        reps: ex.reps,
-        weight: ''
-    }));
+    return workout.exercises.map((ex, idx) => {
+        const libEntry = getExerciseByName(ex.name);
+        return {
+            id: idx + 1,
+            name: ex.name,
+            sets: String(ex.sets),
+            reps: ex.reps,
+            weight: '',
+            notes: ex.notes,
+            targetMuscles: ex.target_muscles,
+            restSeconds: ex.rest_seconds,
+            formCues: libEntry?.formCues,
+            exerciseId: libEntry?.id,
+        };
+    });
 };
 
 // Helper function to extract muscle groups from workout title
@@ -296,6 +314,36 @@ const AppContent: React.FC = () => {
   }, [endTime, startTime]);
 
   // ============================================================================
+  // Builder / Library / Templates
+  // ============================================================================
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => getTemplates());
+
+  const refreshTemplates = useCallback(() => setTemplates(getTemplates()), []);
+
+  const handleStartCustomWorkout = useCallback((exercises: ExerciseLog[], title: string) => {
+    setWorkoutLog(exercises);
+    setWorkoutTitle(title);
+    setShowBuilder(false);
+    setWorkoutStatus('preview');
+  }, []);
+
+  const handleStartTemplate = useCallback((template: WorkoutTemplate) => {
+    updateLastUsed(template.id);
+    refreshTemplates();
+    const logs = templateToExerciseLogs(template);
+    setWorkoutLog(logs);
+    setWorkoutTitle(template.name);
+    setWorkoutStatus('preview');
+  }, [refreshTemplates]);
+
+  const handleOpenBuilder = useCallback(() => setShowBuilder(true), []);
+  const handleCloseBuilder = useCallback(() => setShowBuilder(false), []);
+  const handleOpenLibrary = useCallback(() => setShowLibrary(true), []);
+  const handleCloseLibrary = useCallback(() => setShowLibrary(false), []);
+
+  // ============================================================================
   // End Workout State Machine
   // ============================================================================
 
@@ -458,6 +506,10 @@ const AppContent: React.FC = () => {
               recoveryDraft={recoveryDraft}
               onResumeDraft={handleResumeDraft}
               onDiscardDraft={handleDiscardDraft}
+              onStartBuilder={handleOpenBuilder}
+              onOpenLibrary={handleOpenLibrary}
+              onStartTemplate={handleStartTemplate}
+              templates={templates}
             />
           </Suspense>
         );
@@ -562,7 +614,10 @@ const AppContent: React.FC = () => {
               exercises={workoutLog.map(ex => ({
                 name: ex.name,
                 sets: parseInt(ex.sets),
-                reps: ex.reps
+                reps: ex.reps,
+                targetMuscles: ex.targetMuscles,
+                formCues: ex.formCues,
+                notes: ex.notes,
               }))}
               onStart={handleStartFromPreview}
               onBack={() => setWorkoutStatus('idle')}
@@ -608,6 +663,30 @@ const AppContent: React.FC = () => {
             />
           </Suspense>
         </div>
+      )}
+
+      {/* Workout Builder Overlay */}
+      {showBuilder && (
+        <Suspense fallback={<LazyFallback />}>
+          <WorkoutBuilder
+            onBack={handleCloseBuilder}
+            onStartWorkout={handleStartCustomWorkout}
+            onTemplateSaved={() => {
+              refreshTemplates();
+              showToast('Template saved!', 'success');
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* Exercise Library Overlay */}
+      {showLibrary && (
+        <Suspense fallback={<LazyFallback />}>
+          <ExerciseLibrary
+            onBack={handleCloseLibrary}
+            mode="browse"
+          />
+        </Suspense>
       )}
     </div>
   );

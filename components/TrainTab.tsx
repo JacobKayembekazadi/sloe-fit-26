@@ -1,8 +1,7 @@
-import React, { useState, useMemo, memo, useCallback } from 'react';
-import type { CompletedWorkout, ExerciseLog } from '../App';
+import React, { useState, useMemo, memo } from 'react';
+import type { CompletedWorkout } from '../App';
 import type { WorkoutDraft } from './WorkoutSession';
-
-const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
+import type { WorkoutTemplate } from '../services/templateService';
 
 // Reuse from WorkoutHistory
 const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
@@ -27,6 +26,10 @@ interface TrainTabProps {
     recoveryDraft: WorkoutDraft | null;
     onResumeDraft: () => void;
     onDiscardDraft: () => void;
+    onStartBuilder?: () => void;
+    onOpenLibrary?: () => void;
+    onStartTemplate?: (template: WorkoutTemplate) => void;
+    templates?: WorkoutTemplate[];
 }
 
 const TrainTab: React.FC<TrainTabProps> = ({
@@ -35,6 +38,10 @@ const TrainTab: React.FC<TrainTabProps> = ({
     recoveryDraft,
     onResumeDraft,
     onDiscardDraft,
+    onStartBuilder,
+    onOpenLibrary,
+    onStartTemplate,
+    templates = [],
 }) => {
     const [selectedFilter, setSelectedFilter] = useState<'All' | 'Strength' | 'Cardio' | 'Mindset'>('All');
     const [showAllWorkouts, setShowAllWorkouts] = useState(false);
@@ -148,6 +155,17 @@ const TrainTab: React.FC<TrainTabProps> = ({
         return count;
     }, [workoutHistory]);
 
+    const formatTemplateDateAgo = (dateStr?: string) => {
+        if (!dateStr) return 'Never used';
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const days = Math.floor(diff / 86400000);
+        if (days === 0) return 'Today';
+        if (days === 1) return '1d ago';
+        if (days < 7) return `${days}d ago`;
+        if (days < 30) return `${Math.floor(days / 7)}w ago`;
+        return `${Math.floor(days / 30)}mo ago`;
+    };
+
     return (
         <div className="w-full space-y-6 pb-8">
             {/* Header */}
@@ -195,23 +213,87 @@ const TrainTab: React.FC<TrainTabProps> = ({
                 </div>
             )}
 
-            {/* Start Workout CTA */}
+            {/* Start Workout CTAs */}
             {!recoveryDraft && (
-                <div className="card bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent border-[var(--color-primary)]/20">
-                    <div className="py-4 text-center">
-                        <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
-                            <span className="text-3xl">💪</span>
+                <div className="space-y-3">
+                    <div className="card bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent border-[var(--color-primary)]/20">
+                        <div className="py-4 text-center">
+                            <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
+                                <span className="material-symbols-outlined text-[var(--color-primary)] text-3xl">smart_toy</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-1">Start AI Workout</h3>
+                            <p className="text-gray-400 text-sm mb-6">AI-powered · personalized to your recovery</p>
+                            <button
+                                onClick={onStartWorkout}
+                                className="btn-primary w-full"
+                            >
+                                START WORKOUT
+                            </button>
                         </div>
-                        <h3 className="text-xl font-bold text-white mb-1">Start Today's Workout</h3>
-                        <p className="text-gray-400 text-sm mb-6">AI-powered · personalized to your recovery</p>
+                    </div>
+
+                    {onStartBuilder && (
                         <button
-                            onClick={onStartWorkout}
-                            className="btn-primary w-full"
+                            onClick={onStartBuilder}
+                            className="card flex items-center gap-4 p-4 w-full text-left hover:border-white/20 transition-colors"
                         >
-                            START WORKOUT
+                            <div className="flex items-center justify-center rounded-xl bg-blue-500/10 text-blue-400 shrink-0 size-12">
+                                <span className="material-symbols-outlined">construction</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-base font-bold text-white">Build Your Own</p>
+                                <p className="text-sm text-gray-400">Pick exercises, customize sets & reps</p>
+                            </div>
+                            <span className="material-symbols-outlined text-gray-600">chevron_right</span>
                         </button>
+                    )}
+                </div>
+            )}
+
+            {/* My Templates */}
+            {templates.length > 0 && onStartTemplate && (
+                <div>
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">My Templates</h3>
+                    </div>
+                    <div className="space-y-2">
+                        {templates.slice(0, 3).map(tpl => (
+                            <button
+                                key={tpl.id}
+                                onClick={() => onStartTemplate(tpl)}
+                                className="card flex items-center gap-4 p-4 w-full text-left hover:border-white/20 transition-colors"
+                            >
+                                <div className="flex items-center justify-center rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] shrink-0 size-12">
+                                    <span className="material-symbols-outlined">bookmark</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-base font-bold text-white line-clamp-1">{tpl.name}</p>
+                                    <p className="text-sm text-gray-400">
+                                        {tpl.exercises.length} exercises · Last: {formatTemplateDateAgo(tpl.lastUsedAt)}
+                                    </p>
+                                </div>
+                                <span className="material-symbols-outlined text-gray-600">chevron_right</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
+            )}
+
+            {/* Browse Exercise Library */}
+            {onOpenLibrary && (
+                <button
+                    onClick={onOpenLibrary}
+                    className="card flex items-center gap-4 p-4 w-full text-left hover:border-white/20 transition-colors"
+                >
+                    <div className="flex items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 shrink-0 size-12">
+                        <span className="material-symbols-outlined">menu_book</span>
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-base font-bold text-white">Browse Exercise Library</p>
+                        <p className="text-sm text-gray-400">74 exercises with form guidance</p>
+                    </div>
+                    <span className="material-symbols-outlined text-gray-600">chevron_right</span>
+                </button>
             )}
 
             {/* Week-at-a-Glance */}

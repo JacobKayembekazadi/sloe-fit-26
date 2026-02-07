@@ -24,6 +24,9 @@ interface TrackedExercise {
   targetReps: string;
   sets: SetData[];
   notes?: string;
+  targetMuscles?: string[];
+  restSeconds?: number;
+  formCues?: string[];
 }
 
 export interface WorkoutDraft {
@@ -72,7 +75,11 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
         name: ex.name,
         targetSets: numSets,
         targetReps: ex.reps,
-        sets
+        sets,
+        notes: ex.notes,
+        targetMuscles: ex.targetMuscles,
+        restSeconds: ex.restSeconds,
+        formCues: ex.formCues,
       };
     });
   };
@@ -93,7 +100,6 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
 
   // Rest Timer State
   const [restTimerOpen, setRestTimerOpen] = useState(false);
-  const restDuration = 90;
 
   // Memoized callbacks for RestTimer to prevent re-renders triggering setState during render
   const handleRestComplete = useCallback(() => setRestTimerOpen(false), []);
@@ -272,7 +278,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       {/* Rest Timer Overlay */}
       {restTimerOpen && (
         <RestTimer
-          initialTime={restDuration}
+          initialTime={activeExercise?.restSeconds ?? 90}
           onComplete={handleRestComplete}
           onSkip={handleRestSkip}
         />
@@ -350,6 +356,9 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
               onUpdateSet={handleUpdateSet}
               onToggleSet={handleToggleSet}
               onAddSet={handleAddSet}
+              notes={activeExercise.notes}
+              targetMuscles={activeExercise.targetMuscles}
+              formCues={activeExercise.formCues}
             />
           </div>
 

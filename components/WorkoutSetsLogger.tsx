@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface SetData {
     id: number;
@@ -15,6 +15,9 @@ interface WorkoutSetsLoggerProps {
     onToggleSet: (setId: number) => void;
     onAddSet: () => void;
     targetReps?: string;
+    notes?: string;
+    targetMuscles?: string[];
+    formCues?: string[];
 }
 
 const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
@@ -23,22 +26,73 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
     onUpdateSet,
     onToggleSet,
     onAddSet,
-    targetReps
+    targetReps,
+    notes,
+    targetMuscles,
+    formCues
 }) => {
     const completedSets = sets.filter(s => s.completed).length;
+    const [showFormTips, setShowFormTips] = useState(false);
+
+    const hasTips = (formCues && formCues.length > 0) || notes;
 
     return (
         <div className="relative flex h-full w-full flex-col bg-background-dark overflow-y-auto pb-20 font-display transition-colors duration-300">
             {/* Exercise Header */}
-            <div className="px-4 pt-2 pb-3 shrink-0">
+            <div className="px-4 pt-2 pb-1 shrink-0">
                 <h2 className="text-lg sm:text-xl font-bold text-white">{exerciseName}</h2>
                 <p className="text-xs sm:text-sm text-slate-400">
-                    {completedSets} of {sets.length} sets completed {targetReps && `• Target: ${targetReps} reps`}
+                    {completedSets} of {sets.length} sets completed {targetReps && `· Target: ${targetReps} reps`}
                 </p>
             </div>
 
+            {/* Form Tips Toggle */}
+            {hasTips && (
+                <div className="px-4 pb-1">
+                    <button
+                        onClick={() => setShowFormTips(!showFormTips)}
+                        className="flex items-center gap-1.5 text-[var(--color-primary)] text-xs font-bold py-1.5 hover:opacity-80 transition-opacity"
+                    >
+                        <span className="material-symbols-outlined text-sm">
+                            {showFormTips ? 'expand_less' : 'expand_more'}
+                        </span>
+                        Form Tips
+                    </button>
+
+                    {showFormTips && (
+                        <div className="bg-[#1a2e20] border border-[var(--color-primary)]/20 rounded-xl p-3 mb-1 animate-slide-up">
+                            {formCues && formCues.length > 0 && (
+                                <ul className="space-y-1">
+                                    {formCues.map((cue, i) => (
+                                        <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
+                                            <span className="text-[var(--color-primary)] mt-0.5 shrink-0">•</span>
+                                            {cue}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            {notes && (
+                                <p className="text-xs text-slate-400 mt-2 italic">{notes}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Target Muscles */}
+            {targetMuscles && targetMuscles.length > 0 && (
+                <div className="px-4 pb-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Targets:</span>
+                    {targetMuscles.map((m, i) => (
+                        <span key={i} className="text-[10px] bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-2 py-0.5 rounded-full font-medium capitalize">
+                            {m}
+                        </span>
+                    ))}
+                </div>
+            )}
+
             {/* Sets List */}
-            <div className="flex flex-col gap-2 mt-4 px-3 sm:px-4">
+            <div className="flex flex-col gap-2 mt-2 px-3 sm:px-4">
                 {/* Labels */}
                 <div className="flex items-center px-1 sm:px-2 py-1 text-[#90adcb] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">
                     <div className="w-8 sm:w-10">Set</div>

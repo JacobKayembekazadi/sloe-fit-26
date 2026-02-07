@@ -1,11 +1,21 @@
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
+
+interface PreviewExercise {
+    name: string;
+    sets: number;
+    reps: string;
+    image?: string;
+    targetMuscles?: string[];
+    formCues?: string[];
+    notes?: string;
+}
 
 interface WorkoutPreviewProps {
     title: string;
     duration: number; // minutes
     difficulty: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert';
     description: string;
-    exercises: { name: string; sets: number; reps: string; image?: string }[];
+    exercises: PreviewExercise[];
     onStart: () => void;
     onBack: () => void;
 }
@@ -19,6 +29,8 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     onStart,
     onBack
 }) => {
+    const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
     return (
         <div className="relative flex min-h-screen w-full flex-col overflow-y-auto pb-44 bg-background-dark font-display text-white transition-colors duration-300">
             {/* Top App Bar Overlay */}
@@ -90,23 +102,66 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
 
             {/* List Content */}
             <div className="flex flex-col gap-2 sm:gap-3 px-3 sm:px-4 pb-8">
-                {exercises.map((exercise, index) => (
-                    <div key={index} className="flex items-center gap-3 sm:gap-4 bg-[#223649]/40 rounded-xl sm:rounded-2xl px-3 sm:px-4 min-h-[76px] sm:min-h-[84px] py-3 sm:py-4 border border-white/5 shadow-none">
-                        <div className="flex items-center justify-center size-8 sm:size-10 rounded-full bg-white/10 text-slate-400 font-bold text-sm shrink-0">
-                            {index + 1}
+                {exercises.map((exercise, index) => {
+                    const isExpanded = expandedIndex === index;
+                    const hasDetails = (exercise.formCues && exercise.formCues.length > 0) || exercise.notes;
+
+                    return (
+                        <div key={index} className="bg-[#223649]/40 rounded-xl sm:rounded-2xl border border-white/5 overflow-hidden">
+                            <button
+                                onClick={() => hasDetails ? setExpandedIndex(isExpanded ? null : index) : undefined}
+                                className={`flex items-center gap-3 sm:gap-4 px-3 sm:px-4 min-h-[76px] sm:min-h-[84px] py-3 sm:py-4 w-full text-left ${hasDetails ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                                <div className="flex items-center justify-center size-8 sm:size-10 rounded-full bg-white/10 text-slate-400 font-bold text-sm shrink-0">
+                                    {index + 1}
+                                </div>
+                                <div
+                                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-lg sm:rounded-xl size-12 sm:size-14 border border-white/10 bg-slate-700 shrink-0"
+                                    style={{ backgroundImage: exercise.image ? `url("${exercise.image}")` : undefined }}
+                                >
+                                    {!exercise.image && <div className="w-full h-full flex items-center justify-center text-slate-400"><span className="material-symbols-outlined text-xl">fitness_center</span></div>}
+                                </div>
+                                <div className="flex flex-col justify-center min-w-0 flex-1">
+                                    <p className="text-white text-sm sm:text-base font-bold leading-tight line-clamp-1">{exercise.name}</p>
+                                    <p className="text-[var(--color-primary)] text-[11px] sm:text-xs font-semibold leading-normal mt-0.5">{exercise.sets} Sets × {exercise.reps} Reps</p>
+                                    {exercise.targetMuscles && exercise.targetMuscles.length > 0 && (
+                                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                            {exercise.targetMuscles.map((m, i) => (
+                                                <span key={i} className="text-[9px] bg-white/5 text-slate-400 px-1.5 py-0.5 rounded-full capitalize">{m}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {hasDetails && (
+                                    <span className="material-symbols-outlined text-slate-600 text-lg shrink-0">
+                                        {isExpanded ? 'expand_less' : 'expand_more'}
+                                    </span>
+                                )}
+                            </button>
+
+                            {isExpanded && hasDetails && (
+                                <div className="px-4 pb-3 pt-0 border-t border-white/5">
+                                    {exercise.formCues && exercise.formCues.length > 0 && (
+                                        <div className="mt-2">
+                                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Form Cues</p>
+                                            <ul className="space-y-1">
+                                                {exercise.formCues.map((cue, i) => (
+                                                    <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
+                                                        <span className="text-[var(--color-primary)] mt-0.5 shrink-0">•</span>
+                                                        {cue}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    {exercise.notes && (
+                                        <p className="text-xs text-slate-400 mt-2 italic">{exercise.notes}</p>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                        <div
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-lg sm:rounded-xl size-12 sm:size-14 border border-white/10 bg-slate-700 shrink-0"
-                            style={{ backgroundImage: exercise.image ? `url("${exercise.image}")` : undefined }}
-                        >
-                            {!exercise.image && <div className="w-full h-full flex items-center justify-center text-slate-400"><span className="material-symbols-outlined text-xl">fitness_center</span></div>}
-                        </div>
-                        <div className="flex flex-col justify-center min-w-0 flex-1">
-                            <p className="text-white text-sm sm:text-base font-bold leading-tight line-clamp-1">{exercise.name}</p>
-                            <p className="text-[var(--color-primary)] text-[11px] sm:text-xs font-semibold leading-normal mt-0.5">{exercise.sets} Sets × {exercise.reps} Reps</p>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Sticky Bottom CTA */}
