@@ -32,6 +32,24 @@ export function createProvider(type: AIProviderType, apiKey: string): AIProvider
 // ============================================================================
 
 /**
+ * Resolve an API key for a given provider type from environment variables.
+ */
+function resolveKey(type: AIProviderType): string | undefined {
+  switch (type) {
+    case 'openai':
+      return process.env.OPENAI_API_KEY;
+    case 'anthropic':
+      return process.env.ANTHROPIC_API_KEY;
+    case 'google':
+      return process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+    case 'mistral':
+      return process.env.MISTRAL_API_KEY;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Get the configured AI provider from environment variables.
  *
  * Expected env vars:
@@ -41,30 +59,11 @@ export function createProvider(type: AIProviderType, apiKey: string): AIProvider
  * OR provider-specific keys:
  * - OPENAI_API_KEY
  * - ANTHROPIC_API_KEY
- * - GOOGLE_AI_API_KEY
+ * - GOOGLE_AI_API_KEY / GEMINI_API_KEY
  */
 export function getProviderFromEnv(): AIProvider {
-  // Check for unified config first
   const providerType = (process.env.AI_PROVIDER || 'openai') as AIProviderType;
-  let apiKey = process.env.AI_API_KEY;
-
-  // Fall back to provider-specific keys
-  if (!apiKey) {
-    switch (providerType) {
-      case 'openai':
-        apiKey = process.env.OPENAI_API_KEY;
-        break;
-      case 'anthropic':
-        apiKey = process.env.ANTHROPIC_API_KEY;
-        break;
-      case 'google':
-        apiKey = process.env.GOOGLE_AI_API_KEY;
-        break;
-      case 'mistral':
-        apiKey = process.env.MISTRAL_API_KEY;
-        break;
-    }
-  }
+  const apiKey = process.env.AI_API_KEY || resolveKey(providerType);
 
   if (!apiKey) {
     throw new Error(`No API key found for provider: ${providerType}. Set AI_API_KEY or ${providerType.toUpperCase()}_API_KEY`);
@@ -74,10 +73,73 @@ export function getProviderFromEnv(): AIProvider {
 }
 
 /**
+ * Build a prioritized list of available providers from env vars.
+ * The configured AI_PROVIDER comes first, then any others that have keys.
+ */
+function getAvailableProviders(): { type: AIProviderType; provider: AIProvider }[] {
+  const primary = (process.env.AI_PROVIDER || 'openai') as AIProviderType;
+  const order: AIProviderType[] = [primary, 'openai', 'google', 'anthropic'];
+  const seen = new Set<AIProviderType>();
+  const result: { type: AIProviderType; provider: AIProvider }[] = [];
+
+  for (const type of order) {
+    if (seen.has(type)) continue;
+    seen.add(type);
+    const key = process.env.AI_API_KEY && type === primary ? process.env.AI_API_KEY : resolveKey(type);
+    if (key) {
+      try {
+        result.push({ type, provider: createProvider(type, key) });
+      } catch { /* skip misconfigured providers */ }
+    }
+  }
+  return result;
+}
+
+/**
  * Get the current provider type from environment
  */
 export function getProviderType(): AIProviderType {
   return (process.env.AI_PROVIDER || 'openai') as AIProviderType;
+}
+
+// ============================================================================
+// Fallback Execution
+// ============================================================================
+
+export interface FallbackResult<T> {
+  data: T;
+  provider: AIProviderType;
+}
+
+/**
+ * Execute an AI operation with automatic provider fallback.
+ *
+ * Tries each available provider in priority order (AI_PROVIDER first,
+ * then openai → google → anthropic). On failure, logs the error and
+ * moves to the next provider. Throws the last error if all fail.
+ */
+export async function withFallback<T>(
+  fn: (provider: AIProvider) => Promise<T>
+): Promise<FallbackResult<T>> {
+  const providers = getAvailableProviders();
+
+  if (providers.length === 0) {
+    throw new Error('No AI providers configured. Set AI_API_KEY or a provider-specific key (OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY).');
+  }
+
+  let lastError: unknown;
+
+  for (const { type, provider } of providers) {
+    try {
+      const data = await fn(provider);
+      return { data, provider: type };
+    } catch (error) {
+      lastError = error;
+      console.error(`[ai] provider ${type} failed: ${(error as Error).message}`);
+    }
+  }
+
+  throw lastError;
 }
 
 // ============================================================================

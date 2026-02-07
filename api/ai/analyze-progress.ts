@@ -1,4 +1,4 @@
-import { getProvider, getProviderType } from '../../lib/ai';
+import { withFallback } from '../../lib/ai';
 import type { AIResponse } from '../../lib/ai/types';
 
 export const config = {
@@ -44,15 +44,16 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const provider = getProvider();
-    const result = await provider.analyzeProgress(images, metrics);
+    const { data: result, provider: usedProvider } = await withFallback(
+      p => p.analyzeProgress(images, metrics)
+    );
 
     const isError = result.startsWith('Error:');
 
     const response: AIResponse<string> = {
       success: !isError,
       data: isError ? undefined : result,
-      provider: getProviderType(),
+      provider: usedProvider,
       durationMs: Date.now() - startTime,
     };
 
@@ -78,7 +79,6 @@ export default async function handler(req: Request): Promise<Response> {
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },
-      provider: getProviderType(),
       durationMs: Date.now() - startTime,
     };
 

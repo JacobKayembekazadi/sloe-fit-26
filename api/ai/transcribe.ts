@@ -1,4 +1,4 @@
-import { getProvider, getProviderType } from '../../lib/ai';
+import { withFallback } from '../../lib/ai';
 import type { AIResponse } from '../../lib/ai/types';
 
 export const config = {
@@ -34,23 +34,6 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const provider = getProvider();
-
-    // Check if provider supports transcription
-    if (!provider.transcribeAudio) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            type: 'invalid_request',
-            message: `Provider ${getProviderType()} does not support audio transcription`,
-            retryable: false,
-          },
-        } as AIResponse<string>),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Convert base64 to Blob
     const binaryString = atob(audioBase64);
     const bytes = new Uint8Array(binaryString.length);
@@ -59,12 +42,17 @@ export default async function handler(req: Request): Promise<Response> {
     }
     const audioBlob = new Blob([bytes], { type: mimeType || 'audio/webm' });
 
-    const result = await provider.transcribeAudio(audioBlob);
+    const { data: result, provider: usedProvider } = await withFallback(p => {
+      if (!p.transcribeAudio) {
+        throw new Error(`Provider ${p.name} does not support audio transcription`);
+      }
+      return p.transcribeAudio(audioBlob);
+    });
 
     const response: AIResponse<string> = {
       success: result !== null,
       data: result ?? undefined,
-      provider: getProviderType(),
+      provider: usedProvider,
       durationMs: Date.now() - startTime,
     };
 
@@ -90,7 +78,6 @@ export default async function handler(req: Request): Promise<Response> {
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },
-      provider: getProviderType(),
       durationMs: Date.now() - startTime,
     };
 

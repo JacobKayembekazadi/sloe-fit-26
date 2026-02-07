@@ -1,4 +1,4 @@
-import { getProvider, getProviderType } from '../../lib/ai';
+import { withFallback } from '../../lib/ai';
 import type { AIResponse, PhotoMealAnalysis } from '../../lib/ai/types';
 
 export const config = {
@@ -34,13 +34,14 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const provider = getProvider();
-    const result = await provider.analyzeMealPhoto(imageBase64, userGoal);
+    const { data: result, provider: usedProvider } = await withFallback(
+      p => p.analyzeMealPhoto(imageBase64, userGoal)
+    );
 
     const response: AIResponse<PhotoMealAnalysis> = {
       success: !result.markdown.startsWith('Error:'),
       data: result,
-      provider: getProviderType(),
+      provider: usedProvider,
       durationMs: Date.now() - startTime,
     };
 
@@ -66,7 +67,6 @@ export default async function handler(req: Request): Promise<Response> {
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },
-      provider: getProviderType(),
       durationMs: Date.now() - startTime,
     };
 
