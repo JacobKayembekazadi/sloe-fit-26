@@ -69,10 +69,10 @@ const RestTimer: React.FC<RestTimerProps> = ({
 
     const handleSubtract = (seconds: number) => {
         setTimeLeft(prev => Math.max(0, prev - seconds));
-        setTotalTime(prev => Math.max(seconds, prev));
+        // Don't shrink totalTime — this makes the ring drain faster (intuitive)
     };
 
-    const progress = totalTime > 0 ? timeLeft / totalTime : 0;
+    const progress = totalTime > 0 ? Math.min(1, timeLeft / totalTime) : 0;
 
     // Mini SVG circle progress
     const circleRadius = 16;
@@ -173,7 +173,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
                         </svg>
                         <button
                             onClick={() => handleSubtract(15)}
-                            className="size-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
+                            className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
                             aria-label="Subtract 15 seconds"
                         >
                             −
@@ -183,7 +183,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
                         </span>
                         <button
                             onClick={() => handleAdd(15)}
-                            className="size-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
+                            className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
                             aria-label="Add 15 seconds"
                         >
                             +

@@ -27,6 +27,7 @@ interface TrackedExercise {
   targetMuscles?: string[];
   restSeconds?: number;
   formCues?: string[];
+  exerciseId?: string;
 }
 
 export interface WorkoutDraft {
@@ -80,6 +81,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
         targetMuscles: ex.targetMuscles,
         restSeconds: ex.restSeconds,
         formCues: ex.formCues,
+        exerciseId: ex.exerciseId,
       };
     });
   };
@@ -256,15 +258,13 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   };
 
   const handleFinishWorkout = () => {
-    // Clear the draft since workout is complete
-    localStorage.removeItem(DRAFT_STORAGE_KEY);
-
     // Convert back to ExerciseLog format
     const finalLogs = exercises.map(ex => {
       const s = ex.sets.filter(xs => xs.completed);
       const actualReps = s.map(set => set.reps).filter(Boolean);
-      const avgWeight = s.length > 0
-        ? Math.round(s.reduce((acc, set) => acc + (parseFloat(set.weight) || 0), 0) / s.length)
+      const setsWithWeight = s.filter(set => parseFloat(set.weight) > 0);
+      const avgWeight = setsWithWeight.length > 0
+        ? Math.round(setsWithWeight.reduce((acc, set) => acc + parseFloat(set.weight), 0) / setsWithWeight.length)
         : 0;
       return {
         id: ex.id,
@@ -276,9 +276,12 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
         targetMuscles: ex.targetMuscles,
         restSeconds: ex.restSeconds,
         formCues: ex.formCues,
+        exerciseId: ex.exerciseId,
       };
     });
 
+    // Clear draft AFTER building final logs (onComplete triggers Supabase save)
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
     onComplete(finalLogs, workoutTitle);
   };
 
