@@ -113,7 +113,7 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
             </div>
 
             {/* Footer Buttons */}
-            <div className="mt-auto px-3 sm:px-4 pb-6 sm:pb-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3">
+            <div className="mt-auto px-3 sm:px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3">
                 <button onClick={onShare} disabled={isSaving} className={`w-full bg-[var(--color-primary)] text-background-dark h-12 sm:h-14 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-[0.98] transition-transform ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <span className="material-symbols-outlined text-xl">ios_share</span>
                     Share Progress

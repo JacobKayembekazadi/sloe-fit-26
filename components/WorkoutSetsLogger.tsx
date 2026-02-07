@@ -37,16 +37,6 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                 </p>
             </div>
 
-            {/* AI Suggestion */}
-            <div className="px-4 shrink-0">
-                <div className="bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 rounded-xl py-3 px-4 flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[var(--color-primary)] text-xl">auto_awesome</span>
-                    <h4 className="text-[var(--color-primary)] text-sm font-bold leading-normal tracking-[0.015em] flex-1">
-                        AI Suggestion: Increase weight by 5 lbs for progressive overload
-                    </h4>
-                </div>
-            </div>
-
             {/* Sets List */}
             <div className="flex flex-col gap-2 mt-4 px-3 sm:px-4">
                 {/* Labels */}
@@ -72,7 +62,7 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                         <div className="flex-1 px-1 sm:px-2 text-[10px] sm:text-xs text-slate-500 hidden sm:block">
                             {set.previous || '-'}
                         </div>
-                        <div className="w-18 sm:w-20">
+                        <div className="w-[4.5rem] sm:w-20">
                             <input
                                 className={`w-full rounded-lg h-11 sm:h-12 text-center text-sm font-bold outline-none border focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors ${set.completed
                                         ? 'bg-[#223649]/50 text-slate-500 border-none'
@@ -85,7 +75,7 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                                 inputMode="decimal"
                             />
                         </div>
-                        <div className="w-18 sm:w-20">
+                        <div className="w-[4.5rem] sm:w-20">
                             <input
                                 className={`w-full rounded-lg h-11 sm:h-12 text-center text-sm font-bold outline-none border focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors ${set.completed
                                         ? 'bg-[#223649]/50 text-slate-500 border-none'

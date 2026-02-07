@@ -1,5 +1,4 @@
 import React, { memo } from 'react';
-import { useTheme } from '../contexts/ThemeContext';
 
 interface WorkoutPreviewProps {
     title: string;
@@ -20,8 +19,6 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     onStart,
     onBack
 }) => {
-    const { theme } = useTheme();
-
     return (
         <div className="relative flex min-h-screen w-full flex-col overflow-y-auto pb-44 bg-background-dark font-display text-white transition-colors duration-300">
             {/* Top App Bar Overlay */}
@@ -115,10 +112,6 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
             {/* Sticky Bottom CTA */}
             <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-background-dark via-background-dark/95 to-transparent pt-8 sm:pt-10 z-[70]">
                 <div className="flex flex-col gap-3 sm:gap-4 max-w-md mx-auto">
-                    <div className="flex items-center justify-center gap-2 text-white/50 text-[10px] uppercase tracking-widest font-bold">
-                        <span className="material-symbols-outlined text-xs">vibration</span>
-                        Haptic Guidance Enabled
-                    </div>
                     <button
                         onClick={onStart}
                         className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 sm:h-16 bg-[var(--color-primary)] text-black gap-2 sm:gap-3 text-base sm:text-lg font-black leading-normal tracking-wide shadow-[0_8px_30px_rgba(212,255,0,0.3)] hover:shadow-[0_8px_40px_rgba(212,255,0,0.4)] active:scale-[0.98] transition-all"

@@ -88,8 +88,6 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   // Memoized callbacks for RestTimer to prevent re-renders triggering setState during render
   const handleRestComplete = useCallback(() => setRestTimerOpen(false), []);
   const handleRestSkip = useCallback(() => setRestTimerOpen(false), []);
-  const handleRestAdd = useCallback((s: number) => setRestDuration(prev => prev + s), []);
-  const handleRestSubtract = useCallback((s: number) => setRestDuration(prev => Math.max(0, prev - s)), []);
 
   // Elapsed time tracker
   useEffect(() => {
@@ -108,7 +106,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     const draft: WorkoutDraft = {
       exercises,
       activeExerciseIndex,
-      elapsedTime,
+      elapsedTime: Math.floor((Date.now() - workoutStartTime) / 1000),
       workoutTitle,
       savedAt: Date.now()
     };
@@ -118,7 +116,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     } catch {
       // localStorage might be full or unavailable - fail silently
     }
-  }, [exercises, activeExerciseIndex, elapsedTime, workoutTitle]);
+  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle]);
 
   // Format elapsed time
   const formatTime = (seconds: number) => {
@@ -142,10 +140,12 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   const handleUpdateSet = (setId: number, field: 'weight' | 'reps', value: string) => {
     setExercises(prev => {
       const newExercises = [...prev];
-      const exercise = newExercises[activeExerciseIndex];
-      const setIndex = exercise.sets.findIndex(s => s.id === setId);
+      const oldExercise = newExercises[activeExerciseIndex];
+      const setIndex = oldExercise.sets.findIndex(s => s.id === setId);
       if (setIndex !== -1) {
-        exercise.sets[setIndex] = { ...exercise.sets[setIndex], [field]: value };
+        const newSets = [...oldExercise.sets];
+        newSets[setIndex] = { ...newSets[setIndex], [field]: value };
+        newExercises[activeExerciseIndex] = { ...oldExercise, sets: newSets };
       }
       return newExercises;
     });
@@ -154,13 +154,15 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   const handleToggleSet = (setId: number) => {
     setExercises(prev => {
       const newExercises = [...prev];
-      const exercise = newExercises[activeExerciseIndex];
-      const setIndex = exercise.sets.findIndex(s => s.id === setId);
+      const oldExercise = newExercises[activeExerciseIndex];
+      const setIndex = oldExercise.sets.findIndex(s => s.id === setId);
 
       if (setIndex !== -1) {
-        const set = exercise.sets[setIndex];
+        const set = oldExercise.sets[setIndex];
         const newCompleted = !set.completed;
-        exercise.sets[setIndex] = { ...set, completed: newCompleted };
+        const newSets = [...oldExercise.sets];
+        newSets[setIndex] = { ...set, completed: newCompleted };
+        newExercises[activeExerciseIndex] = { ...oldExercise, sets: newSets };
 
         // Auto-trigger rest timer on completion
         if (newCompleted) {
@@ -276,8 +278,6 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
           initialTime={restDuration}
           onComplete={handleRestComplete}
           onSkip={handleRestSkip}
-          onAdd={handleRestAdd}
-          onSubtract={handleRestSubtract}
         />
       )}
 

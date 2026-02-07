@@ -47,6 +47,17 @@ const formatTimeAgo = (timestamp: number): string => {
     return `${hours} hour${hours > 1 ? 's' : ''} ago`;
 };
 
+// Convert AI workout to exercise log format (module-level — no per-render allocation)
+const aiWorkoutToExerciseLog = (workout: GeneratedWorkout): ExerciseLog[] => {
+    return workout.exercises.map((ex, idx) => ({
+        id: idx + 1,
+        name: ex.name,
+        sets: String(ex.sets),
+        reps: ex.reps,
+        weight: ''
+    }));
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory, showHistoryView, showTrainerView, nutritionLog, saveNutritionLog, nutritionTargets, goal, workoutHistory, userProfile }) => {
     const { user } = useAuth();
     const { showToast } = useToast();
@@ -131,16 +142,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     // Get fallback workout if AI is not used
     const fallbackWorkout = useMemo(() => getTodaysWorkout(goal, workoutsThisWeek), [goal, workoutsThisWeek]);
 
-    // Convert AI workout to exercise log format
-    const aiWorkoutToExerciseLog = (workout: GeneratedWorkout): ExerciseLog[] => {
-        return workout.exercises.map((ex, idx) => ({
-            id: idx + 1,
-            name: ex.name,
-            sets: String(ex.sets),
-            reps: ex.reps,
-            weight: ''
-        }));
-    };
+    // Memoize supplement recommendations so we don't create new objects every render
+    const supplementRecs = useMemo(() => getRecommendations(goal), [goal]);
 
     const [workoutLog, setWorkoutLog] = useState<ExerciseLog[]>(fallbackWorkout.exercises);
     const [workoutTitle, setWorkoutTitle] = useState<string>(fallbackWorkout.title);
@@ -188,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         setAiWorkout(null);
     };
 
-    const handleRateWorkout = async (rating: number) => {
+    const handleRateWorkout = async (rating: number): Promise<boolean> => {
         setPostWorkoutRating(rating);
         setIsSaving(true);
 
@@ -201,9 +204,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         if (saved) {
             showToast('Workout Saved!', 'success');
             setWorkoutStatus('idle');
+            return true;
         } else {
             showToast('Failed to save workout. Please try again.', 'error');
             // DON'T close modal - let user retry
+            return false;
         }
     };
 
@@ -314,7 +319,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         <div className="w-full space-y-8 pb-8">
             {/* Draft Recovery Modal */}
             {recoveryDraft && (
-                <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[70] p-4">
+                <div role="dialog" aria-modal="true" aria-label="Resume workout" className="fixed inset-0 bg-black/90 flex items-center justify-center z-[70] p-4">
                     <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-700">
                         <div className="text-center mb-4">
                             <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -350,6 +355,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
             {workoutStatus === 'recovery' && (
                 <RecoveryCheckIn
                     onComplete={handleRecoveryComplete}
+                    onSkip={() => setWorkoutStatus('idle')}
                     isLoading={false}
                 />
             )}
@@ -396,8 +402,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         onClose={() => handleRateWorkout(3)} // Default rating if closed without rating
                         onRate={handleRateWorkout}
                         onViewHistory={async () => {
-                            await handleRateWorkout(3); // Save with default rating
-                            showHistoryView(); // Then navigate to history
+                            const saved = await handleRateWorkout(3);
+                            if (saved) showHistoryView();
                         }}
                         isSaving={isSaving}
                     />
@@ -558,7 +564,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                             <span className="w-2 h-6 bg-[var(--color-primary)] rounded-full"></span>
                             <h3 className="text-lg font-bold text-white">RECOVERY FUEL</h3>
                         </div>
-                        {getRecommendations(goal).map(rec => (
+                        {supplementRecs.map(rec => (
                             <SupplementRecommendationCard key={rec.id} recommendation={rec} />
                         ))}
                     </div>

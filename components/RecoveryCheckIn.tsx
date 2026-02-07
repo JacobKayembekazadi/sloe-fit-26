@@ -23,7 +23,7 @@ const SORENESS_AREAS = [
     { id: 'core', label: 'Core', emoji: '' }
 ];
 
-const RecoveryCheckIn: React.FC<RecoveryCheckInProps> = ({ onComplete, isLoading }) => {
+const RecoveryCheckIn: React.FC<RecoveryCheckInProps> = ({ onComplete, onSkip, isLoading }) => {
     const [step, setStep] = useState<'energy' | 'soreness' | 'sleep'>('energy');
     const [recovery, setRecovery] = useState<RecoveryState>({
         lastWorkoutRating: 3,
@@ -81,8 +81,17 @@ const RecoveryCheckIn: React.FC<RecoveryCheckInProps> = ({ onComplete, isLoading
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div role="dialog" aria-modal="true" aria-label="Recovery check-in" className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
             <div className="w-full max-w-md">
+                {/* Skip / Close button */}
+                {onSkip && (
+                    <div className="flex justify-end mb-2">
+                        <button onClick={onSkip} aria-label="Skip recovery check-in"
+                            className="flex items-center justify-center size-10 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                            <span className="material-symbols-outlined text-xl">close</span>
+                        </button>
+                    </div>
+                )}
                 {/* Progress indicator */}
                 <div className="flex gap-2 mb-6">
                     {['energy', 'soreness', 'sleep'].map((s, i) => (

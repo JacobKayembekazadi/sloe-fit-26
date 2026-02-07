@@ -4,16 +4,12 @@ interface RestTimerProps {
     initialTime: number; // seconds
     onComplete: () => void;
     onSkip: () => void;
-    onAdd: (seconds: number) => void;
-    onSubtract: (seconds: number) => void;
 }
 
 const RestTimer: React.FC<RestTimerProps> = ({
     initialTime,
     onComplete,
-    onSkip,
-    onAdd,
-    onSubtract
+    onSkip
 }) => {
     const [timeLeft, setTimeLeft] = useState(initialTime);
     const [isComplete, setIsComplete] = useState(false);
@@ -25,10 +21,15 @@ const RestTimer: React.FC<RestTimerProps> = ({
         onCompleteRef.current = onComplete;
     }, [onComplete]);
 
-    // Update local state when prop changes, but only if it's a manual adjustment
-    useEffect(() => {
-        setTimeLeft(initialTime);
-    }, [initialTime]);
+    // Local +/- handlers that modify timeLeft directly (no prop round-trip)
+    const handleAdd = useCallback((seconds: number) => {
+        setTimeLeft(prev => prev + seconds);
+        totalTimeRef.current += seconds;
+    }, []);
+    const handleSubtract = useCallback((seconds: number) => {
+        setTimeLeft(prev => Math.max(0, prev - seconds));
+        totalTimeRef.current = Math.max(1, totalTimeRef.current - seconds);
+    }, []);
 
     // Timer countdown effect
     useEffect(() => {
@@ -97,10 +98,10 @@ const RestTimer: React.FC<RestTimerProps> = ({
 
                     {/* Adjusters */}
                     <div className="absolute bottom-2 sm:bottom-4 flex gap-6 sm:gap-8">
-                        <button onClick={() => onSubtract(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
+                        <button onClick={() => handleSubtract(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
                             <span className="material-symbols-outlined text-xl">remove</span>
                         </button>
-                        <button onClick={() => onAdd(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
+                        <button onClick={() => handleAdd(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
                             <span className="material-symbols-outlined text-xl">add</span>
                         </button>
                     </div>
