@@ -43,8 +43,8 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                 <div className="flex items-center px-1 sm:px-2 py-1 text-[#90adcb] text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">
                     <div className="w-8 sm:w-10">Set</div>
                     <div className="flex-1 px-1 sm:px-2 hidden sm:block">Previous</div>
-                    <div className="w-16 sm:w-20 text-center">Weight</div>
-                    <div className="w-16 sm:w-20 text-center">Reps</div>
+                    <div className="w-[4.5rem] sm:w-20 text-center">Weight</div>
+                    <div className="w-[4.5rem] sm:w-20 text-center">Reps</div>
                     <div className="w-9 sm:w-10 text-right">Done</div>
                 </div>
 
@@ -91,6 +91,7 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                         <div className="w-12 flex justify-end">
                             <button
                                 onClick={() => onToggleSet(set.id)}
+                                aria-label={set.completed ? `Unmark set ${index + 1}` : `Mark set ${index + 1} complete`}
                                 className={`size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border-2 transition-colors ${set.completed
                                         ? 'bg-green-500 border-green-500 text-white'
                                         : 'bg-transparent border-[#314d68] text-transparent hover:border-[var(--color-primary)]'

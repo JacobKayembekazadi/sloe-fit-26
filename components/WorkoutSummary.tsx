@@ -31,7 +31,7 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
                 </button>
                 <h2 className="text-base sm:text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Workout Summary</h2>
                 <div className="flex w-10 sm:w-12 items-center justify-end">
-                    <button className="flex cursor-pointer items-center justify-center overflow-hidden rounded-lg size-10 sm:size-12 bg-transparent text-[var(--color-primary)] gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
+                    <button onClick={onShare} className="flex cursor-pointer items-center justify-center overflow-hidden rounded-lg size-10 sm:size-12 bg-transparent text-[var(--color-primary)] gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
                         <span className="material-symbols-outlined text-xl sm:text-2xl">share</span>
                     </button>
                 </div>

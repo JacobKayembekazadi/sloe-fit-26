@@ -93,9 +93,10 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
 
-  // Derive today's meals from mealEntries - Bug #3 fix
+  // Derive today's meals from mealEntries — use local date (not UTC)
   const todaysMeals = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return mealEntries
       .filter(m => m.date === today)
       .map(m => ({
@@ -109,6 +110,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         mealType: m.meal_type
       }));
   }, [mealEntries]);
+
+  // Memoize supplement recommendations to avoid re-computation on every render
+  const supplementRecs = useMemo(() => getRecommendations(userGoal), [userGoal]);
 
   // Convert favorites to SavedMeal format for QuickAddMeal component
   const favorites: SavedMeal[] = useMemo(() =>
@@ -248,8 +252,15 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         });
       }
       showToast(`Added ${meal.name} - ${meal.calories} cal`, 'success');
-    } catch {
-      showToast('Failed to log meal. Please try again.', 'error');
+    } catch (err: any) {
+      const msg = err?.message?.toLowerCase?.() ?? '';
+      if (msg.includes('auth') || msg.includes('log in') || msg.includes('401')) {
+        showToast('Please log in to save meals', 'error');
+      } else if (msg.includes('network') || msg.includes('fetch')) {
+        showToast('Network error — meal saved offline and will sync when reconnected', 'error');
+      } else {
+        showToast('Failed to save meal. Please try again.', 'error');
+      }
     }
   };
 
@@ -282,8 +293,15 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       }
       setIsLogged(true);
       showToast(`Logged ${macros.calories} calories`, 'success');
-    } catch {
-      showToast('Failed to log meal. Please try again.', 'error');
+    } catch (err: any) {
+      const msg = err?.message?.toLowerCase?.() ?? '';
+      if (msg.includes('auth') || msg.includes('log in') || msg.includes('401')) {
+        showToast('Please log in to save meals', 'error');
+      } else if (msg.includes('network') || msg.includes('fetch')) {
+        showToast('Network error — meal saved offline and will sync when reconnected', 'error');
+      } else {
+        showToast('Failed to save meal. Please try again.', 'error');
+      }
     } finally {
       setIsLogging(false);
       isLoggingRef.current = false;
@@ -884,7 +902,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           </h3>
           <p className="text-gray-400 text-sm mb-4">Personalized for your goals</p>
           <div className="space-y-3">
-            {getRecommendations(userGoal).map(rec => (
+            {supplementRecs.map(rec => (
               <SupplementRecommendationCard key={rec.id} recommendation={rec} />
             ))}
           </div>

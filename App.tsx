@@ -241,7 +241,8 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'meal':
-        const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD to match database
+        const now = new Date();
+        const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const todayLog = nutritionLogs.find(l => l.date === todayDate);
         return (
           <Suspense fallback={<LazyFallback />}>

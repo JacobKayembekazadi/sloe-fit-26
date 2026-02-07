@@ -244,6 +244,8 @@ async function sleep(ms: number): Promise<void> {
 // Token Management
 // ============================================================================
 
+import { supabase } from '../supabaseClient';
+
 // Helper to check if a JWT token is expired
 const isTokenExpired = (token: string): boolean => {
   try {
@@ -255,10 +257,10 @@ const isTokenExpired = (token: string): boolean => {
   }
 };
 
-// Helper to get auth token from localStorage
-export const getAuthToken = (): string => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+// Helper to get auth token — attempts session refresh when stored token is expired
+export const getAuthToken = async (): Promise<string> => {
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   try {
     const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
     const storageKey = `sb-${projectId}-auth-token`;
@@ -266,9 +268,18 @@ export const getAuthToken = (): string => {
     if (stored) {
       const parsed = JSON.parse(stored);
       const accessToken = parsed?.access_token;
-      // Return token only if it exists and isn't expired
+      // Return token if it exists and isn't expired
       if (accessToken && !isTokenExpired(accessToken)) {
         return accessToken;
+      }
+      // Token is expired — attempt refresh via Supabase client (triggers autoRefreshToken)
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) {
+          return data.session.access_token;
+        }
+      } catch {
+        // Refresh failed — fall through to anon key
       }
     }
   } catch {
@@ -278,8 +289,8 @@ export const getAuthToken = (): string => {
 };
 
 // Get common headers for Supabase requests
-export const getSupabaseHeaders = (prefer?: string): Record<string, string> => {
-  const authToken = getAuthToken();
+export const getSupabaseHeaders = async (prefer?: string): Promise<Record<string, string>> => {
+  const authToken = await getAuthToken();
   return {
     'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
     'Authorization': `Bearer ${authToken}`,
@@ -385,9 +396,10 @@ export const supabaseGet = async <T = unknown>(
     }
   }
 
+  const headers = await getSupabaseHeaders();
   const requestPromise = fetchWithRetry<T>(
     url,
-    { headers: getSupabaseHeaders() },
+    { headers },
     'GET',
     endpoint,
     options?.timeout ?? TIMEOUTS.get
@@ -424,11 +436,12 @@ export const supabaseInsert = async <T = unknown>(
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const url = `${supabaseUrl}/rest/v1/${table}`;
 
+  const headers = await getSupabaseHeaders('return=representation');
   const result = await fetchWithRetry<T | T[]>(
     url,
     {
       method: 'POST',
-      headers: getSupabaseHeaders('return=representation'),
+      headers,
       body: JSON.stringify(data),
     },
     'INSERT',
@@ -451,11 +464,12 @@ export const supabaseUpdate = async (
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const url = `${supabaseUrl}/rest/v1/${endpoint}`;
 
+  const headers = await getSupabaseHeaders('return=minimal');
   const result = await fetchWithRetry<unknown>(
     url,
     {
       method: 'PATCH',
-      headers: getSupabaseHeaders('return=minimal'),
+      headers,
       body: JSON.stringify(data),
     },
     'UPDATE',
@@ -476,11 +490,12 @@ export const supabaseDelete = async (
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const url = `${supabaseUrl}/rest/v1/${endpoint}`;
 
+  const headers = await getSupabaseHeaders('return=minimal');
   const result = await fetchWithRetry<unknown>(
     url,
     {
       method: 'DELETE',
-      headers: getSupabaseHeaders('return=minimal'),
+      headers,
     },
     'DELETE',
     endpoint,
@@ -503,7 +518,7 @@ export const supabaseUpsert = async <T = unknown>(
   const timeoutMs = options?.timeout ?? TIMEOUTS.upsert;
 
   // For upsert, we need the resolution=merge-duplicates preference
-  const headers = getSupabaseHeaders();
+  const headers = await getSupabaseHeaders();
   headers['Prefer'] = 'return=representation,resolution=merge-duplicates';
 
   // Build URL with on_conflict if specified
@@ -536,11 +551,12 @@ export const supabaseUpsert = async <T = unknown>(
     }
 
     // Try update first
+    const fallbackHeaders = await getSupabaseHeaders('return=representation');
     const updateResult = await fetchWithRetry<T | T[]>(
       `${supabaseUrl}/rest/v1/${table}?user_id=eq.${data.user_id}&date=eq.${data.date}`,
       {
         method: 'PATCH',
-        headers: getSupabaseHeaders('return=representation'),
+        headers: fallbackHeaders,
         body: JSON.stringify(data),
       },
       'UPSERT_FALLBACK_UPDATE',
@@ -557,7 +573,7 @@ export const supabaseUpsert = async <T = unknown>(
       `${supabaseUrl}/rest/v1/${table}`,
       {
         method: 'POST',
-        headers: getSupabaseHeaders('return=representation'),
+        headers: fallbackHeaders,
         body: JSON.stringify(data),
       },
       'UPSERT_FALLBACK_INSERT',
@@ -586,11 +602,12 @@ export const supabaseRpc = async <T = unknown>(
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const url = `${supabaseUrl}/rest/v1/rpc/${functionName}`;
 
+  const headers = await getSupabaseHeaders();
   return fetchWithRetry<T>(
     url,
     {
       method: 'POST',
-      headers: getSupabaseHeaders(),
+      headers,
       body: params ? JSON.stringify(params) : undefined,
     },
     'RPC',

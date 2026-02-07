@@ -47,6 +47,14 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
     const [loadingInsights, setLoadingInsights] = useState(false);
     const [selectedMetric, setSelectedMetric] = useState<'calories' | 'protein' | 'carbs' | 'fats'>('calories');
 
+    // Format a Date to local YYYY-MM-DD (avoids UTC shift from toISOString)
+    const toLocalDateStr = (d: Date): string => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     // Get last 7 days with proper date alignment
     const weekData = useMemo(() => {
         const today = new Date();
@@ -55,7 +63,7 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
         for (let i = 6; i >= 0; i--) {
             const date = new Date(today);
             date.setDate(today.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = toLocalDateStr(date);
             const dayOfWeek = date.getDay();
 
             // Find matching log (handle different date formats)
@@ -70,7 +78,7 @@ const WeeklyNutritionSummary: React.FC<WeeklyNutritionSummaryProps> = ({
                         console.warn('[WeeklyNutritionSummary] Unparseable date in nutrition log:', l.date);
                         return false;
                     }
-                    return parsed.toISOString().split('T')[0] === dateStr;
+                    return toLocalDateStr(parsed) === dateStr;
                 } catch {
                     console.warn('[WeeklyNutritionSummary] Failed to parse date:', l.date);
                     return false;

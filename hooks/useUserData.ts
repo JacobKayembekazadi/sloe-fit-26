@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '../services/supabaseRawFetch';
+import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert, supabaseDelete } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
 import { CompletedWorkout, NutritionLog } from '../App';
 import {
@@ -112,10 +112,6 @@ const INITIAL_STATE: DataState = {
     favorites: []
 };
 
-// Timeout for data fetching (prevents infinite loading)
-// Increased to 20s to handle Supabase cold starts on free tier
-const FETCH_TIMEOUT_MS = 20000;
-
 // Activity multiplier for TDEE calculation
 const ACTIVITY_MULTIPLIER = 1.55;
 
@@ -156,9 +152,12 @@ export const calculateNutritionTargets = (profile: UserProfile): NutritionTarget
     return getDefaultTargets(profile.goal);
 };
 
-// Format date consistently for storage
+// Format date consistently for storage (local timezone, not UTC)
 const formatDateForDB = (date: Date = new Date()): string => {
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
 // Format date for display
@@ -210,84 +209,29 @@ export const useUserData = () => {
         setLoadingState('loading');
         setError(null);
 
-        // Use raw fetch since Supabase client has issues
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-        // Get the user's JWT token from localStorage (bypassing Supabase client)
-        let authToken = supabaseKey;
         try {
-            // Extract project ID from URL (e.g., https://abc123.supabase.co -> abc123)
-            const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
-            const storageKey = `sb-${projectId}-auth-token`;
-            const stored = localStorage.getItem(storageKey);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                authToken = parsed?.access_token || supabaseKey;
-            }
-        } catch {
-            // Could not get auth token from localStorage, using anon key
-        }
-
-        const fetchHeaders = {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-        };
-
-        try {
-            // Create a timeout promise
-            const timeoutPromise = new Promise<never>((_, reject) => {
-                const timeoutId = setTimeout(() => reject(new Error('Request timeout')), FETCH_TIMEOUT_MS);
-                // Clear timeout if aborted
-                signal.addEventListener('abort', () => {
-                    clearTimeout(timeoutId);
-                    reject(new Error('Aborted'));
-                });
+            // Fetch all data in parallel using supabaseGet (retry, timeout, dedup built-in)
+            const profileFetch = supabaseGet<any[]>(
+                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,full_name,role,trainer_id&id=eq.${userId}`
+            ).then(r => {
+                if (r.data && Array.isArray(r.data) && r.data.length > 0) {
+                    return { data: r.data[0], error: null };
+                } else if (r.data && Array.isArray(r.data) && r.data.length === 0) {
+                    return { data: null, error: { code: 'PGRST116', message: 'No rows returned' } };
+                }
+                return r;
             });
 
+            const workoutsFetch = supabaseGet<any[]>(`workouts?select=*&user_id=eq.${userId}&order=date.desc&limit=50`);
 
-            // Fetch all data in parallel using raw fetch
+            const nutritionFetch = supabaseGet<any[]>(`nutrition_logs?select=*&user_id=eq.${userId}&order=date.desc&limit=30`);
 
-            const rawFetch = async (endpoint: string) => {
-                const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
-                    headers: fetchHeaders,
-                    signal
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    return { data: null, error: data };
-                }
-                return { data, error: null };
-            };
+            const mealEntriesFetch = supabaseGet<any[]>(`meal_entries?select=*&user_id=eq.${userId}&order=created_at.desc&limit=100`);
 
-            const profileFetch = rawFetch(`profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,full_name,role,trainer_id&id=eq.${userId}`)
-                .then(r => {
-                    // Convert array to single object for profile
-                    if (r.data && Array.isArray(r.data) && r.data.length > 0) {
-                        return { data: r.data[0], error: null };
-                    } else if (r.data && Array.isArray(r.data) && r.data.length === 0) {
-                        return { data: null, error: { code: 'PGRST116', message: 'No rows returned' } };
-                    }
-                    return r;
-                });
+            const favoritesFetch = supabaseGet<any[]>(`favorite_foods?select=*&user_id=eq.${userId}&order=times_logged.desc&limit=20`);
 
-            const workoutsFetch = rawFetch(`workouts?select=*&user_id=eq.${userId}&order=date.desc&limit=50`);
-
-            const nutritionFetch = rawFetch(`nutrition_logs?select=*&user_id=eq.${userId}&order=date.desc&limit=30`);
-
-            // Fetch meal entries (individual meals) - Bug #1 & #3 fix
-            const mealEntriesFetch = rawFetch(`meal_entries?select=*&user_id=eq.${userId}&order=created_at.desc&limit=100`);
-
-            // Fetch favorite foods - Bug #2 fix
-            const favoritesFetch = rawFetch(`favorite_foods?select=*&user_id=eq.${userId}&order=times_logged.desc&limit=20`);
-
-            const fetchPromise = Promise.all([profileFetch, workoutsFetch, nutritionFetch, mealEntriesFetch, favoritesFetch]);
-
-            const [profileResult, workoutsResult, nutritionResult, mealEntriesResult, favoritesResult] = await Promise.race([
-                fetchPromise,
-                timeoutPromise
+            const [profileResult, workoutsResult, nutritionResult, mealEntriesResult, favoritesResult] = await Promise.all([
+                profileFetch, workoutsFetch, nutritionFetch, mealEntriesFetch, favoritesFetch
             ]) as [any, any, any, any, any];
 
             // Check if request was aborted or user changed
@@ -532,40 +476,19 @@ export const useUserData = () => {
             // We fetch meal_entries from the DB directly to get authoritative totals
             if (affectedDates.size > 0) {
                 console.log(`[useUserData] Persisting nutrition_logs for ${affectedDates.size} date(s)`);
-                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-                let authToken = supabaseKey;
-                try {
-                    const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
-                    const storageKey = `sb-${projectId}-auth-token`;
-                    const stored = localStorage.getItem(storageKey);
-                    if (stored) {
-                        const parsed = JSON.parse(stored);
-                        authToken = parsed?.access_token || supabaseKey;
-                    }
-                } catch {
-                    // Use anon key
-                }
 
                 for (const date of affectedDates) {
                     try {
                         // Fetch all meal_entries for this date from DB (source of truth)
-                        const response = await fetch(
-                            `${supabaseUrl}/rest/v1/meal_entries?select=calories,protein,carbs,fats&user_id=eq.${user.id}&date=eq.${date}`,
-                            {
-                                headers: {
-                                    'apikey': supabaseKey,
-                                    'Authorization': `Bearer ${authToken}`,
-                                    'Content-Type': 'application/json'
-                                }
-                            }
+                        // Uses supabaseGet for retry, timeout, and fresh token per request
+                        const { data: meals, error: fetchError } = await supabaseGet<{ calories: number; protein: number; carbs: number; fats: number }[]>(
+                            `meal_entries?select=calories,protein,carbs,fats&user_id=eq.${user.id}&date=eq.${date}`,
+                            { dedupe: false }
                         );
-                        const meals = await response.json();
 
-                        if (response.ok && Array.isArray(meals)) {
+                        if (!fetchError && Array.isArray(meals)) {
                             const totals = meals.reduce(
-                                (acc: { calories: number; protein: number; carbs: number; fats: number }, m: { calories: number; protein: number; carbs: number; fats: number }) => ({
+                                (acc, m) => ({
                                     calories: acc.calories + (m.calories || 0),
                                     protein: acc.protein + (m.protein || 0),
                                     carbs: acc.carbs + (m.carbs || 0),
@@ -1029,32 +952,9 @@ export const useUserData = () => {
         if (!entryToDelete) return false;
 
         try {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const { error: deleteError } = await supabaseDelete(`meal_entries?id=eq.${entryId}`);
 
-            let authToken = supabaseKey;
-            try {
-                const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
-                const storageKey = `sb-${projectId}-auth-token`;
-                const stored = localStorage.getItem(storageKey);
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    authToken = parsed?.access_token || supabaseKey;
-                }
-            } catch {
-                // Use anon key
-            }
-
-            const response = await fetch(`${supabaseUrl}/rest/v1/meal_entries?id=eq.${entryId}`, {
-                method: 'DELETE',
-                headers: {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
+            if (deleteError) {
                 // Revert on error
                 setData(prev => ({
                     ...prev,
@@ -1217,32 +1117,9 @@ export const useUserData = () => {
         }));
 
         try {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const { error: deleteError } = await supabaseDelete(`favorite_foods?id=eq.${favoriteId}`);
 
-            let authToken = supabaseKey;
-            try {
-                const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
-                const storageKey = `sb-${projectId}-auth-token`;
-                const stored = localStorage.getItem(storageKey);
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    authToken = parsed?.access_token || supabaseKey;
-                }
-            } catch {
-                // Use anon key
-            }
-
-            const response = await fetch(`${supabaseUrl}/rest/v1/favorite_foods?id=eq.${favoriteId}`, {
-                method: 'DELETE',
-                headers: {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
+            if (deleteError) {
                 setData(prev => ({
                     ...prev,
                     favorites: [favoriteToRemove, ...prev.favorites]

@@ -2,56 +2,8 @@ import React, { useState, useEffect, memo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useToast } from '@/contexts/ToastContext';
+import { supabaseGetSingle, supabaseUpdate } from '@/services/supabaseRawFetch';
 import LoaderIcon from './icons/LoaderIcon';
-
-// Helper to get auth token from localStorage (bypasses broken Supabase client)
-const getAuthToken = () => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    try {
-        const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
-        const storageKey = `sb-${projectId}-auth-token`;
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            return parsed?.access_token || supabaseKey;
-        }
-    } catch {
-        // Could not get auth token
-    }
-    return supabaseKey;
-};
-
-// Raw fetch helper (bypasses broken Supabase client)
-const supabaseFetch = async (endpoint: string, options: RequestInit = {}) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const authToken = getAuthToken();
-
-    const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, {
-        ...options,
-        headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-            'Prefer': options.method === 'PATCH' ? 'return=minimal' : 'return=representation',
-            ...options.headers,
-        },
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Request failed');
-    }
-
-    // For PATCH with return=minimal, there's no body
-    if (options.method === 'PATCH') {
-        return { data: null, error: null };
-    }
-
-    const data = await response.json();
-    return { data: Array.isArray(data) ? data[0] : data, error: null };
-};
-
 import Skeleton from './ui/Skeleton';
 
 // Settings loading skeleton
@@ -159,11 +111,13 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             }
 
             try {
-                const { data } = await supabaseFetch(
+                const { data, error } = await supabaseGetSingle<any>(
                     `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,role`
                 );
 
-                if (data) {
+                if (error) {
+                    showToast('Failed to load profile', 'error');
+                } else if (data) {
                     setProfile({
                         full_name: data.full_name || '',
                         goal: data.goal,
@@ -191,23 +145,24 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         setSaving(true);
 
         try {
-            await supabaseFetch(`profiles?id=eq.${user.id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({
-                    full_name: profile.full_name,
-                    goal: profile.goal,
-                    height_inches: profile.height_inches,
-                    weight_lbs: profile.weight_lbs,
-                    age: profile.age,
-                    training_experience: profile.training_experience,
-                    equipment_access: profile.equipment_access,
-                    days_per_week: profile.days_per_week
-                })
+            const { error } = await supabaseUpdate(`profiles?id=eq.${user.id}`, {
+                full_name: profile.full_name,
+                goal: profile.goal,
+                height_inches: profile.height_inches,
+                weight_lbs: profile.weight_lbs,
+                age: profile.age,
+                training_experience: profile.training_experience,
+                equipment_access: profile.equipment_access,
+                days_per_week: profile.days_per_week
             });
 
-            setSaved(true);
-            showToast('Settings saved!', 'success');
-            setTimeout(() => setSaved(false), 2000);
+            if (error) {
+                showToast('Failed to save settings', 'error');
+            } else {
+                setSaved(true);
+                showToast('Settings saved!', 'success');
+                setTimeout(() => setSaved(false), 2000);
+            }
         } catch {
             showToast('Failed to save settings', 'error');
         } finally {
@@ -230,13 +185,14 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         setUpgrading(true);
 
         try {
-            await supabaseFetch(`profiles?id=eq.${user.id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ role: 'trainer' })
-            });
+            const { error } = await supabaseUpdate(`profiles?id=eq.${user.id}`, { role: 'trainer' });
 
-            setProfile({ ...profile, role: 'trainer' });
-            showToast('You are now a trainer!', 'success');
+            if (error) {
+                showToast('Failed to upgrade account', 'error');
+            } else {
+                setProfile({ ...profile, role: 'trainer' });
+                showToast('You are now a trainer!', 'success');
+            }
         } catch {
             showToast('Failed to upgrade account', 'error');
         } finally {

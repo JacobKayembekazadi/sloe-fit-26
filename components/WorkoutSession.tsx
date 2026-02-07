@@ -41,6 +41,8 @@ interface WorkoutSessionProps {
   onCancel: () => void;
   recoveryAdjusted?: boolean;
   recoveryNotes?: string;
+  initialDraft?: WorkoutDraft;
+  initialElapsedTime?: number;
 }
 
 // -- Main Component --
@@ -51,7 +53,9 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   onComplete,
   onCancel,
   recoveryAdjusted,
-  recoveryNotes
+  recoveryNotes,
+  initialDraft,
+  initialElapsedTime
 }) => {
   // Helper to convert initial data
   const convertToTracked = (exercises: ExerciseLog[]): TrackedExercise[] => {
@@ -74,16 +78,22 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   };
 
   // State
-  const [exercises, setExercises] = useState<TrackedExercise[]>(convertToTracked(initialExercises));
-  const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
-  const [workoutStartTime] = useState<number>(Date.now());
+  const [exercises, setExercises] = useState<TrackedExercise[]>(
+    initialDraft ? initialDraft.exercises : convertToTracked(initialExercises)
+  );
+  const [activeExerciseIndex, setActiveExerciseIndex] = useState(
+    initialDraft?.activeExerciseIndex ?? 0
+  );
+  const [workoutStartTime] = useState<number>(
+    Date.now() - (initialElapsedTime ?? 0) * 1000
+  );
   const [isPaused, setIsPaused] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   // Rest Timer State
   const [restTimerOpen, setRestTimerOpen] = useState(false);
-  const [restDuration, setRestDuration] = useState(90); // Default 90s
+  const restDuration = 90;
 
   // Memoized callbacks for RestTimer to prevent re-renders triggering setState during render
   const handleRestComplete = useCallback(() => setRestTimerOpen(false), []);
@@ -152,6 +162,9 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   };
 
   const handleToggleSet = (setId: number) => {
+    const currentSet = exercises[activeExerciseIndex]?.sets.find(s => s.id === setId);
+    const willComplete = currentSet && !currentSet.completed;
+
     setExercises(prev => {
       const newExercises = [...prev];
       const oldExercise = newExercises[activeExerciseIndex];
@@ -159,18 +172,16 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
 
       if (setIndex !== -1) {
         const set = oldExercise.sets[setIndex];
-        const newCompleted = !set.completed;
         const newSets = [...oldExercise.sets];
-        newSets[setIndex] = { ...set, completed: newCompleted };
+        newSets[setIndex] = { ...set, completed: !set.completed };
         newExercises[activeExerciseIndex] = { ...oldExercise, sets: newSets };
-
-        // Auto-trigger rest timer on completion
-        if (newCompleted) {
-          setRestTimerOpen(true);
-        }
       }
       return newExercises;
     });
+
+    if (willComplete) {
+      setRestTimerOpen(true);
+    }
   };
 
   const handleAddSet = () => {
@@ -200,6 +211,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     if (hasProgress) {
       setShowCancelConfirm(true);
     } else {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
       onCancel();
     }
   };
@@ -209,34 +221,19 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     localStorage.removeItem(DRAFT_STORAGE_KEY);
 
     // Convert back to ExerciseLog format
-    const completedLogs: ExerciseLog[] = exercises.map(ex => {
-      const completedSets = ex.sets.filter(s => s.completed);
-      const avgWeight = completedSets.length > 0
-        ? Math.round(completedSets.reduce((acc, s) => acc + (parseFloat(s.weight) || 0), 0) / completedSets.length)
-        : 0;
-
-      return {
-        id: ex.id,
-        name: ex.name,
-        sets: String(completedSets.length),
-        reps: completedSets.map(s => s.reps).join(', ') || ex.targetReps,
-        weight: avgWeight > 0 ? String(avgWeight) : ''
-      };
-    }).filter(ex => parseInt(ex.sets) > 0); // Only include exercises with done sets? Or all? Usually all is safer for "skipped" tracking
-
-    // If no sets completed, maybe include all but empty?
-    // Let's include everything but with 0 sets if none are done
     const finalLogs = exercises.map(ex => {
       const s = ex.sets.filter(xs => xs.completed);
-      // Use actual reps from completed sets, fallback to target if none recorded
       const actualReps = s.map(set => set.reps).filter(Boolean);
+      const avgWeight = s.length > 0
+        ? Math.round(s.reduce((acc, set) => acc + (parseFloat(set.weight) || 0), 0) / s.length)
+        : 0;
       return {
         id: ex.id,
         name: ex.name,
         sets: String(s.length),
         reps: actualReps.length > 0 ? actualReps.join(', ') : ex.targetReps,
-        weight: s[0]?.weight || ''
-      }
+        weight: avgWeight > 0 ? String(avgWeight) : ''
+      };
     });
 
     onComplete(finalLogs, workoutTitle);

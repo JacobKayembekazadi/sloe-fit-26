@@ -184,6 +184,13 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 async function callAPI<T>(endpoint: string, body: unknown, operation: string): Promise<AIResponse<T>> {
   const log = logRequest(operation);
 
+  // Adaptive timeout: 60s for image payloads (large upload), 30s for text-only
+  const hasImage = body && typeof body === 'object' && ('imageBase64' in (body as Record<string, unknown>) || 'images' in (body as Record<string, unknown>));
+  const timeoutMs = hasImage ? 60000 : 30000;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
@@ -191,13 +198,24 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
 
     const result: AIResponse<T> = await response.json();
     updateRequestLog(log, result.success ? 'success' : 'error', result.provider);
     return result;
-  } catch (error) {
+  } catch (error: any) {
     updateRequestLog(log, 'error');
+    if (error?.name === 'AbortError') {
+      return {
+        success: false,
+        error: {
+          type: 'timeout',
+          message: 'Request timed out. Please try again.',
+          retryable: true,
+        },
+      };
+    }
     return {
       success: false,
       error: {
@@ -206,6 +224,8 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
         retryable: true,
       },
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

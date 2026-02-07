@@ -373,7 +373,10 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                     clientData.map(async (client) => {
                         const weekAgo = new Date();
                         weekAgo.setDate(weekAgo.getDate() - 7);
-                        const weekAgoStr = weekAgo.toISOString().split('T')[0];
+                        const y = weekAgo.getFullYear();
+                        const mo = String(weekAgo.getMonth() + 1).padStart(2, '0');
+                        const da = String(weekAgo.getDate()).padStart(2, '0');
+                        const weekAgoStr = `${y}-${mo}-${da}`;
 
                         // Parallel fetch for performance (using raw fetch)
                         const [workoutsResult, nutritionResult, messagesResult] = await Promise.all([
@@ -836,7 +839,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                                             const dayOfWeek = today.getDay();
                                             const targetDate = new Date(today);
                                             targetDate.setDate(today.getDate() - dayOfWeek + index);
-                                            const dateStr = targetDate.toISOString().split('T')[0];
+                                            const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
 
                                             const hasWorkout = clientWorkouts.some(w => w.date.split('T')[0] === dateStr);
                                             const hasNutrition = clientNutrition.some(n => n.date === dateStr);

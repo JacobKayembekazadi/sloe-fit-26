@@ -3,9 +3,6 @@ import ProgressBar from './ProgressBar';
 import MealIcon from './icons/MealIcon';
 import CameraIcon from './icons/CameraIcon';
 import ShopIcon from './icons/ShopIcon';
-import CheckIcon from './icons/CheckIcon';
-import ListIcon from './icons/ListIcon';
-import LoaderIcon from './icons/LoaderIcon';
 import { getTodaysWorkout } from '../services/workoutService';
 import { generateWorkout, GeneratedWorkout } from '../services/aiService';
 import RecoveryCheckIn, { RecoveryState } from './RecoveryCheckIn';
@@ -71,6 +68,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const [startTime, setStartTime] = useState<number>(0);
     const [endTime, setEndTime] = useState<number>(0);
     const [recoveryDraft, setRecoveryDraft] = useState<WorkoutDraft | null>(null);
+    const [activeDraft, setActiveDraft] = useState<WorkoutDraft | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     // Check for draft workout on mount
@@ -152,8 +150,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const currentDay = new Date().getDate();
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
 
-    // Get today's nutrition from log or use defaults (YYYY-MM-DD format to match database)
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's nutrition from log or use defaults (local date YYYY-MM-DD format to match database)
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const todayNutrition = nutritionLog.find(entry => entry.date === today) || {
         date: today,
         calories: 0,
@@ -182,11 +181,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
         setCompletedLog(exercises);
         setWorkoutTitle(title);
         setEndTime(Date.now());
+        setActiveDraft(null);
         setWorkoutStatus('completed');
     };
 
     // Handle cancel from WorkoutSession
     const handleWorkoutCancel = () => {
+        setActiveDraft(null);
         setWorkoutStatus('idle');
         setAiWorkout(null);
     };
@@ -215,17 +216,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
     const handleResumeDraft = () => {
         if (!recoveryDraft) return;
 
-        // Convert draft exercises to ExerciseLog format for WorkoutSession
-        const exerciseLogs: ExerciseLog[] = recoveryDraft.exercises.map(ex => ({
-            id: ex.id,
-            name: ex.name,
-            sets: String(ex.targetSets),
-            reps: ex.targetReps,
-            weight: ex.sets[0]?.weight || ''
-        }));
-
-        setWorkoutLog(exerciseLogs);
+        setActiveDraft(recoveryDraft);
         setWorkoutTitle(recoveryDraft.workoutTitle);
+        setStartTime(Date.now() - (recoveryDraft.elapsedTime * 1000));
         setRecoveryDraft(null);
         setWorkoutStatus('active');
     };
@@ -388,6 +381,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, addWorkoutToHistory
                         onCancel={handleWorkoutCancel}
                         recoveryAdjusted={aiWorkout?.recovery_adjusted}
                         recoveryNotes={aiWorkout?.recovery_notes}
+                        initialDraft={activeDraft ?? undefined}
+                        initialElapsedTime={activeDraft?.elapsedTime}
                     />
                 </div>
             )}
