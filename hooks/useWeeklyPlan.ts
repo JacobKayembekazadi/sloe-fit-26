@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserData, UserProfile } from './useUserData';
 import { generateWeeklyPlan, WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
@@ -91,6 +91,9 @@ function extractMusclesFromTitle(title: string): string[] {
 // Use shared utility for volume calculation
 const calculateVolume = calculateRepVolume;
 
+// localStorage cache key for offline fallback
+const PLAN_CACHE_KEY = 'sloefit_weekly_plan_cache';
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -105,6 +108,13 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
   const [error, setError] = useState<string | null>(null);
   const [completedDays, setCompletedDays] = useState<Set<number>>(new Set());
   const [realRecoveryData, setRealRecoveryData] = useState<RecoveryPattern[]>([]);
+
+  // Track mounted state for async cleanup
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   // Load existing plan and recovery data from Supabase on mount
   useEffect(() => {
@@ -157,10 +167,38 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
           if (data[0].completed_days && Array.isArray(data[0].completed_days)) {
             setCompletedDays(new Set(data[0].completed_days));
           }
+          // Cache to localStorage for offline fallback
+          try {
+            localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify({
+              plan: data[0].plan,
+              completedDays: data[0].completed_days || [],
+              weekStart,
+              timestamp: Date.now()
+            }));
+          } catch {
+            // localStorage may be full or unavailable - non-fatal
+          }
         }
       } catch (err) {
         if (isCancelled) return;
         console.error('[useWeeklyPlan] Error:', err);
+
+        // Try to load from localStorage cache when offline
+        try {
+          const cached = localStorage.getItem(PLAN_CACHE_KEY);
+          if (cached) {
+            const { plan: cachedPlan, completedDays: cachedDays, weekStart: cachedWeek } = JSON.parse(cached);
+            if (cachedWeek === getWeekStart()) {
+              setPlan(cachedPlan);
+              setCompletedDays(new Set(cachedDays));
+              setError('Showing cached plan - offline');
+              return; // Don't show generic error
+            }
+          }
+        } catch {
+          // Cache parsing failed - fall through to error
+        }
+
         setError('Failed to load weekly plan');
       } finally {
         if (!isCancelled) {
@@ -317,33 +355,64 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
 
   // Mark a day as completed and persist to Supabase
   // Returns true if persistence succeeded, false if it failed
+  // Uses functional setState to avoid stale closure + rollback on failure
   const markDayCompleted = useCallback(async (dayIndex: number): Promise<boolean> => {
-    // Update local state immediately (optimistic)
-    const updatedSet = new Set([...completedDays, dayIndex]);
-    setCompletedDays(updatedSet);
+    // Capture previous state for potential rollback
+    let previousState: Set<number> | null = null;
 
-    // Persist to Supabase
-    if (!user) return true; // No user = nothing to persist, consider it "success"
+    // Functional update to avoid stale closure on rapid clicks
+    setCompletedDays(prev => {
+      previousState = prev;
+      return new Set([...prev, dayIndex]);
+    });
+
+    // No user = nothing to persist, consider it "success"
+    if (!user) return true;
 
     try {
       const weekStart = getWeekStart();
+      // Build the array from previousState + new dayIndex
+      const persistedDays = Array.from(new Set([...(previousState || []), dayIndex]));
+
       const result = await supabaseUpsert('weekly_plans', {
         user_id: user.id,
         week_start: weekStart,
-        completed_days: Array.from(updatedSet),
+        completed_days: persistedDays,
         updated_at: new Date().toISOString()
       }, 'user_id,week_start');
 
       if (result.error) {
         console.error('[useWeeklyPlan] Failed to persist completed days:', result.error);
+        // ROLLBACK on failure (only if still mounted)
+        if (isMountedRef.current && previousState) {
+          setCompletedDays(previousState);
+        }
         return false;
       }
+
+      // Update localStorage cache with new completed days
+      try {
+        const cached = localStorage.getItem(PLAN_CACHE_KEY);
+        if (cached) {
+          const cacheData = JSON.parse(cached);
+          cacheData.completedDays = persistedDays;
+          cacheData.timestamp = Date.now();
+          localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify(cacheData));
+        }
+      } catch {
+        // Cache update failed - non-fatal
+      }
+
       return true;
     } catch (err) {
       console.error('[useWeeklyPlan] Exception persisting completed days:', err);
+      // ROLLBACK on exception (only if still mounted)
+      if (isMountedRef.current && previousState) {
+        setCompletedDays(previousState);
+      }
       return false;
     }
-  }, [user, completedDays]);
+  }, [user]); // Removed completedDays from deps - uses functional setState
 
   // Get today's plan
   const todaysPlan = useMemo((): DayPlan | null => {

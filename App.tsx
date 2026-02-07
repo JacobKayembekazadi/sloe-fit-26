@@ -374,6 +374,7 @@ const AppContent: React.FC = () => {
   const handleQuickRecoveryCancel = useCallback(() => {
     setShowQuickRecovery(false);
     setPendingPlanWorkout(null);
+    setWorkoutFromPlanDayIndex(null); // Clear plan association on cancel
   }, []);
 
   const handleViewWeeklyPlan = useCallback(() => setShowWeeklyPlan(true), []);
