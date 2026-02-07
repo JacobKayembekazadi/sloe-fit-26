@@ -27,7 +27,11 @@ function readTemplates(): WorkoutTemplate[] {
 }
 
 function writeTemplates(templates: WorkoutTemplate[]): void {
-  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+  try {
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {
+    // QuotaExceededError or SecurityError — silently fail
+  }
 }
 
 export function getTemplates(): WorkoutTemplate[] {

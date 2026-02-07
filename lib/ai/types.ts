@@ -254,6 +254,62 @@ export interface AIProvider {
    * Transcribe audio to text (optional - not all providers support this)
    */
   transcribeAudio?(audioBlob: Blob): Promise<string | null>;
+
+  /**
+   * Generate a weekly training plan using multi-step reasoning
+   */
+  planWeek(
+    input: WeeklyPlanGenerationInput
+  ): Promise<WeeklyPlan | null>;
+}
+
+// ============================================================================
+// Weekly Plan Types (Agent-based multi-step reasoning)
+// ============================================================================
+
+export interface WeeklyPlan {
+  id: string;
+  week_start: string; // ISO date (Monday)
+  days: DayPlan[];
+  reasoning: string; // Agent's explanation of plan construction
+  progressive_overload_notes: string;
+  created_at: string;
+}
+
+export interface DayPlan {
+  day: number; // 0-6 (Sunday-Saturday)
+  day_name: string; // "Monday", etc.
+  workout: GeneratedWorkout | null; // null = rest day
+  is_rest_day: boolean;
+  rest_reason?: string; // "Recovery from legs", "Weekly deload", etc.
+  focus_areas: string[];
+}
+
+export interface WeeklyPlanGenerationInput {
+  profile: UserProfile;
+  recentWorkouts: WorkoutHistoryItem[];
+  recoveryPatterns: RecoveryPattern[];
+  preferredSchedule?: number[]; // days user prefers to train (0-6)
+}
+
+export interface WorkoutHistoryItem {
+  date: string;
+  title: string;
+  muscles: string[];
+  volume: number; // total sets × reps
+  exercises: {
+    name: string;
+    sets: number;
+    reps: string;
+    weight?: number;
+  }[];
+}
+
+export interface RecoveryPattern {
+  date: string;
+  energyLevel: number;
+  sleepHours: number;
+  sorenessAreas: string[];
 }
 
 // ============================================================================

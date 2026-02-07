@@ -2,15 +2,12 @@ import React, { useState, useMemo, memo } from 'react';
 import type { CompletedWorkout } from '../App';
 import type { WorkoutDraft } from './WorkoutSession';
 import type { WorkoutTemplate } from '../services/templateService';
+import type { WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
+import { calculateTotalVolume } from '../utils/workoutUtils';
 
-// Reuse from WorkoutHistory
+// Use shared utility for volume calculation
 const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
-    return workout.log.reduce((vol, ex) => {
-        const sets = parseInt(ex.sets) || 0;
-        const reps = parseInt(ex.reps?.split(',')[0]) || 0;
-        const weight = parseFloat(ex.weight) || 0;
-        return vol + (sets * reps * weight);
-    }, 0);
+    return calculateTotalVolume(workout.log);
 };
 
 const formatTimeAgo = (timestamp: number): string => {
@@ -30,6 +27,11 @@ interface TrainTabProps {
     onOpenLibrary?: () => void;
     onStartTemplate?: (template: WorkoutTemplate) => void;
     templates?: WorkoutTemplate[];
+    // Weekly Plan props
+    weeklyPlan?: WeeklyPlan | null;
+    todaysPlan?: DayPlan | null;
+    onViewWeeklyPlan?: () => void;
+    onStartPlanWorkout?: (workout: GeneratedWorkout) => void;
 }
 
 const TrainTab: React.FC<TrainTabProps> = ({
@@ -42,9 +44,14 @@ const TrainTab: React.FC<TrainTabProps> = ({
     onOpenLibrary,
     onStartTemplate,
     templates = [],
+    weeklyPlan,
+    todaysPlan,
+    onViewWeeklyPlan,
+    onStartPlanWorkout,
 }) => {
     const [selectedFilter, setSelectedFilter] = useState<'All' | 'Strength' | 'Cardio' | 'Mindset'>('All');
     const [showAllWorkouts, setShowAllWorkouts] = useState(false);
+    const [showAllTemplates, setShowAllTemplates] = useState(false);
     const [selectedWorkout, setSelectedWorkout] = useState<CompletedWorkout | null>(null);
 
     // Week-at-a-glance
@@ -232,6 +239,40 @@ const TrainTab: React.FC<TrainTabProps> = ({
                         </div>
                     </div>
 
+                    {/* Weekly Plan Today's Workout */}
+                    {todaysPlan && !todaysPlan.is_rest_day && todaysPlan.workout && onStartPlanWorkout && (
+                        <button
+                            onClick={() => onStartPlanWorkout(todaysPlan.workout!)}
+                            className="card flex items-center gap-4 p-4 w-full text-left hover:border-[var(--color-primary)]/30 transition-colors border-[var(--color-primary)]/20"
+                        >
+                            <div className="flex items-center justify-center rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] shrink-0 size-12">
+                                <span className="material-symbols-outlined">calendar_today</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-base font-bold text-white">{todaysPlan.workout.title}</p>
+                                <p className="text-sm text-gray-400">From your weekly plan · {todaysPlan.workout.duration_minutes} min</p>
+                            </div>
+                            <span className="material-symbols-outlined text-[var(--color-primary)]">play_arrow</span>
+                        </button>
+                    )}
+
+                    {/* View Weekly Plan */}
+                    {weeklyPlan && onViewWeeklyPlan && (
+                        <button
+                            onClick={onViewWeeklyPlan}
+                            className="card flex items-center gap-4 p-4 w-full text-left hover:border-white/20 transition-colors"
+                        >
+                            <div className="flex items-center justify-center rounded-xl bg-green-500/10 text-green-400 shrink-0 size-12">
+                                <span className="material-symbols-outlined">date_range</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-base font-bold text-white">View Weekly Plan</p>
+                                <p className="text-sm text-gray-400">{weeklyPlan.days.filter(d => !d.is_rest_day).length} training days planned</p>
+                            </div>
+                            <span className="material-symbols-outlined text-gray-600">chevron_right</span>
+                        </button>
+                    )}
+
                     {onStartBuilder && (
                         <button
                             onClick={onStartBuilder}
@@ -255,9 +296,14 @@ const TrainTab: React.FC<TrainTabProps> = ({
                 <div>
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">My Templates</h3>
+                        {templates.length > 3 && (
+                            <button onClick={() => setShowAllTemplates(v => !v)} className="text-xs font-bold text-[var(--color-primary)]">
+                                {showAllTemplates ? 'Show Less' : `See All (${templates.length})`}
+                            </button>
+                        )}
                     </div>
                     <div className="space-y-2">
-                        {templates.slice(0, 3).map(tpl => (
+                        {(showAllTemplates ? templates : templates.slice(0, 3)).map(tpl => (
                             <button
                                 key={tpl.id}
                                 onClick={() => onStartTemplate(tpl)}
@@ -290,7 +336,7 @@ const TrainTab: React.FC<TrainTabProps> = ({
                     </div>
                     <div className="flex-1">
                         <p className="text-base font-bold text-white">Browse Exercise Library</p>
-                        <p className="text-sm text-gray-400">74 exercises with form guidance</p>
+                        <p className="text-sm text-gray-400">Browse exercises with form guidance</p>
                     </div>
                     <span className="material-symbols-outlined text-gray-600">chevron_right</span>
                 </button>

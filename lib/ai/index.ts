@@ -119,7 +119,8 @@ export interface FallbackResult<T> {
  * moves to the next provider. Throws the last error if all fail.
  */
 export async function withFallback<T>(
-  fn: (provider: AIProvider) => Promise<T>
+  fn: (provider: AIProvider) => Promise<T>,
+  isFailure?: (data: T) => boolean
 ): Promise<FallbackResult<T>> {
   const providers = getAvailableProviders();
 
@@ -136,6 +137,12 @@ export async function withFallback<T>(
       if (data === null || data === undefined) {
         console.error(`[ai] provider ${type} returned null — trying next`);
         lastError = new Error(`Provider ${type} returned null`);
+        continue;
+      }
+      // Check caller-supplied failure predicate (e.g. "Error:" prefix strings)
+      if (isFailure?.(data)) {
+        console.error(`[ai] provider ${type} returned soft failure — trying next`);
+        lastError = new Error(`Provider ${type} returned soft failure`);
         continue;
       }
       return { data, provider: type };

@@ -1,14 +1,9 @@
 import { withFallback } from '../../lib/ai';
-import type { AIResponse, PhotoMealAnalysis } from '../../lib/ai/types';
+import type { AIResponse, WeeklyPlan, WeeklyPlanGenerationInput } from '../../lib/ai/types';
 
 export const config = {
   runtime: 'edge',
 };
-
-interface RequestBody {
-  imageBase64: string;
-  userGoal: string | null;
-}
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -21,37 +16,54 @@ export default async function handler(req: Request): Promise<Response> {
   const startTime = Date.now();
 
   try {
-    const body: RequestBody = await req.json();
-    const { imageBase64, userGoal } = body;
+    const body: WeeklyPlanGenerationInput = await req.json();
 
-    if (!imageBase64 || typeof imageBase64 !== 'string') {
+    // Validate required fields
+    if (!body.profile) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: { type: 'invalid_request', message: 'Image is required', retryable: false },
-        } as AIResponse<PhotoMealAnalysis>),
+          error: { type: 'invalid_request', message: 'User profile is required', retryable: false },
+        } as AIResponse<WeeklyPlan>),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
+    // Ensure arrays exist
+    if (!body.recentWorkouts) {
+      body.recentWorkouts = [];
+    }
+    if (!body.recoveryPatterns) {
+      body.recoveryPatterns = [];
+    }
+
     const { data: result, provider: usedProvider } = await withFallback(
-      p => p.analyzeMealPhoto(imageBase64, userGoal),
-      r => r.markdown.startsWith('Error:')
+      p => p.planWeek(body)
     );
 
-    return new Response(JSON.stringify({
-      success: true,
-      data: result,
+    const response: AIResponse<WeeklyPlan> = {
+      success: result !== null,
+      data: result ?? undefined,
       provider: usedProvider,
       durationMs: Date.now() - startTime,
-    } as AIResponse<PhotoMealAnalysis>), {
-      status: 200,
+    };
+
+    if (!result) {
+      response.error = {
+        type: 'unknown',
+        message: 'Failed to generate weekly plan',
+        retryable: true,
+      };
+    }
+
+    return new Response(JSON.stringify(response), {
+      status: result ? 200 : 500,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
     const aiError = error as { type?: string; message?: string; retryable?: boolean };
 
-    const response: AIResponse<PhotoMealAnalysis> = {
+    const response: AIResponse<WeeklyPlan> = {
       success: false,
       error: {
         type: aiError.type as any || 'unknown',

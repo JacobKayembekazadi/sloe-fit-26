@@ -9,9 +9,11 @@ import { useAuth } from '../contexts/AuthContext';
 import Skeleton from './ui/Skeleton';
 import SupplementRecommendationCard from './SupplementRecommendationCard';
 import AddToHomeScreenButton from './AddToHomeScreenButton';
+import WeeklyPlanCard from './WeeklyPlanCard';
 import { getRecommendations } from '../services/supplementService';
 import type { NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
+import type { WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
 
 type Tab = 'dashboard' | 'train' | 'body' | 'meal' | 'mindset';
 type WorkoutStatus = 'idle' | 'recovery' | 'generating' | 'preview' | 'active' | 'completed';
@@ -27,9 +29,35 @@ interface DashboardProps {
     userProfile?: UserProfile;
     onStartWorkout: () => void;
     workoutStatus: WorkoutStatus;
+    // Weekly Plan props
+    weeklyPlan?: WeeklyPlan | null;
+    todaysPlan?: DayPlan | null;
+    isWeeklyPlanLoading?: boolean;
+    isGeneratingPlan?: boolean;
+    onGeneratePlan?: () => void;
+    onViewWeeklyPlan?: () => void;
+    onStartPlanWorkout?: (workout: GeneratedWorkout) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, showHistoryView, showTrainerView, nutritionLog, nutritionTargets, goal, workoutHistory, userProfile, onStartWorkout, workoutStatus }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+    setActiveTab,
+    showHistoryView,
+    showTrainerView,
+    nutritionLog,
+    nutritionTargets,
+    goal,
+    workoutHistory,
+    userProfile,
+    onStartWorkout,
+    workoutStatus,
+    weeklyPlan,
+    todaysPlan,
+    isWeeklyPlanLoading,
+    isGeneratingPlan,
+    onGeneratePlan,
+    onViewWeeklyPlan,
+    onStartPlanWorkout
+}) => {
     const { user } = useAuth();
     const [pendingWorkoutsCount, setPendingWorkoutsCount] = useState(0);
     const [trainerName, setTrainerName] = useState<string | null>(null);
@@ -121,26 +149,17 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, showHistoryView, sh
                 </div>
             </div>
 
-            {/* Compact Workout CTA */}
+            {/* Unified Workout CTA - Context-Aware */}
             <div className="card">
-                {workoutStatus === 'idle' ? (
-                    <div className="py-8 text-center">
-                        <div className="mb-6">
-                            <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
-                                <span className="text-3xl">💪</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
-                            <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
-                        </div>
-                        <button onClick={onStartWorkout} className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]">
-                            Start Today's Workout
-                        </button>
-                    </div>
-                ) : workoutStatus === 'generating' ? (
+                {workoutStatus === 'generating' || isGeneratingPlan ? (
                     <div className="py-6 space-y-4">
                         <div className="text-center">
-                            <p className="text-xl font-black text-white animate-pulse motion-reduce:animate-none">GENERATING WORKOUT...</p>
-                            <p className="text-gray-400 text-sm mt-1">Personalizing based on your recovery</p>
+                            <p className="text-xl font-black text-white animate-pulse motion-reduce:animate-none">
+                                {isGeneratingPlan ? 'GENERATING PLAN...' : 'GENERATING WORKOUT...'}
+                            </p>
+                            <p className="text-gray-400 text-sm mt-1">
+                                {isGeneratingPlan ? 'Creating your personalized week' : 'Personalizing based on your recovery'}
+                            </p>
                         </div>
                         <div className="space-y-3 px-2">
                             <Skeleton className="h-6 w-3/5 mx-auto" />
@@ -158,8 +177,78 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, showHistoryView, sh
                             <Skeleton className="h-12 w-full rounded-xl" />
                         </div>
                     </div>
+                ) : todaysPlan && !todaysPlan.is_rest_day && todaysPlan.workout && onStartPlanWorkout ? (
+                    /* Has plan workout for today - show as primary */
+                    <div className="py-6 text-center">
+                        <div className="mb-5">
+                            <div className="w-14 h-14 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-3">
+                                <span className="material-symbols-outlined text-[var(--color-primary)] text-2xl">calendar_today</span>
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-1">{todaysPlan.workout.title}</h3>
+                            <p className="text-gray-400 text-sm">
+                                {todaysPlan.workout.duration_minutes} min • {todaysPlan.workout.exercises?.length || 0} exercises
+                            </p>
+                            <p className="text-[var(--color-primary)] text-xs mt-1">From your weekly plan</p>
+                        </div>
+                        <button
+                            onClick={() => onStartPlanWorkout(todaysPlan.workout!)}
+                            className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]"
+                        >
+                            Start Workout
+                        </button>
+                        <button
+                            onClick={onStartWorkout}
+                            className="w-full mt-2 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                        >
+                            Or generate a fresh workout →
+                        </button>
+                    </div>
+                ) : todaysPlan?.is_rest_day ? (
+                    /* Rest day in plan */
+                    <div className="py-6 text-center">
+                        <div className="mb-5">
+                            <div className="w-14 h-14 mx-auto bg-blue-500/20 rounded-full flex items-center justify-center mb-3">
+                                <span className="material-symbols-outlined text-blue-400 text-2xl">bedtime</span>
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-1">Rest Day</h3>
+                            <p className="text-gray-400 text-sm">{todaysPlan.rest_reason || 'Recovery and muscle growth'}</p>
+                        </div>
+                        <button
+                            onClick={onStartWorkout}
+                            className="w-full py-3 bg-gray-800 text-white font-medium rounded-xl hover:bg-gray-700 transition-colors"
+                        >
+                            Train Anyway
+                        </button>
+                    </div>
+                ) : workoutStatus === 'idle' ? (
+                    /* No plan - default CTA */
+                    <div className="py-8 text-center">
+                        <div className="mb-6">
+                            <div className="w-16 h-16 mx-auto bg-[var(--color-primary)]/20 rounded-full flex items-center justify-center mb-4">
+                                <span className="text-3xl">💪</span>
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
+                            <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
+                        </div>
+                        <button onClick={onStartWorkout} className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]">
+                            Start Today's Workout
+                        </button>
+                    </div>
                 ) : null}
             </div>
+
+            {/* Weekly Plan Card */}
+            {onGeneratePlan && onViewWeeklyPlan && onStartPlanWorkout && (
+                <WeeklyPlanCard
+                    plan={weeklyPlan ? { days: weeklyPlan.days, reasoning: weeklyPlan.reasoning, progressive_overload_notes: weeklyPlan.progressive_overload_notes } : null}
+                    todaysPlan={todaysPlan || null}
+                    isLoading={isWeeklyPlanLoading || false}
+                    isGenerating={isGeneratingPlan || false}
+                    onGenerate={onGeneratePlan}
+                    onViewPlan={onViewWeeklyPlan}
+                    onStartWorkout={onStartPlanWorkout}
+                />
+            )}
 
             {/* Trainer Card (for clients with trainers) */}
             {userProfile?.trainer_id && showTrainerView && (

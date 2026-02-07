@@ -38,23 +38,13 @@ export default async function handler(req: Request): Promise<Response> {
       p => p.analyzeTextMeal(description, userGoal)
     );
 
-    const response: AIResponse<TextMealAnalysis> = {
-      success: result !== null,
-      data: result ?? undefined,
+    return new Response(JSON.stringify({
+      success: true,
+      data: result,
       provider: usedProvider,
       durationMs: Date.now() - startTime,
-    };
-
-    if (!result) {
-      response.error = {
-        type: 'unknown',
-        message: 'Failed to analyze meal',
-        retryable: true,
-      };
-    }
-
-    return new Response(JSON.stringify(response), {
-      status: result ? 200 : 500,
+    } as AIResponse<TextMealAnalysis>), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {

@@ -73,7 +73,7 @@ const ExerciseLibrary: React.FC<ExerciseLibraryProps> = ({ onBack, onSelectExerc
           <h1 className="text-lg font-bold flex-1">Exercise Library</h1>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex size-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-xl transition-colors ${showFilters ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'hover:bg-white/10'}`}
+            className={`relative flex size-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-xl transition-colors ${showFilters ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'hover:bg-white/10'}`}
           >
             <span className="material-symbols-outlined text-xl">tune</span>
             {activeFilterCount > 0 && (

@@ -37,7 +37,7 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
     const hasTips = (formCues && formCues.length > 0) || notes;
 
     return (
-        <div className="relative flex h-full w-full flex-col bg-background-dark overflow-y-auto pb-20 font-display transition-colors duration-300">
+        <div className="relative flex h-full w-full flex-col bg-background-dark pb-20 font-display transition-colors duration-300">
             {/* Exercise Header */}
             <div className="px-4 pt-2 pb-1 shrink-0">
                 <h2 className="text-lg sm:text-xl font-bold text-white">{exerciseName}</h2>

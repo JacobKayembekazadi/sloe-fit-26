@@ -42,11 +42,7 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
                 >
                     <span className="material-symbols-outlined text-2xl sm:text-3xl">chevron_left</span>
                 </button>
-                <div className="flex w-12 sm:w-14 items-center justify-end">
-                    <button className="flex items-center justify-center rounded-full size-12 sm:size-14 bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white transition-colors">
-                        <span className="material-symbols-outlined text-xl sm:text-2xl">info</span>
-                    </button>
-                </div>
+                <div className="w-12 sm:w-14" />
             </div>
 
             {/* Header Hero Section */}
@@ -59,10 +55,7 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
                     <div className="flex flex-col p-4 sm:p-6 gap-1 sm:gap-2 relative z-10">
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-[var(--color-primary)]/30 backdrop-blur-sm">
-                                AI Optimized
-                            </span>
-                            <span className="text-gray-400 text-[10px] sm:text-xs font-medium uppercase tracking-widest">
-                                Physique Phase II
+                                {exercises.length} exercises
                             </span>
                         </div>
                         <h1 className="text-white tracking-tight text-2xl sm:text-4xl font-black leading-tight">

@@ -8,6 +8,8 @@ import type {
   WorkoutGenerationInput,
   WeeklyNutritionInput,
   WeeklyNutritionInsights,
+  WeeklyPlan,
+  WeeklyPlanGenerationInput,
   AIError,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
@@ -18,6 +20,7 @@ import {
   WORKOUT_GENERATION_PROMPT,
   TEXT_MEAL_ANALYSIS_PROMPT,
   WEEKLY_NUTRITION_PROMPT,
+  WEEKLY_PLANNING_AGENT_PROMPT,
 } from '../../../prompts';
 
 // ============================================================================
@@ -449,5 +452,96 @@ Respond with ONLY valid JSON, no markdown.
 
     // Note: Google has audio transcription but it's a separate API
     // For simplicity, we don't implement it here
+
+    async planWeek(input: WeeklyPlanGenerationInput): Promise<WeeklyPlan | null> {
+      // Format workout history for the agent
+      const workoutHistoryText = input.recentWorkouts.length > 0
+        ? input.recentWorkouts.map(w => {
+            const exerciseList = w.exercises
+              .map(e => `  - ${e.name}: ${e.sets}×${e.reps}${e.weight ? ` @ ${e.weight}lbs` : ''}`)
+              .join('\n');
+            return `${w.date} - ${w.title} (Volume: ${w.volume} total reps)\n  Muscles: ${w.muscles.join(', ')}\n${exerciseList}`;
+          }).join('\n\n')
+        : 'No recent workout history available.';
+
+      // Format recovery patterns
+      const recoveryText = input.recoveryPatterns.length > 0
+        ? input.recoveryPatterns.map(r =>
+            `${r.date}: Energy ${r.energyLevel}/5, Sleep ${r.sleepHours}hrs${r.sorenessAreas.length > 0 ? `, Sore: ${r.sorenessAreas.join(', ')}` : ''}`
+          ).join('\n')
+        : 'No recovery data available.';
+
+      // Calculate averages
+      const avgEnergy = input.recoveryPatterns.length > 0
+        ? (input.recoveryPatterns.reduce((sum, r) => sum + r.energyLevel, 0) / input.recoveryPatterns.length).toFixed(1)
+        : 'N/A';
+      const avgSleep = input.recoveryPatterns.length > 0
+        ? (input.recoveryPatterns.reduce((sum, r) => sum + r.sleepHours, 0) / input.recoveryPatterns.length).toFixed(1)
+        : 'N/A';
+
+      // Get the start of the upcoming week (next Monday)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek) % 7 || 7;
+      const nextMonday = new Date(today);
+      nextMonday.setDate(today.getDate() + daysUntilMonday);
+      const weekStart = nextMonday.toISOString().split('T')[0];
+
+      const prompt = `
+Create a complete 7-day training plan for the upcoming week starting ${weekStart}.
+
+USER PROFILE:
+- Goal: ${input.profile.goal || 'RECOMP'}
+- Training Experience: ${input.profile.training_experience || 'intermediate'}
+- Equipment Access: ${input.profile.equipment_access || 'gym'}
+- Preferred Days Per Week: ${input.profile.days_per_week || 4}
+${input.preferredSchedule ? `- Preferred Training Days: ${input.preferredSchedule.map(d => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d]).join(', ')}` : ''}
+
+WORKOUT HISTORY (Last 3-4 weeks):
+${workoutHistoryText}
+
+RECOVERY PATTERNS (Recent):
+${recoveryText}
+
+RECOVERY AVERAGES:
+- Average Energy Level: ${avgEnergy}/5
+- Average Sleep: ${avgSleep} hours
+
+Remember to use week_start: "${weekStart}" in your response. Respond with ONLY valid JSON, no markdown.
+`;
+
+      try {
+        const content = await this.chat(
+          [
+            { role: 'system', content: WEEKLY_PLANNING_AGENT_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          { maxTokens: 4000, jsonMode: true, temperature: 0.4, timeoutMs: 60000 }
+        );
+
+        if (content) {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]) as WeeklyPlan;
+
+            if (
+              typeof parsed.id === 'string' &&
+              typeof parsed.week_start === 'string' &&
+              Array.isArray(parsed.days) &&
+              parsed.days.length === 7 &&
+              typeof parsed.reasoning === 'string'
+            ) {
+              if (!parsed.created_at) {
+                parsed.created_at = new Date().toISOString();
+              }
+              return parsed;
+            }
+          }
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
   };
 }

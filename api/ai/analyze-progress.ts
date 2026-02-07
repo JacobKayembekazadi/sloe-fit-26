@@ -45,28 +45,17 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const { data: result, provider: usedProvider } = await withFallback(
-      p => p.analyzeProgress(images, metrics)
+      p => p.analyzeProgress(images, metrics),
+      r => r.startsWith('Error:')
     );
 
-    const isError = result.startsWith('Error:');
-
-    const response: AIResponse<string> = {
-      success: !isError,
-      data: isError ? undefined : result,
+    return new Response(JSON.stringify({
+      success: true,
+      data: result,
       provider: usedProvider,
       durationMs: Date.now() - startTime,
-    };
-
-    if (isError) {
-      response.error = {
-        type: 'unknown',
-        message: result.replace('Error: ', ''),
-        retryable: true,
-      };
-    }
-
-    return new Response(JSON.stringify(response), {
-      status: response.success ? 200 : 500,
+    } as AIResponse<string>), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {

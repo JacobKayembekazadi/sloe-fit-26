@@ -9,10 +9,11 @@ import UpdatePrompt from './components/UpdatePrompt';
 import OfflineBanner from './components/OfflineBanner';
 import { useUserData } from './hooks/useUserData';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useWeeklyPlan } from './hooks/useWeeklyPlan';
 import { supabase } from './supabaseClient';
 import { getTodaysWorkout } from './services/workoutService';
 import { generateWorkout, GeneratedWorkout } from './services/aiService';
-import { getExerciseByName } from './data/exercises';
+import { findExerciseByName } from './data/exercises';
 import { getTemplates, updateLastUsed, templateToExerciseLogs } from './services/templateService';
 import type { WorkoutTemplate } from './services/templateService';
 import type { RecoveryState } from './components/RecoveryCheckIn';
@@ -39,6 +40,8 @@ const WorkoutSession = lazy(() => import('./components/WorkoutSession'));
 const WorkoutSummary = lazy(() => import('./components/WorkoutSummary'));
 const ExerciseLibrary = lazy(() => import('./components/ExerciseLibrary'));
 const WorkoutBuilder = lazy(() => import('./components/WorkoutBuilder'));
+const WeeklyPlanView = lazy(() => import('./components/WeeklyPlanView'));
+const QuickRecoveryCheck = lazy(() => import('./components/QuickRecoveryCheck'));
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -92,7 +95,7 @@ export interface NutritionLog {
 // Convert AI workout to exercise log format (module-level)
 const aiWorkoutToExerciseLog = (workout: GeneratedWorkout): ExerciseLog[] => {
     return workout.exercises.map((ex, idx) => {
-        const libEntry = getExerciseByName(ex.name);
+        const libEntry = findExerciseByName(ex.name);
         return {
             id: idx + 1,
             name: ex.name,
@@ -314,6 +317,57 @@ const AppContent: React.FC = () => {
   }, [endTime, startTime]);
 
   // ============================================================================
+  // Weekly Plan Integration
+  // ============================================================================
+  const {
+    plan: weeklyPlan,
+    todaysPlan,
+    todaysWorkout,
+    isLoading: isWeeklyPlanLoading,
+    isGenerating: isGeneratingPlan,
+    generateNewPlan,
+    refreshPlan
+  } = useWeeklyPlan();
+
+  const [showWeeklyPlan, setShowWeeklyPlan] = useState(false);
+  const [showQuickRecovery, setShowQuickRecovery] = useState(false);
+  const [pendingPlanWorkout, setPendingPlanWorkout] = useState<GeneratedWorkout | null>(null);
+
+  // Step 1: User clicks "Start" on plan workout -> show quick recovery check
+  const handleStartFromPlan = useCallback((workout: GeneratedWorkout) => {
+    setPendingPlanWorkout(workout);
+    setShowWeeklyPlan(false);
+    setShowQuickRecovery(true);
+  }, []);
+
+  // Step 2a: Quick check passed -> proceed to preview
+  const handleQuickRecoveryProceed = useCallback(() => {
+    if (!pendingPlanWorkout) return;
+    setAiWorkout(pendingPlanWorkout);
+    setWorkoutLog(aiWorkoutToExerciseLog(pendingPlanWorkout));
+    setWorkoutTitle(pendingPlanWorkout.title);
+    setShowQuickRecovery(false);
+    setPendingPlanWorkout(null);
+    setWorkoutStatus('preview');
+  }, [pendingPlanWorkout]);
+
+  // Step 2b: User wants full check-in -> go to recovery flow (will generate new workout)
+  const handleQuickRecoveryFullCheckIn = useCallback(() => {
+    setShowQuickRecovery(false);
+    setPendingPlanWorkout(null);
+    setWorkoutStatus('recovery');
+  }, []);
+
+  // Step 2c: User cancels quick recovery
+  const handleQuickRecoveryCancel = useCallback(() => {
+    setShowQuickRecovery(false);
+    setPendingPlanWorkout(null);
+  }, []);
+
+  const handleViewWeeklyPlan = useCallback(() => setShowWeeklyPlan(true), []);
+  const handleCloseWeeklyPlan = useCallback(() => setShowWeeklyPlan(false), []);
+
+  // ============================================================================
   // Builder / Library / Templates
   // ============================================================================
   const [showBuilder, setShowBuilder] = useState(false);
@@ -335,6 +389,8 @@ const AppContent: React.FC = () => {
     const logs = templateToExerciseLogs(template);
     setWorkoutLog(logs);
     setWorkoutTitle(template.name);
+    setShowBuilder(false);
+    setShowLibrary(false);
     setWorkoutStatus('preview');
   }, [refreshTemplates]);
 
@@ -494,6 +550,13 @@ const AppContent: React.FC = () => {
               userProfile={userProfile}
               onStartWorkout={startNewWorkout}
               workoutStatus={workoutStatus}
+              weeklyPlan={weeklyPlan}
+              todaysPlan={todaysPlan}
+              isWeeklyPlanLoading={isWeeklyPlanLoading}
+              isGeneratingPlan={isGeneratingPlan}
+              onGeneratePlan={generateNewPlan}
+              onViewWeeklyPlan={handleViewWeeklyPlan}
+              onStartPlanWorkout={handleStartFromPlan}
             />
           </Suspense>
         );
@@ -510,6 +573,10 @@ const AppContent: React.FC = () => {
               onOpenLibrary={handleOpenLibrary}
               onStartTemplate={handleStartTemplate}
               templates={templates}
+              weeklyPlan={weeklyPlan}
+              todaysPlan={todaysPlan}
+              onViewWeeklyPlan={handleViewWeeklyPlan}
+              onStartPlanWorkout={handleStartFromPlan}
             />
           </Suspense>
         );
@@ -685,6 +752,34 @@ const AppContent: React.FC = () => {
           <ExerciseLibrary
             onBack={handleCloseLibrary}
             mode="browse"
+          />
+        </Suspense>
+      )}
+
+      {/* Weekly Plan View Overlay */}
+      {showWeeklyPlan && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-dark">
+          <Suspense fallback={<LazyFallback />}>
+            <WeeklyPlanView
+              plan={weeklyPlan}
+              isLoading={isWeeklyPlanLoading}
+              isGenerating={isGeneratingPlan}
+              onBack={handleCloseWeeklyPlan}
+              onGenerate={generateNewPlan}
+              onStartWorkout={handleStartFromPlan}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Quick Recovery Check (for plan workouts) */}
+      {showQuickRecovery && pendingPlanWorkout && (
+        <Suspense fallback={null}>
+          <QuickRecoveryCheck
+            workout={pendingPlanWorkout}
+            onProceed={handleQuickRecoveryProceed}
+            onFullCheckIn={handleQuickRecoveryFullCheckIn}
+            onCancel={handleQuickRecoveryCancel}
           />
         </Suspense>
       )}

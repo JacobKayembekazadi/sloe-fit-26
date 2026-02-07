@@ -53,8 +53,8 @@ const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({ onBack, onStartWorkout,
   };
 
   const handleMoveDown = (index: number) => {
-    if (index === exercises.length - 1) return;
     setExercises(prev => {
+      if (index >= prev.length - 1) return prev;
       const next = [...prev];
       [next[index], next[index + 1]] = [next[index + 1], next[index]];
       return next;

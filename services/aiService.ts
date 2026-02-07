@@ -96,6 +96,55 @@ export interface TranscribeResult {
 }
 
 // ============================================================================
+// Weekly Plan Types
+// ============================================================================
+
+export interface WeeklyPlan {
+  id: string;
+  week_start: string;
+  days: DayPlan[];
+  reasoning: string;
+  progressive_overload_notes: string;
+  created_at: string;
+}
+
+export interface DayPlan {
+  day: number;
+  day_name: string;
+  workout: GeneratedWorkout | null;
+  is_rest_day: boolean;
+  rest_reason?: string;
+  focus_areas: string[];
+}
+
+export interface WorkoutHistoryItem {
+  date: string;
+  title: string;
+  muscles: string[];
+  volume: number;
+  exercises: {
+    name: string;
+    sets: number;
+    reps: string;
+    weight?: number;
+  }[];
+}
+
+export interface RecoveryPattern {
+  date: string;
+  energyLevel: number;
+  sleepHours: number;
+  sorenessAreas: string[];
+}
+
+export interface WeeklyPlanGenerationInput {
+  profile: UserProfile;
+  recentWorkouts: WorkoutHistoryItem[];
+  recoveryPatterns: RecoveryPattern[];
+  preferredSchedule?: number[];
+}
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -354,6 +403,19 @@ export const analyzeWeeklyNutrition = async (input: WeeklyNutritionInput): Promi
     return result.data;
   }
   console.error('Error analyzing weekly nutrition:', result.error);
+  return null;
+};
+
+/**
+ * Generate a weekly training plan using multi-step AI reasoning
+ */
+export const generateWeeklyPlan = async (input: WeeklyPlanGenerationInput): Promise<WeeklyPlan | null> => {
+  const result = await callAPI<WeeklyPlan>('/generate-weekly-plan', input, 'generateWeeklyPlan');
+
+  if (result.success && result.data) {
+    return result.data;
+  }
+  console.error('Error generating weekly plan:', result.error);
   return null;
 };
 

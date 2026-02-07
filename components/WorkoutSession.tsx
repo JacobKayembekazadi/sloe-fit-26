@@ -144,6 +144,20 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   // Derived State
   const activeExercise = exercises[activeExerciseIndex];
 
+  // Guard: if exercises is somehow empty, bail out
+  if (exercises.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background-dark">
+        <div className="text-center p-6">
+          <p className="text-white text-lg mb-4">No exercises in this workout.</p>
+          <button onClick={onFinish} className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl">
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Calculate Progress
   const progress = useMemo(() => {
     const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
@@ -238,7 +252,11 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
         name: ex.name,
         sets: String(s.length),
         reps: actualReps.length > 0 ? actualReps.join(', ') : ex.targetReps,
-        weight: avgWeight > 0 ? String(avgWeight) : ''
+        weight: avgWeight > 0 ? String(avgWeight) : '',
+        notes: ex.notes,
+        targetMuscles: ex.targetMuscles,
+        restSeconds: ex.restSeconds,
+        formCues: ex.formCues,
       };
     });
 
@@ -278,7 +296,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       {/* Rest Timer Overlay */}
       {restTimerOpen && (
         <RestTimer
-          initialTime={activeExercise?.restSeconds ?? 90}
+          initialTime={activeExercise?.restSeconds || 90}
           onComplete={handleRestComplete}
           onSkip={handleRestSkip}
         />
@@ -350,6 +368,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
           {/* Main Content - Sets Logger */}
           <div className="flex-1 overflow-y-auto">
             <WorkoutSetsLogger
+              key={activeExerciseIndex}
               exerciseName={activeExercise.name}
               sets={activeExercise.sets}
               targetReps={activeExercise.targetReps}

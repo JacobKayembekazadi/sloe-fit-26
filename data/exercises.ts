@@ -808,6 +808,35 @@ export function getExerciseByName(name: string): Exercise | undefined {
   return byNameLower.get(name.toLowerCase());
 }
 
+/**
+ * Fuzzy exercise name matching: exact first, then substring, then word overlap.
+ * Used for AI-generated names that may not match the library exactly.
+ */
+export function findExerciseByName(name: string): Exercise | undefined {
+  const q = name.toLowerCase();
+  // 1. Exact match
+  const exact = byNameLower.get(q);
+  if (exact) return exact;
+  // 2. Library name contains the query or query contains library name
+  for (const ex of EXERCISES) {
+    const n = ex.name.toLowerCase();
+    if (n.includes(q) || q.includes(n)) return ex;
+  }
+  // 3. Word overlap (at least 2 shared words)
+  const qWords = q.split(/[\s\-()]+/).filter(w => w.length > 2);
+  let bestMatch: Exercise | undefined;
+  let bestOverlap = 0;
+  for (const ex of EXERCISES) {
+    const nWords = ex.name.toLowerCase().split(/[\s\-()]+/).filter(w => w.length > 2);
+    const overlap = qWords.filter(w => nWords.some(nw => nw.includes(w) || w.includes(nw))).length;
+    if (overlap > bestOverlap && overlap >= 2) {
+      bestOverlap = overlap;
+      bestMatch = ex;
+    }
+  }
+  return bestMatch;
+}
+
 export function getExercisesByMuscle(muscle: string): Exercise[] {
   const m = muscle.toLowerCase();
   return EXERCISES.filter(e =>

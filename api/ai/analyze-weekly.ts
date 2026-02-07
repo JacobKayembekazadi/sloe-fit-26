@@ -33,23 +33,13 @@ export default async function handler(req: Request): Promise<Response> {
       p => p.analyzeWeeklyNutrition(body)
     );
 
-    const response: AIResponse<WeeklyNutritionInsights> = {
-      success: result !== null,
-      data: result ?? undefined,
+    return new Response(JSON.stringify({
+      success: true,
+      data: result,
       provider: usedProvider,
       durationMs: Date.now() - startTime,
-    };
-
-    if (!result) {
-      response.error = {
-        type: 'unknown',
-        message: 'Failed to analyze weekly nutrition',
-        retryable: true,
-      };
-    }
-
-    return new Response(JSON.stringify(response), {
-      status: result ? 200 : 500,
+    } as AIResponse<WeeklyNutritionInsights>), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
