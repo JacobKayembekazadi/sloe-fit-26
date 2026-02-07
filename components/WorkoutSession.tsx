@@ -165,6 +165,25 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     return totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
   }, [exercises]);
 
+  // Session volume (total weight × reps across all completed sets)
+  const sessionVolume = useMemo(() => {
+    return exercises.reduce((total, ex) => {
+      return total + ex.sets.filter(s => s.completed)
+        .reduce((acc, s) => acc + (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0), 0);
+    }, 0);
+  }, [exercises]);
+
+  // Last completed set for the active exercise
+  const lastCompletedSet = useMemo(() => {
+    const completed = activeExercise?.sets.filter(s => s.completed) ?? [];
+    return completed.length > 0 ? completed[completed.length - 1] : null;
+  }, [activeExercise]);
+
+  // How many sets completed in the active exercise
+  const activeExerciseCompletedCount = useMemo(() => {
+    return activeExercise?.sets.filter(s => s.completed).length ?? 0;
+  }, [activeExercise]);
+
   // -- Handlers --
 
   const handleUpdateSet = (setId: number, field: 'weight' | 'reps', value: string) => {
@@ -299,6 +318,12 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
           initialTime={activeExercise?.restSeconds || 90}
           onComplete={handleRestComplete}
           onSkip={handleRestSkip}
+          exerciseName={activeExercise?.name}
+          lastSetWeight={lastCompletedSet?.weight}
+          lastSetReps={lastCompletedSet?.reps}
+          completedSets={activeExerciseCompletedCount}
+          totalSets={activeExercise?.sets.length}
+          sessionVolume={sessionVolume}
         />
       )}
 

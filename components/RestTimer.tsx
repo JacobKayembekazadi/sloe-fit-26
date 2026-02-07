@@ -1,35 +1,37 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 interface RestTimerProps {
     initialTime: number; // seconds
     onComplete: () => void;
     onSkip: () => void;
+    exerciseName?: string;
+    lastSetWeight?: string;
+    lastSetReps?: string;
+    completedSets?: number;
+    totalSets?: number;
+    sessionVolume?: number;
 }
 
 const RestTimer: React.FC<RestTimerProps> = ({
     initialTime,
     onComplete,
-    onSkip
+    onSkip,
+    exerciseName,
+    lastSetWeight,
+    lastSetReps,
+    completedSets,
+    totalSets,
+    sessionVolume
 }) => {
     const [timeLeft, setTimeLeft] = useState(initialTime);
+    const [totalTime, setTotalTime] = useState(initialTime);
     const [isComplete, setIsComplete] = useState(false);
-    const totalTimeRef = useRef(initialTime);
     const onCompleteRef = useRef(onComplete);
 
     // Keep onComplete ref up to date
     useEffect(() => {
         onCompleteRef.current = onComplete;
     }, [onComplete]);
-
-    // Local +/- handlers that modify timeLeft directly (no prop round-trip)
-    const handleAdd = useCallback((seconds: number) => {
-        setTimeLeft(prev => prev + seconds);
-        totalTimeRef.current += seconds;
-    }, []);
-    const handleSubtract = useCallback((seconds: number) => {
-        setTimeLeft(prev => Math.max(0, prev - seconds));
-        totalTimeRef.current = Math.max(1, totalTimeRef.current - seconds);
-    }, []);
 
     // Timer countdown effect
     useEffect(() => {
@@ -47,7 +49,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
         return () => clearInterval(interval);
     }, []);
 
-    // Handle completion in a separate effect to avoid setState during render
+    // Handle completion in a separate effect
     useEffect(() => {
         if (isComplete) {
             onCompleteRef.current();
@@ -57,79 +59,165 @@ const RestTimer: React.FC<RestTimerProps> = ({
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        return { mins, secs };
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const { mins, secs } = formatTime(timeLeft);
-    const progress = Math.min(100, Math.max(0, ((totalTimeRef.current - timeLeft) / totalTimeRef.current) * 100));
+    const handleAdd = (seconds: number) => {
+        setTimeLeft(prev => prev + seconds);
+        setTotalTime(prev => prev + seconds);
+    };
+
+    const handleSubtract = (seconds: number) => {
+        setTimeLeft(prev => Math.max(0, prev - seconds));
+        setTotalTime(prev => Math.max(seconds, prev));
+    };
+
+    const progress = totalTime > 0 ? timeLeft / totalTime : 0;
+
+    // Mini SVG circle progress
+    const circleRadius = 16;
+    const circumference = 2 * Math.PI * circleRadius;
+    const strokeDashoffset = circumference * (1 - progress);
+
+    const formattedVolume = sessionVolume != null
+        ? sessionVolume.toLocaleString()
+        : null;
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background-dark font-display text-white transition-colors duration-300">
-            {/* Top Bar */}
-            <div className="flex items-center p-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))] justify-between shrink-0">
-                <button onClick={onSkip} className="flex size-12 shrink-0 items-center justify-center cursor-pointer rounded-full hover:bg-white/10 transition-colors">
-                    <span className="material-symbols-outlined">close</span>
-                </button>
-                <h2 className="text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Resting...</h2>
-                <div className="size-12"></div>
+        <div className="fixed inset-0 z-50 flex flex-col font-display text-white overflow-hidden">
+
+            {/* Layer 0: Background Image + Dark Overlay */}
+            <div className="absolute inset-0">
+                <img
+                    src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&q=60"
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    style={{ filter: 'grayscale(100%) contrast(1.2)', opacity: 0.15 }}
+                />
+                <div className="absolute inset-0 bg-[#050505]/85" />
             </div>
 
-            <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 overflow-y-auto">
-                {/* Circular Timer */}
-                <div className="relative flex justify-center items-center py-6 sm:py-8">
-                    <div className="relative flex items-center justify-center size-48 sm:size-64 rounded-full border-4 border-slate-800">
-                        {/* Progress Ring Implementation would go here - simplified for now with border */}
-                        <div className="absolute inset-0 rounded-full border-4 border-[var(--color-primary)] border-t-transparent -rotate-45" style={{ transform: `rotate(${progress * 3.6}deg)` }}></div>
+            {/* Layer 1: Perimeter Progress */}
+            <div
+                className="perimeter-progress"
+                style={{ '--progress': progress } as React.CSSProperties}
+            />
 
-                        <div className="text-center">
-                            <div className="flex gap-1 sm:gap-2 items-center justify-center">
-                                <div className="flex flex-col items-center">
-                                    <span className="text-4xl sm:text-6xl font-black tracking-tighter">{mins.toString().padStart(2, '0')}</span>
-                                    <span className="text-slate-500 text-[10px] sm:text-xs uppercase tracking-widest mt-1">Min</span>
-                                </div>
-                                <span className="text-slate-400 text-3xl sm:text-5xl font-light mb-3 sm:mb-4">:</span>
-                                <div className="flex flex-col items-center">
-                                    <span className="text-4xl sm:text-6xl font-black tracking-tighter">{secs.toString().padStart(2, '0')}</span>
-                                    <span className="text-slate-500 text-[10px] sm:text-xs uppercase tracking-widest mt-1">Sec</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Adjusters */}
-                    <div className="absolute bottom-2 sm:bottom-4 flex gap-6 sm:gap-8">
-                        <button onClick={() => handleSubtract(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
-                            <span className="material-symbols-outlined text-xl">remove</span>
-                        </button>
-                        <button onClick={() => handleAdd(10)} className="flex items-center justify-center size-11 min-w-[44px] min-h-[44px] rounded-full bg-slate-800 hover:bg-slate-700 transition-colors">
-                            <span className="material-symbols-outlined text-xl">add</span>
-                        </button>
-                    </div>
+            {/* Layer 2: Stencil Typography (centered, behind content) */}
+            {(lastSetWeight || lastSetReps) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                    {lastSetWeight && (
+                        <>
+                            <span className="stencil-text-primary text-[8rem] sm:text-[12rem] leading-none tracking-tighter">
+                                {lastSetWeight}
+                            </span>
+                            <span className="stencil-text text-2xl sm:text-3xl uppercase tracking-[0.3em] -mt-2">
+                                lbs
+                            </span>
+                        </>
+                    )}
+                    {lastSetReps && (
+                        <>
+                            <span className="stencil-text-primary text-[6rem] sm:text-[9rem] leading-none tracking-tighter mt-2">
+                                {lastSetReps}
+                            </span>
+                            <span className="stencil-text text-2xl sm:text-3xl uppercase tracking-[0.3em] -mt-2">
+                                reps
+                            </span>
+                        </>
+                    )}
                 </div>
+            )}
 
-                {/* Next Set Preview (Placeholder) */}
-                <div className="mt-6 sm:mt-8">
-                    <h3 className="text-xs sm:text-sm font-bold leading-tight tracking-wider uppercase px-1 pb-3 sm:pb-4">Up Next</h3>
-                    <div className="flex items-center gap-3 sm:gap-4 bg-[#182634] p-3 sm:p-4 rounded-xl shadow-sm border border-white/5">
-                        <div className="size-10 sm:size-12 bg-slate-700 rounded-lg flex items-center justify-center shrink-0">
-                            <span className="material-symbols-outlined text-slate-400 text-xl">fitness_center</span>
-                        </div>
-                        <div>
-                            <p className="font-bold text-sm sm:text-base">Next Set</p>
-                            <p className="text-xs sm:text-sm text-slate-400">Get Ready!</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Button */}
-            <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] bg-background-dark border-t border-slate-800 shrink-0">
+            {/* Layer 3: Top Bar */}
+            <div className="relative z-10 flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] shrink-0">
+                <span className="text-sm font-bold text-white/80 truncate max-w-[60%]">
+                    {exerciseName || 'Rest Period'}
+                </span>
                 <button
                     onClick={onSkip}
-                    className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-black font-bold py-3 sm:py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-[0.98] transition-all text-sm sm:text-base"
+                    className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                    aria-label="Close rest timer"
                 >
-                    <span>Skip Rest & Start Set</span>
-                    <span className="material-symbols-outlined text-xl">chevron_right</span>
+                    <span className="material-symbols-outlined text-xl text-white/60">close</span>
+                </button>
+            </div>
+
+            {/* Spacer to push bottom content down */}
+            <div className="flex-1" />
+
+            {/* Layer 4: Bottom Section */}
+            <div className="relative z-10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0">
+
+                {/* Rest Timer Pill */}
+                <div className="flex items-center justify-between glass-panel px-4 py-3 mb-4">
+                    <div className="flex items-center gap-3">
+                        {/* Mini circular progress */}
+                        <svg width="40" height="40" viewBox="0 0 40 40" className="shrink-0 -rotate-90">
+                            <circle
+                                cx="20" cy="20" r={circleRadius}
+                                fill="none"
+                                stroke="rgba(255,255,255,0.1)"
+                                strokeWidth="3"
+                            />
+                            <circle
+                                cx="20" cy="20" r={circleRadius}
+                                fill="none"
+                                stroke="var(--color-primary)"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={strokeDashoffset}
+                                className="transition-all duration-1000 ease-linear"
+                            />
+                        </svg>
+                        <button
+                            onClick={() => handleSubtract(15)}
+                            className="size-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
+                            aria-label="Subtract 15 seconds"
+                        >
+                            −
+                        </button>
+                        <span className="text-2xl font-black tabular-nums tracking-tight">
+                            {formatTime(timeLeft)}
+                        </span>
+                        <button
+                            onClick={() => handleAdd(15)}
+                            className="size-9 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 active:scale-90 transition-all text-lg font-bold"
+                            aria-label="Add 15 seconds"
+                        >
+                            +
+                        </button>
+                    </div>
+                    <button
+                        onClick={onSkip}
+                        className="text-sm font-bold text-[var(--color-primary)] px-4 py-2 rounded-lg hover:bg-[var(--color-primary)]/10 transition-colors"
+                    >
+                        Skip
+                    </button>
+                </div>
+
+                {/* Stats Row */}
+                <div className="flex items-center justify-between px-1 mb-4">
+                    {formattedVolume != null && (
+                        <span className="text-xs text-slate-400">
+                            Session Volume: <span className="text-white font-bold">{formattedVolume} lbs</span>
+                        </span>
+                    )}
+                    {completedSets != null && totalSets != null && (
+                        <span className="text-xs text-slate-400">
+                            Set <span className="text-white font-bold">{completedSets}</span> / {totalSets}
+                        </span>
+                    )}
+                </div>
+
+                {/* Tap to Continue */}
+                <button
+                    onClick={onSkip}
+                    className="w-full py-4 rounded-xl border border-white/10 text-sm text-slate-400 font-medium hover:bg-white/5 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                    Tap to continue
+                    <span className="material-symbols-outlined text-base">arrow_forward</span>
                 </button>
             </div>
         </div>
