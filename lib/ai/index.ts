@@ -132,6 +132,12 @@ export async function withFallback<T>(
   for (const { type, provider } of providers) {
     try {
       const data = await fn(provider);
+      // Treat null/undefined as a provider failure so we try the next one
+      if (data === null || data === undefined) {
+        console.error(`[ai] provider ${type} returned null — trying next`);
+        lastError = new Error(`Provider ${type} returned null`);
+        continue;
+      }
       return { data, provider: type };
     } catch (error) {
       lastError = error;
