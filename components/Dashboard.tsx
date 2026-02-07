@@ -118,6 +118,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         carbs: { current: todayNutrition.carbs, target: nutritionTargets.carbs },
     };
 
+    // Prevent conflicting actions during loading states
+    const isBusy = workoutStatus === 'generating' || workoutStatus === 'recovery' || isGeneratingPlan || isWeeklyPlanLoading;
+
     return (
         <div className="w-full space-y-8 pb-8">
             <header className="flex justify-between items-end">
@@ -192,13 +195,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <button
                             onClick={() => onStartPlanWorkout(todaysPlan.workout!)}
-                            className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]"
+                            disabled={isBusy}
+                            className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Start Workout
                         </button>
                         <button
                             onClick={onStartWorkout}
-                            className="w-full mt-2 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                            disabled={isBusy}
+                            className="w-full mt-2 py-2 text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Or generate a fresh workout →
                         </button>
@@ -215,7 +220,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         <button
                             onClick={onStartWorkout}
-                            className="w-full py-3 bg-gray-800 text-white font-medium rounded-xl hover:bg-gray-700 transition-colors"
+                            disabled={isBusy}
+                            className="w-full py-3 bg-gray-800 text-white font-medium rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Train Anyway
                         </button>
@@ -230,7 +236,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <h3 className="text-xl font-bold text-white mb-2">Ready to Train?</h3>
                             <p className="text-gray-400 text-sm">AI will generate a workout based on your recovery</p>
                         </div>
-                        <button onClick={onStartWorkout} className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E]">
+                        <button
+                            onClick={onStartWorkout}
+                            disabled={isBusy}
+                            className="btn-primary w-full focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1C1C1E] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                             Start Today's Workout
                         </button>
                     </div>

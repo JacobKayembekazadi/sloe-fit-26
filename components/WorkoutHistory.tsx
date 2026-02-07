@@ -3,6 +3,7 @@ import type { CompletedWorkout, NutritionLog } from '../App';
 import type { NutritionTargets, MealEntry } from '../hooks/useUserData';
 import ProgressChart from './ProgressChart';
 import WeeklyNutritionSummary from './WeeklyNutritionSummary';
+import { calculateTotalVolume } from '../utils/workoutUtils';
 
 // -- Interfaces --
 
@@ -17,15 +18,9 @@ interface WorkoutHistoryProps {
     mealEntries?: MealEntry[];
 }
 
-// Pure helper function outside component to avoid recreation
+// Use shared utility for volume calculation
 const calculateWorkoutVolume = (workout: CompletedWorkout): number => {
-    return workout.log.reduce((vol, ex) => {
-        const sets = parseInt(ex.sets) || 0;
-        // Handle comma-separated reps (e.g., "8, 8, 6") - take first value
-        const reps = parseInt(ex.reps?.split(',')[0]) || 0;
-        const weight = parseFloat(ex.weight) || 0;
-        return vol + (sets * reps * weight);
-    }, 0);
+    return calculateTotalVolume(workout.log);
 };
 
 const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ history, nutritionLogs, nutritionTargets, onBack, goal, mealEntries = [] }) => {

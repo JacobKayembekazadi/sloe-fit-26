@@ -15,6 +15,7 @@ import { getTodaysWorkout } from './services/workoutService';
 import { generateWorkout, GeneratedWorkout } from './services/aiService';
 import { findExerciseByName } from './data/exercises';
 import { getTemplates, updateLastUsed, templateToExerciseLogs } from './services/templateService';
+import { calculateTotalVolume } from './utils/workoutUtils';
 import type { WorkoutTemplate } from './services/templateService';
 import type { RecoveryState } from './components/RecoveryCheckIn';
 import type { WorkoutDraft } from './components/WorkoutSession';
@@ -215,28 +216,13 @@ const AppContent: React.FC = () => {
     setActiveDraft(null);
     setWorkoutStatus('idle');
     setAiWorkout(null);
+    setWorkoutFromPlanDayIndex(null);
   }, []);
 
   const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
     const validLog = log.filter(ex => ex.name);
     return await addWorkout(title, validLog, rating);
   }, [addWorkout]);
-
-  const handleRateWorkout = useCallback(async (rating: number): Promise<boolean> => {
-    setIsSaving(true);
-    const saved = await handleAddWorkoutToHistory(completedLog, workoutTitle, rating);
-    saveNutrition(todayNutrition);
-    setIsSaving(false);
-
-    if (saved) {
-      showToast('Workout Saved!', 'success');
-      setWorkoutStatus('idle');
-      return true;
-    } else {
-      showToast('Failed to save workout. Please try again.', 'error');
-      return false;
-    }
-  }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast]);
 
   const handleResumeDraft = useCallback(() => {
     if (!recoveryDraft) return;
@@ -298,14 +284,9 @@ const AppContent: React.FC = () => {
     setWorkoutStatus('active');
   }, []);
 
+  // Use shared utility for volume calculation
   const calculateVolume = useCallback((logs: ExerciseLog[]) => {
-    return logs.reduce((acc, log) => {
-      const weight = parseFloat(log.weight) || 0;
-      const sets = parseInt(log.sets) || 0;
-      const repsStr = log.reps.split('-')[0];
-      const reps = parseInt(repsStr) || 10;
-      return acc + (weight * sets * reps);
-    }, 0);
+    return calculateTotalVolume(logs);
   }, []);
 
   const getDurationString = useCallback(() => {
@@ -326,12 +307,14 @@ const AppContent: React.FC = () => {
     isLoading: isWeeklyPlanLoading,
     isGenerating: isGeneratingPlan,
     generateNewPlan,
-    refreshPlan
+    refreshPlan,
+    markDayCompleted
   } = useWeeklyPlan();
 
   const [showWeeklyPlan, setShowWeeklyPlan] = useState(false);
   const [showQuickRecovery, setShowQuickRecovery] = useState(false);
   const [pendingPlanWorkout, setPendingPlanWorkout] = useState<GeneratedWorkout | null>(null);
+  const [workoutFromPlanDayIndex, setWorkoutFromPlanDayIndex] = useState<number | null>(null);
 
   // Step 1: User clicks "Start" on plan workout -> show quick recovery check
   const handleStartFromPlan = useCallback((workout: GeneratedWorkout) => {
@@ -348,6 +331,8 @@ const AppContent: React.FC = () => {
     setWorkoutTitle(pendingPlanWorkout.title);
     setShowQuickRecovery(false);
     setPendingPlanWorkout(null);
+    // Track that this workout is from today's plan
+    setWorkoutFromPlanDayIndex(new Date().getDay());
     setWorkoutStatus('preview');
   }, [pendingPlanWorkout]);
 
@@ -366,6 +351,28 @@ const AppContent: React.FC = () => {
 
   const handleViewWeeklyPlan = useCallback(() => setShowWeeklyPlan(true), []);
   const handleCloseWeeklyPlan = useCallback(() => setShowWeeklyPlan(false), []);
+
+  // Handle workout rating and save (defined here to access markDayCompleted)
+  const handleRateWorkout = useCallback(async (rating: number): Promise<boolean> => {
+    setIsSaving(true);
+    const saved = await handleAddWorkoutToHistory(completedLog, workoutTitle, rating);
+    saveNutrition(todayNutrition);
+    setIsSaving(false);
+
+    if (saved) {
+      // Mark plan day as completed if this workout was from the weekly plan
+      if (workoutFromPlanDayIndex !== null) {
+        markDayCompleted(workoutFromPlanDayIndex);
+        setWorkoutFromPlanDayIndex(null);
+      }
+      showToast('Workout Saved!', 'success');
+      setWorkoutStatus('idle');
+      return true;
+    } else {
+      showToast('Failed to save workout. Please try again.', 'error');
+      return false;
+    }
+  }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast, workoutFromPlanDayIndex, markDayCompleted]);
 
   // ============================================================================
   // Builder / Library / Templates

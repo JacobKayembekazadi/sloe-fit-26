@@ -34,6 +34,7 @@ interface UseWeeklyPlanResult {
   plan: WeeklyPlan | null;
   todaysPlan: DayPlan | null;
   todaysWorkout: GeneratedWorkout | null;
+  completedDays: Set<number>;
 
   // State
   isLoading: boolean;
@@ -97,20 +98,40 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedDays, setCompletedDays] = useState<Set<number>>(new Set());
+  const [realRecoveryData, setRealRecoveryData] = useState<RecoveryPattern[]>([]);
 
-  // Load existing plan from Supabase on mount
+  // Load existing plan and recovery data from Supabase on mount
   useEffect(() => {
     if (!user) return;
 
-    const loadPlan = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
         const weekStart = getWeekStart();
-        const { data, error: fetchError } = await supabaseGet<any[]>(
-          `weekly_plans?user_id=eq.${user.id}&week_start=eq.${weekStart}&limit=1`
-        );
+
+        // Fetch plan and recovery logs in parallel
+        const [planResult, recoveryResult] = await Promise.all([
+          supabaseGet<any[]>(
+            `weekly_plans?user_id=eq.${user.id}&week_start=eq.${weekStart}&limit=1`
+          ),
+          supabaseGet<any[]>(
+            `user_recovery_logs?user_id=eq.${user.id}&order=date.desc&limit=7`
+          )
+        ]);
+
+        // Handle recovery data
+        if (recoveryResult.data && recoveryResult.data.length > 0) {
+          setRealRecoveryData(recoveryResult.data.map((r: any) => ({
+            date: r.date,
+            energyLevel: r.energy_level || 3,
+            sleepHours: r.sleep_hours || 7,
+            sorenessAreas: r.soreness_areas || []
+          })));
+        }
+
+        const { data, error: fetchError } = planResult;
 
         if (fetchError) {
           console.error('[useWeeklyPlan] Error loading plan:', fetchError);
@@ -126,7 +147,7 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
       }
     };
 
-    loadPlan();
+    loadData();
   }, [user]);
 
   // Transform workout history for AI input
@@ -145,22 +166,39 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     }));
   }, [workouts]);
 
-  // Mock recovery patterns (in future, this could come from recovery check-in data)
+  // Recovery patterns - use real data when available, otherwise infer from workout history
   const recoveryPatterns = useMemo((): RecoveryPattern[] => {
-    // Generate mock patterns based on recent activity
-    const patterns: RecoveryPattern[] = [];
+    // If we have real recovery logs, use them
+    if (realRecoveryData.length > 0) {
+      return realRecoveryData;
+    }
+
+    // Try to infer from workout history (workouts may have energy_level, sleep_hours)
+    const inferredPatterns: RecoveryPattern[] = workouts.slice(0, 7).map((w: any) => ({
+      date: w.rawDate?.split('T')[0] || w.date,
+      energyLevel: w.energy_level || 3, // Default to "okay" if not recorded
+      sleepHours: w.sleep_hours || 7,   // Default to 7 hours
+      sorenessAreas: w.soreness_areas || []
+    }));
+
+    if (inferredPatterns.length > 0) {
+      return inferredPatterns;
+    }
+
+    // Absolute fallback - use sensible defaults (not random!)
+    const defaults: RecoveryPattern[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date();
       date.setDate(date.getDate() - i);
-      patterns.push({
+      defaults.push({
         date: date.toISOString().split('T')[0],
-        energyLevel: 3 + Math.floor(Math.random() * 2),
-        sleepHours: 6 + Math.floor(Math.random() * 3),
+        energyLevel: 3, // "Okay" - middle ground
+        sleepHours: 7,  // Average sleep
         sorenessAreas: []
       });
     }
-    return patterns;
-  }, []);
+    return defaults;
+  }, [realRecoveryData, workouts]);
 
   // Generate a new weekly plan
   const generateNewPlan = useCallback(async () => {
@@ -259,6 +297,7 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     plan,
     todaysPlan,
     todaysWorkout,
+    completedDays,
     isLoading,
     isGenerating,
     error,

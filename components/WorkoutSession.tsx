@@ -150,7 +150,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background-dark">
         <div className="text-center p-6">
           <p className="text-white text-lg mb-4">No exercises in this workout.</p>
-          <button onClick={onFinish} className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl">
+          <button onClick={onCancel} className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl">
             Go Back
           </button>
         </div>
