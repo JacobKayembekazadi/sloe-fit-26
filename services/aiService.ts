@@ -346,7 +346,7 @@ function formatErrorForUser(error: AIResponse<unknown>['error']): string {
 
   switch (error.type) {
     case 'payload_too_large':
-      return 'Image is too large. Please try a smaller photo or use text input.';
+      return 'Image could not be processed. Please try again or use text input instead.';
     case 'network':
       return 'Unable to reach the server. Please check your connection and try again.';
     case 'timeout':

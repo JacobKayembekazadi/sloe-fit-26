@@ -137,12 +137,31 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         onAnalysisComplete(analysisResult);
         showToast('Analysis complete', 'success');
 
-        // Persist to localStorage
+        // Persist to localStorage (compress preview to avoid quota issues)
         try {
+          let thumbPreview: string | null = null;
+          if (preview) {
+            try {
+              const img = new Image();
+              await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = () => reject();
+                img.src = preview;
+              });
+              const c = document.createElement('canvas');
+              const scale = Math.min(200 / img.width, 200 / img.height, 1);
+              c.width = Math.round(img.width * scale);
+              c.height = Math.round(img.height * scale);
+              c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+              thumbPreview = c.toDataURL('image/jpeg', 0.5);
+            } catch {
+              thumbPreview = null;
+            }
+          }
           const toStore: StoredAnalysis = {
             result: analysisResult,
             timestamp: Date.now(),
-            photoPreview: preview,
+            photoPreview: thumbPreview,
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
         } catch {

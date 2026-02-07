@@ -28,7 +28,7 @@ import {
 // ============================================================================
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_TIMEOUT_MS = 30000;
 const BASE_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
@@ -290,7 +290,7 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
               ],
             },
           ],
-          { maxTokens: 1500, timeoutMs: 45000 }
+          { maxTokens: 1500, timeoutMs: 25000 }
         );
 
         if (content) {
@@ -319,7 +319,7 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
               ],
             },
           ],
-          { maxTokens: 1500, timeoutMs: 45000 }
+          { maxTokens: 1500, timeoutMs: 25000 }
         );
       } catch (error) {
         const aiError = error as AIError;

@@ -69,7 +69,10 @@ function resolveKey(type: AIProviderType): string | undefined {
  */
 export function getProviderFromEnv(): AIProvider {
   const providerType = (process.env.AI_PROVIDER || 'openai') as AIProviderType;
-  const apiKey = process.env.AI_API_KEY || resolveKey(providerType);
+  const rawKey = process.env.AI_API_KEY;
+  const apiKey = (rawKey && !rawKey.includes('PLACEHOLDER') && !rawKey.includes('your-') && !rawKey.includes('your_') && rawKey.length >= 10)
+    ? rawKey
+    : resolveKey(providerType);
 
   if (!apiKey) {
     throw new Error(`No API key found for provider: ${providerType}. Set AI_API_KEY or ${providerType.toUpperCase()}_API_KEY`);
@@ -91,7 +94,9 @@ function getAvailableProviders(): { type: AIProviderType; provider: AIProvider }
   for (const type of order) {
     if (seen.has(type)) continue;
     seen.add(type);
-    const key = process.env.AI_API_KEY && type === primary ? process.env.AI_API_KEY : resolveKey(type);
+    const rawFallback = process.env.AI_API_KEY;
+    const validFallback = rawFallback && !rawFallback.includes('PLACEHOLDER') && !rawFallback.includes('your-') && !rawFallback.includes('your_') && rawFallback.length >= 10 ? rawFallback : undefined;
+    const key = validFallback && type === primary ? validFallback : resolveKey(type);
     if (key) {
       try {
         result.push({ type, provider: createProvider(type, key) });

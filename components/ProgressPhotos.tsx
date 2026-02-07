@@ -54,6 +54,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   // AI analysis state
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // Generation counter to cancel stale in-flight analysis
   const analysisGenRef = useRef(0);
@@ -278,6 +279,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
     const gen = ++analysisGenRef.current;
     setAnalysisLoading(true);
     setAnalysisResult(null);
+    setAnalysisError(null);
 
     try {
       // Download both photos via Supabase SDK (avoids CORS issues)
@@ -311,13 +313,15 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
       if (gen !== analysisGenRef.current) return;
       if (result.startsWith('Error:')) {
+        setAnalysisError(result.replace(/^Error:\s*/, ''));
         showToast('Progress analysis failed', 'error');
       } else {
         setAnalysisResult(result);
       }
     } catch {
       if (gen !== analysisGenRef.current) return;
-      showToast('Failed to analyze progress. Please try again.', 'error');
+      setAnalysisError('Analysis failed. Please check your connection and try again.');
+      showToast('Failed to analyze progress', 'error');
     } finally {
       if (gen === analysisGenRef.current) {
         setAnalysisLoading(false);
@@ -667,7 +671,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
           {/* AI Analysis Section */}
           {comparePhotos[0] && comparePhotos[1] && compareSelectingSlot === null && (
             <div className="space-y-4">
-              {!analysisResult && !analysisLoading && (
+              {!analysisResult && !analysisLoading && !analysisError && (
                 <button
                   onClick={handleAnalyzeProgress}
                   className="btn-primary w-full flex items-center justify-center gap-2"
@@ -677,6 +681,18 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
                   </svg>
                   Analyze Progress with AI
                 </button>
+              )}
+
+              {analysisError && !analysisLoading && (
+                <div className="card p-4 space-y-3">
+                  <p className="text-red-400 text-sm">{analysisError}</p>
+                  <button
+                    onClick={() => { setAnalysisError(null); handleAnalyzeProgress(); }}
+                    className="btn-primary w-full text-sm"
+                  >
+                    Try Again
+                  </button>
+                </div>
               )}
 
               {analysisLoading && (
