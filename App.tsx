@@ -184,7 +184,13 @@ const AppContent: React.FC = () => {
       try {
         const draft: WorkoutDraft = JSON.parse(saved);
         const ageMinutes = (Date.now() - draft.savedAt) / 60000;
-        if (ageMinutes < 120) {
+
+        // Draft must be less than 2 hours old AND from today
+        const draftDate = new Date(draft.savedAt).toDateString();
+        const todayDate = new Date().toDateString();
+        const isSameDay = draftDate === todayDate;
+
+        if (ageMinutes < 120 && isSameDay) {
           setRecoveryDraft(draft);
         } else {
           localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -212,11 +218,15 @@ const AppContent: React.FC = () => {
     setWorkoutStatus('completed');
   }, []);
 
+  // Note: handleWorkoutCancel is defined after resetWorkoutState to use it
   const handleWorkoutCancel = useCallback(() => {
+    // Clean up all workout-related state atomically
     setActiveDraft(null);
     setWorkoutStatus('idle');
     setAiWorkout(null);
     setWorkoutFromPlanDayIndex(null);
+    setShowQuickRecovery(false);
+    setPendingPlanWorkout(null);
   }, []);
 
   const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
@@ -304,6 +314,7 @@ const AppContent: React.FC = () => {
     plan: weeklyPlan,
     todaysPlan,
     todaysWorkout,
+    completedDays,
     isLoading: isWeeklyPlanLoading,
     isGenerating: isGeneratingPlan,
     generateNewPlan,
@@ -316,6 +327,17 @@ const AppContent: React.FC = () => {
   const [pendingPlanWorkout, setPendingPlanWorkout] = useState<GeneratedWorkout | null>(null);
   const [workoutFromPlanDayIndex, setWorkoutFromPlanDayIndex] = useState<number | null>(null);
 
+  // Centralized state cleanup to prevent orphaned state across exit paths
+  const resetWorkoutState = useCallback(() => {
+    setWorkoutStatus('idle');
+    setAiWorkout(null);
+    setShowQuickRecovery(false);
+    setPendingPlanWorkout(null);
+    setWorkoutFromPlanDayIndex(null);
+    setActiveDraft(null);
+    setCompletedLog([]);
+  }, []);
+
   // Step 1: User clicks "Start" on plan workout -> show quick recovery check
   const handleStartFromPlan = useCallback((workout: GeneratedWorkout) => {
     setPendingPlanWorkout(workout);
@@ -326,13 +348,17 @@ const AppContent: React.FC = () => {
   // Step 2a: Quick check passed -> proceed to preview
   const handleQuickRecoveryProceed = useCallback(() => {
     if (!pendingPlanWorkout) return;
+
+    // Capture day index NOW before any async operations
+    const dayIndexAtStart = new Date().getDay();
+
     setAiWorkout(pendingPlanWorkout);
     setWorkoutLog(aiWorkoutToExerciseLog(pendingPlanWorkout));
     setWorkoutTitle(pendingPlanWorkout.title);
     setShowQuickRecovery(false);
     setPendingPlanWorkout(null);
-    // Track that this workout is from today's plan
-    setWorkoutFromPlanDayIndex(new Date().getDay());
+    // Track that this workout is from today's plan (captured at start time)
+    setWorkoutFromPlanDayIndex(dayIndexAtStart);
     setWorkoutStatus('preview');
   }, [pendingPlanWorkout]);
 
@@ -340,6 +366,7 @@ const AppContent: React.FC = () => {
   const handleQuickRecoveryFullCheckIn = useCallback(() => {
     setShowQuickRecovery(false);
     setPendingPlanWorkout(null);
+    setWorkoutFromPlanDayIndex(null); // Clear plan association when going to full recovery
     setWorkoutStatus('recovery');
   }, []);
 
@@ -362,10 +389,17 @@ const AppContent: React.FC = () => {
     if (saved) {
       // Mark plan day as completed if this workout was from the weekly plan
       if (workoutFromPlanDayIndex !== null) {
-        markDayCompleted(workoutFromPlanDayIndex);
+        const planSaved = await markDayCompleted(workoutFromPlanDayIndex);
         setWorkoutFromPlanDayIndex(null);
+        if (!planSaved) {
+          // Workout saved but plan completion failed - warn user but don't block
+          showToast('Workout saved! (Plan sync may have failed)', 'info');
+        } else {
+          showToast('Workout Saved!', 'success');
+        }
+      } else {
+        showToast('Workout Saved!', 'success');
       }
-      showToast('Workout Saved!', 'success');
       setWorkoutStatus('idle');
       return true;
     } else {
@@ -381,25 +415,75 @@ const AppContent: React.FC = () => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => getTemplates());
 
+  // Pending custom workout for recovery check (from builder or template)
+  const [pendingCustomWorkout, setPendingCustomWorkout] = useState<{
+    exercises: ExerciseLog[];
+    title: string;
+  } | null>(null);
+
   const refreshTemplates = useCallback(() => setTemplates(getTemplates()), []);
 
+  // Convert ExerciseLog[] to a GeneratedWorkout-like structure for QuickRecoveryCheck
+  const customWorkoutForRecoveryCheck = useMemo((): GeneratedWorkout | null => {
+    if (!pendingCustomWorkout) return null;
+    return {
+      title: pendingCustomWorkout.title,
+      exercises: pendingCustomWorkout.exercises.map(ex => ({
+        name: ex.name,
+        sets: parseInt(ex.sets) || 3,
+        reps: ex.reps,
+        target_muscles: ex.targetMuscles || [],
+        notes: ex.notes,
+        rest_seconds: ex.restSeconds || 60,
+      })),
+      duration_minutes: 45,
+      intensity: 'moderate' as const,
+      recovery_adjusted: false,
+      warmup: { duration_minutes: 5, exercises: [] },
+      cooldown: { duration_minutes: 5, exercises: [] },
+    };
+  }, [pendingCustomWorkout]);
+
+  // Show quick recovery check before starting custom workout
   const handleStartCustomWorkout = useCallback((exercises: ExerciseLog[], title: string) => {
-    setWorkoutLog(exercises);
-    setWorkoutTitle(title);
+    setPendingCustomWorkout({ exercises, title });
     setShowBuilder(false);
-    setWorkoutStatus('preview');
+    setShowQuickRecovery(true);
   }, []);
 
+  // Show quick recovery check before starting template
   const handleStartTemplate = useCallback((template: WorkoutTemplate) => {
     updateLastUsed(template.id);
     refreshTemplates();
     const logs = templateToExerciseLogs(template);
-    setWorkoutLog(logs);
-    setWorkoutTitle(template.name);
+    setPendingCustomWorkout({ exercises: logs, title: template.name });
     setShowBuilder(false);
     setShowLibrary(false);
-    setWorkoutStatus('preview');
+    setShowQuickRecovery(true);
   }, [refreshTemplates]);
+
+  // Handle quick recovery proceed for custom/template workouts
+  const handleCustomRecoveryProceed = useCallback(() => {
+    if (!pendingCustomWorkout) return;
+    setWorkoutLog(pendingCustomWorkout.exercises);
+    setWorkoutTitle(pendingCustomWorkout.title);
+    setShowQuickRecovery(false);
+    setPendingCustomWorkout(null);
+    setWorkoutStatus('preview');
+  }, [pendingCustomWorkout]);
+
+  // Handle full check-in for custom/template workouts (generates new AI workout)
+  const handleCustomRecoveryFullCheckIn = useCallback(() => {
+    setShowQuickRecovery(false);
+    setPendingCustomWorkout(null);
+    setWorkoutStatus('recovery');
+  }, []);
+
+  // Handle cancel for custom/template workouts
+  const handleCustomRecoveryCancel = useCallback(() => {
+    setShowQuickRecovery(false);
+    setPendingCustomWorkout(null);
+  }, []);
 
   const handleOpenBuilder = useCallback(() => setShowBuilder(true), []);
   const handleCloseBuilder = useCallback(() => setShowBuilder(false), []);
@@ -682,7 +766,7 @@ const AppContent: React.FC = () => {
           <Suspense fallback={<LazyFallback />}>
             <WorkoutPreview
               title={workoutTitle}
-              duration={45}
+              duration={aiWorkout?.duration_minutes || 45}
               difficulty="Intermediate"
               description={aiWorkout?.recovery_notes || "A balanced session targeting hypertrophy."}
               exercises={workoutLog.map(ex => ({
@@ -774,6 +858,7 @@ const AppContent: React.FC = () => {
               onBack={handleCloseWeeklyPlan}
               onGenerate={generateNewPlan}
               onStartWorkout={handleStartFromPlan}
+              completedDays={completedDays}
             />
           </Suspense>
         </div>
@@ -787,6 +872,18 @@ const AppContent: React.FC = () => {
             onProceed={handleQuickRecoveryProceed}
             onFullCheckIn={handleQuickRecoveryFullCheckIn}
             onCancel={handleQuickRecoveryCancel}
+          />
+        </Suspense>
+      )}
+
+      {/* Quick Recovery Check (for custom/template workouts) */}
+      {showQuickRecovery && customWorkoutForRecoveryCheck && !pendingPlanWorkout && (
+        <Suspense fallback={null}>
+          <QuickRecoveryCheck
+            workout={customWorkoutForRecoveryCheck}
+            onProceed={handleCustomRecoveryProceed}
+            onFullCheckIn={handleCustomRecoveryFullCheckIn}
+            onCancel={handleCustomRecoveryCancel}
           />
         </Suspense>
       )}

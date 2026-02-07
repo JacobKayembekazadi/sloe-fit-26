@@ -44,20 +44,26 @@ interface UseWeeklyPlanResult {
   // Actions
   generateNewPlan: () => Promise<void>;
   refreshPlan: () => Promise<void>;
-  markDayCompleted: (dayIndex: number) => void;
+  markDayCompleted: (dayIndex: number) => Promise<boolean>;
 }
 
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
-// Get the Monday of the current week
+// Get the Monday of the current week (timezone-safe)
 function getWeekStart(): string {
   const today = new Date();
-  const dayOfWeek = today.getDay();
-  const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-  const monday = new Date(today.setDate(diff));
-  return monday.toISOString().split('T')[0];
+  // Clone to avoid mutating original
+  const monday = new Date(today);
+  const dayOfWeek = monday.getDay();
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Sunday = -6, Mon = 0, Tue = -1, etc.
+  monday.setDate(monday.getDate() + diff);
+  // Use local date parts to avoid timezone shifts
+  const year = monday.getFullYear();
+  const month = String(monday.getMonth() + 1).padStart(2, '0');
+  const day = String(monday.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Get today's day index (0 = Sunday, 6 = Saturday)
@@ -104,6 +110,9 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
   useEffect(() => {
     if (!user) return;
 
+    // AbortController for cleanup on unmount or user change
+    let isCancelled = false;
+
     const loadData = async () => {
       setIsLoading(true);
       setError(null);
@@ -121,8 +130,14 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
           )
         ]);
 
-        // Handle recovery data
-        if (recoveryResult.data && recoveryResult.data.length > 0) {
+        // Bail if unmounted or user changed
+        if (isCancelled) return;
+
+        // Handle recovery data - check for errors
+        if (recoveryResult.error) {
+          console.warn('[useWeeklyPlan] Recovery logs fetch failed:', recoveryResult.error);
+          // Non-fatal: recovery logs are optional, continue with defaults
+        } else if (recoveryResult.data && recoveryResult.data.length > 0) {
           setRealRecoveryData(recoveryResult.data.map((r: any) => ({
             date: r.date,
             energyLevel: r.energy_level || 3,
@@ -138,16 +153,28 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
           setError('Failed to load weekly plan');
         } else if (data && data.length > 0) {
           setPlan(data[0].plan as WeeklyPlan);
+          // Load persisted completed days
+          if (data[0].completed_days && Array.isArray(data[0].completed_days)) {
+            setCompletedDays(new Set(data[0].completed_days));
+          }
         }
       } catch (err) {
+        if (isCancelled) return;
         console.error('[useWeeklyPlan] Error:', err);
         setError('Failed to load weekly plan');
       } finally {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadData();
+
+    // Cleanup function
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   // Transform workout history for AI input
@@ -229,17 +256,29 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
         setPlan(result);
         setCompletedDays(new Set());
 
-        // Save to Supabase
-        const weekStart = getWeekStart();
-        await supabaseUpsert('weekly_plans', {
-          user_id: user.id,
-          week_start: weekStart,
-          plan: result,
-          reasoning: result.reasoning,
-          progressive_overload_notes: result.progressive_overload_notes,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, 'user_id,week_start');
+        // Save to Supabase (include empty completed_days array)
+        try {
+          const weekStart = getWeekStart();
+          const upsertResult = await supabaseUpsert('weekly_plans', {
+            user_id: user.id,
+            week_start: weekStart,
+            plan: result,
+            reasoning: result.reasoning,
+            progressive_overload_notes: result.progressive_overload_notes,
+            completed_days: [], // Fresh plan has no completed days
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, 'user_id,week_start');
+
+          if (upsertResult.error) {
+            console.error('[useWeeklyPlan] Failed to save plan:', upsertResult.error);
+            // Plan is in memory but not persisted - continue but warn
+            setError('Plan created but save failed. Changes may be lost on refresh.');
+          }
+        } catch (saveErr) {
+          console.error('[useWeeklyPlan] Save exception:', saveErr);
+          setError('Plan created but save failed. Changes may be lost on refresh.');
+        }
       } else {
         setError('Failed to generate plan. Please try again.');
       }
@@ -276,10 +315,35 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     }
   }, [user]);
 
-  // Mark a day as completed
-  const markDayCompleted = useCallback((dayIndex: number) => {
-    setCompletedDays(prev => new Set([...prev, dayIndex]));
-  }, []);
+  // Mark a day as completed and persist to Supabase
+  // Returns true if persistence succeeded, false if it failed
+  const markDayCompleted = useCallback(async (dayIndex: number): Promise<boolean> => {
+    // Update local state immediately (optimistic)
+    const updatedSet = new Set([...completedDays, dayIndex]);
+    setCompletedDays(updatedSet);
+
+    // Persist to Supabase
+    if (!user) return true; // No user = nothing to persist, consider it "success"
+
+    try {
+      const weekStart = getWeekStart();
+      const result = await supabaseUpsert('weekly_plans', {
+        user_id: user.id,
+        week_start: weekStart,
+        completed_days: Array.from(updatedSet),
+        updated_at: new Date().toISOString()
+      }, 'user_id,week_start');
+
+      if (result.error) {
+        console.error('[useWeeklyPlan] Failed to persist completed days:', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[useWeeklyPlan] Exception persisting completed days:', err);
+      return false;
+    }
+  }, [user, completedDays]);
 
   // Get today's plan
   const todaysPlan = useMemo((): DayPlan | null => {

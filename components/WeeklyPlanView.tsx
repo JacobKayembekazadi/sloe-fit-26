@@ -11,7 +11,8 @@ import {
   TrendingUp,
   Loader2,
   Sparkles,
-  Play
+  Play,
+  CheckCircle
 } from 'lucide-react';
 import { WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
 
@@ -22,6 +23,7 @@ interface WeeklyPlanViewProps {
   onBack: () => void;
   onGenerate: () => void;
   onStartWorkout: (workout: GeneratedWorkout) => void;
+  completedDays?: Set<number>; // Track which days have been completed
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -32,7 +34,8 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
   isGenerating,
   onBack,
   onGenerate,
-  onStartWorkout
+  onStartWorkout,
+  completedDays = new Set()
 }) => {
   const [expandedDay, setExpandedDay] = useState<number | null>(new Date().getDay());
   const todayIndex = new Date().getDay();
@@ -157,6 +160,7 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
             day={day}
             isToday={day.day === todayIndex}
             isExpanded={expandedDay === day.day}
+            isCompleted={completedDays.has(day.day)}
             onToggle={() => setExpandedDay(expandedDay === day.day ? null : day.day)}
             onStartWorkout={onStartWorkout}
           />
@@ -190,6 +194,7 @@ interface DayCardProps {
   day: DayPlan;
   isToday: boolean;
   isExpanded: boolean;
+  isCompleted: boolean;
   onToggle: () => void;
   onStartWorkout: (workout: GeneratedWorkout) => void;
 }
@@ -198,31 +203,42 @@ const DayCard: React.FC<DayCardProps> = ({
   day,
   isToday,
   isExpanded,
+  isCompleted,
   onToggle,
   onStartWorkout
 }) => {
   return (
     <div
       className={`bg-zinc-900 rounded-xl border ${
-        isToday ? 'border-[#D4FF00]' : 'border-zinc-800'
-      } overflow-hidden`}
+        isCompleted
+          ? 'border-green-500/50'
+          : isToday
+          ? 'border-[#D4FF00]'
+          : 'border-zinc-800'
+      } overflow-hidden ${isCompleted ? 'opacity-80' : ''}`}
     >
       {/* Header */}
       <button
         onClick={onToggle}
+        aria-expanded={isExpanded}
+        aria-label={`${DAY_NAMES[day.day]}: ${day.is_rest_day ? 'Rest Day' : day.workout?.title || 'Workout'}${isCompleted ? ' (Completed)' : ''}`}
         className="w-full p-4 flex items-center justify-between"
       >
         <div className="flex items-center gap-3">
           <div
             className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              isToday
+              isCompleted
+                ? 'bg-green-500/20 text-green-400'
+                : isToday
                 ? 'bg-[#D4FF00] text-black'
                 : day.is_rest_day
                 ? 'bg-zinc-800 text-gray-500'
                 : 'bg-zinc-700 text-white'
             }`}
           >
-            {day.is_rest_day ? (
+            {isCompleted ? (
+              <CheckCircle className="w-5 h-5" />
+            ) : day.is_rest_day ? (
               <Moon className="w-5 h-5" />
             ) : (
               <Dumbbell className="w-5 h-5" />
@@ -230,14 +246,21 @@ const DayCard: React.FC<DayCardProps> = ({
           </div>
           <div className="text-left">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white">{DAY_NAMES[day.day]}</span>
-              {isToday && (
+              <span className={`font-bold ${isCompleted ? 'text-green-400' : 'text-white'}`}>
+                {DAY_NAMES[day.day]}
+              </span>
+              {isCompleted && (
+                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-medium">
+                  Done
+                </span>
+              )}
+              {isToday && !isCompleted && (
                 <span className="text-xs bg-[#D4FF00] text-black px-2 py-0.5 rounded-full font-medium">
                   Today
                 </span>
               )}
             </div>
-            <div className="text-sm text-gray-400">
+            <div className={`text-sm ${isCompleted ? 'text-green-400/70' : 'text-gray-400'}`}>
               {day.is_rest_day
                 ? 'Rest Day'
                 : day.workout?.title || 'Workout'}
