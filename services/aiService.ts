@@ -216,6 +216,54 @@ const fileToDataUrl = async (file: File): Promise<string> => {
   });
 };
 
+/**
+ * Compress an image file for API analysis.
+ * Resizes to max 1024px on longest side and exports as JPEG at 0.7 quality.
+ * Reduces typical phone photos from 3-12MB to ~100-300KB base64.
+ */
+const compressImageForAnalysis = async (file: File): Promise<string> => {
+  const dataUrl = await fileToDataUrl(file);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX_DIM = 1024;
+      let { width, height } = img;
+
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.round(height * (MAX_DIM / width));
+          width = MAX_DIM;
+        } else {
+          width = Math.round(width * (MAX_DIM / height));
+          height = MAX_DIM;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl); // fallback to original if canvas fails
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.7);
+
+      if (DEBUG_MODE) {
+        const originalKB = Math.round(dataUrl.length * 0.75 / 1024);
+        const compressedKB = Math.round(compressed.length * 0.75 / 1024);
+        console.log(`[AI] Image compressed: ${originalKB}KB → ${compressedKB}KB (${width}x${height})`);
+      }
+
+      resolve(compressed);
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = dataUrl;
+  });
+};
+
 const blobToBase64 = async (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -250,6 +298,21 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
       signal: controller.signal,
     });
 
+    if (!response.ok) {
+      updateRequestLog(log, 'error');
+      const type = response.status === 413 ? 'payload_too_large'
+        : response.status >= 500 ? 'server_error'
+        : 'api';
+      return {
+        success: false,
+        error: {
+          type,
+          message: `Server error (${response.status})`,
+          retryable: response.status >= 500,
+        },
+      };
+    }
+
     const result: AIResponse<T> = await response.json();
     updateRequestLog(log, result.success ? 'success' : 'error', result.provider);
     return result;
@@ -282,8 +345,10 @@ function formatErrorForUser(error: AIResponse<unknown>['error']): string {
   if (!error) return 'An unexpected error occurred. Please try again.';
 
   switch (error.type) {
+    case 'payload_too_large':
+      return 'Image is too large. Please try a smaller photo or use text input.';
     case 'network':
-      return 'Unable to connect. Please check your internet connection and try again.';
+      return 'Unable to reach the server. Please check your connection and try again.';
     case 'timeout':
       return 'The request took too long. Please try again.';
     case 'rate_limit':
@@ -309,7 +374,7 @@ function formatErrorForUser(error: AIResponse<unknown>['error']): string {
  * Analyze a body photo for composition assessment
  */
 export const analyzeBodyPhoto = async (image: File): Promise<string> => {
-  const imageBase64 = await fileToDataUrl(image);
+  const imageBase64 = await compressImageForAnalysis(image);
   const result = await callAPI<string>('/analyze-body', { imageBase64 }, 'analyzeBodyPhoto');
 
   if (result.success && result.data) {
@@ -322,7 +387,7 @@ export const analyzeBodyPhoto = async (image: File): Promise<string> => {
  * Analyze a meal photo for nutrition information
  */
 export const analyzeMealPhoto = async (image: File, userGoal: string | null): Promise<MealAnalysisResult> => {
-  const imageBase64 = await fileToDataUrl(image);
+  const imageBase64 = await compressImageForAnalysis(image);
   const result = await callAPI<MealAnalysisResult>('/analyze-meal-photo', { imageBase64, userGoal }, 'analyzeMealPhoto');
 
   if (result.success && result.data) {
@@ -338,7 +403,7 @@ export const analyzeMealPhoto = async (image: File, userGoal: string | null): Pr
  * Analyze progress photos and metrics
  */
 export const analyzeProgress = async (images: File[], metrics: string): Promise<string> => {
-  const imageUrls = await Promise.all(images.map(fileToDataUrl));
+  const imageUrls = await Promise.all(images.map(compressImageForAnalysis));
   const result = await callAPI<string>('/analyze-progress', { images: imageUrls, metrics }, 'analyzeProgress');
 
   if (result.success && result.data) {

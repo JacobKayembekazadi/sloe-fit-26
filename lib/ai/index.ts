@@ -35,18 +35,24 @@ export function createProvider(type: AIProviderType, apiKey: string): AIProvider
  * Resolve an API key for a given provider type from environment variables.
  */
 function resolveKey(type: AIProviderType): string | undefined {
+  let key: string | undefined;
   switch (type) {
     case 'openai':
-      return process.env.OPENAI_API_KEY;
+      key = process.env.OPENAI_API_KEY; break;
     case 'anthropic':
-      return process.env.ANTHROPIC_API_KEY;
+      key = process.env.ANTHROPIC_API_KEY; break;
     case 'google':
-      return process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+      key = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY; break;
     case 'mistral':
-      return process.env.MISTRAL_API_KEY;
+      key = process.env.MISTRAL_API_KEY; break;
     default:
       return undefined;
   }
+  // Skip placeholder/dummy keys
+  if (!key || key.includes('PLACEHOLDER') || key.includes('your_') || key.length < 10) {
+    return undefined;
+  }
+  return key;
 }
 
 /**
