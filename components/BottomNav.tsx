@@ -1,11 +1,11 @@
 import React, { memo } from 'react';
 import HomeIcon from './icons/HomeIcon';
-import HistoryIcon from './icons/HistoryIcon';
+import TrainIcon from './icons/TrainIcon';
 import BodyIcon from './icons/BodyIcon';
 import MealIcon from './icons/MealIcon';
 import BrainIcon from './icons/BrainIcon';
 
-type Tab = 'dashboard' | 'history' | 'body' | 'meal' | 'mindset';
+type Tab = 'dashboard' | 'train' | 'body' | 'meal' | 'mindset';
 
 interface BottomNavProps {
     activeTab: Tab;
@@ -15,7 +15,7 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab }) => {
     const navItems = [
         { id: 'dashboard', label: 'Home', icon: HomeIcon },
-        { id: 'history', label: 'History', icon: HistoryIcon },
+        { id: 'train', label: 'Train', icon: TrainIcon },
         { id: 'body', label: 'Body', icon: BodyIcon },
         { id: 'meal', label: 'Eat', icon: MealIcon },
         { id: 'mindset', label: 'Mind', icon: BrainIcon },

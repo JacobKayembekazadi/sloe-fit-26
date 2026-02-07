@@ -12,8 +12,12 @@ import TextMealInput from './TextMealInput';
 import QuickAddMeal, { SavedMeal } from './QuickAddMeal';
 import { getRecommendations } from '../services/supplementService';
 import { MealEntry, FavoriteFood } from '../hooks/useUserData';
+import type { NutritionLog } from '../App';
+import WeeklyNutritionSummary from './WeeklyNutritionSummary';
+import ProgressChart from './ProgressChart';
 
 type InputMode = 'text' | 'photo' | 'quick';
+type TabMode = 'log' | 'history';
 
 interface MealTrackerProps {
   userGoal: string | null;
@@ -35,6 +39,9 @@ interface MealTrackerProps {
   }) => Promise<MealEntry | null>;
   onDeleteMealEntry?: (entryId: string) => Promise<boolean>;
   onAddToFavorites?: (meal: { name: string; calories: number; protein: number; carbs: number; fats: number }) => Promise<boolean>;
+  // History mode props
+  nutritionLogs?: NutritionLog[];
+  goal?: string | null;
 }
 
 import Skeleton from './ui/Skeleton';
@@ -71,9 +78,12 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   favorites: favoritesProp = [],
   onSaveMealEntry,
   onDeleteMealEntry,
-  onAddToFavorites
+  onAddToFavorites,
+  nutritionLogs = [],
+  goal
 }) => {
   const { showToast } = useToast();
+  const [tabMode, setTabMode] = useState<TabMode>('log');
   const [inputMode, setInputMode] = useState<InputMode>('text');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -152,6 +162,38 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
     return recent;
   }, [mealEntries, favoritesProp]);
+
+  // History mode data
+  const mealsByDate = useMemo(() => {
+    const grouped: { [date: string]: MealEntry[] } = {};
+    for (const meal of mealEntries) {
+      const date = meal.date;
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(meal);
+    }
+    return Object.entries(grouped)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, meals]) => ({
+        date,
+        displayDate: new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric'
+        }),
+        meals: meals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+        totalCalories: meals.reduce((sum, m) => sum + m.calories, 0),
+        totalProtein: meals.reduce((sum, m) => sum + m.protein, 0)
+      }));
+  }, [mealEntries]);
+
+  const chartData = useMemo(() =>
+    nutritionLogs.slice(0, 14).map(l => ({
+      date: l.date,
+      value: l.calories,
+      target: nutritionTargets.calories
+    })).reverse(),
+    [nutritionLogs, nutritionTargets.calories]
+  );
+
+  const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -401,6 +443,111 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         <h2 className="text-3xl font-black text-white tracking-tighter">MEAL TRACKER</h2>
         <p className="text-gray-400 text-sm">Track your nutrition with AI.</p>
       </header>
+
+      {/* Log / History Toggle */}
+      <div className="flex bg-gray-800/50 rounded-xl p-1">
+        <button
+          onClick={() => setTabMode('log')}
+          className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+            tabMode === 'log'
+              ? 'bg-[var(--color-primary)] text-black'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          Log
+        </button>
+        <button
+          onClick={() => setTabMode('history')}
+          className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+            tabMode === 'history'
+              ? 'bg-[var(--color-primary)] text-black'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          History
+        </button>
+      </div>
+
+      {/* History Mode */}
+      {tabMode === 'history' && (
+        <div className="space-y-6">
+          <WeeklyNutritionSummary
+            nutritionLogs={nutritionLogs}
+            targets={nutritionTargets}
+            goal={goal || null}
+          />
+          <ProgressChart
+            data={chartData}
+            title="Daily Calories"
+            color="#D4FF00"
+            unit=" kcal"
+            showTarget={true}
+            chartType="bar"
+          />
+          {mealsByDate.length === 0 ? (
+            <div className="card p-8 text-center text-gray-500">
+              <span className="text-4xl mb-4 block">🍽️</span>
+              <p>No meals logged yet.</p>
+              <p className="text-sm mt-1">Start tracking your nutrition!</p>
+            </div>
+          ) : (
+            mealsByDate.map(({ date, displayDate, meals, totalCalories, totalProtein }) => (
+              <div key={date} className="bg-[#1C1C1E] rounded-xl overflow-hidden border border-white/5">
+                <button
+                  onClick={() => setSelectedMealDate(selectedMealDate === date ? null : date)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center rounded-xl bg-orange-500/10 text-orange-400 shrink-0 size-10">
+                      <span className="material-symbols-outlined text-xl">restaurant</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-white">{displayDate}</p>
+                      <p className="text-gray-500 text-sm">{meals.length} meal{meals.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-[var(--color-primary)] font-bold">{totalCalories} cal</p>
+                      <p className="text-blue-400 text-sm">{totalProtein}g protein</p>
+                    </div>
+                    <span className={`material-symbols-outlined text-gray-500 transition-transform ${selectedMealDate === date ? 'rotate-180' : ''}`}>
+                      expand_more
+                    </span>
+                  </div>
+                </button>
+                {selectedMealDate === date && (
+                  <div className="border-t border-white/5">
+                    {meals.map((meal) => (
+                      <div key={meal.id} className="px-4 py-3 border-b border-white/5 last:border-b-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium text-white">{meal.description || 'Meal'}</p>
+                            <p className="text-gray-500 text-xs mt-1">
+                              {new Date(meal.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              {meal.meal_type && ` · ${meal.meal_type}`}
+                              {meal.input_method && ` · ${meal.input_method.replace('_', ' ')}`}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[var(--color-primary)] font-medium">{meal.calories} cal</p>
+                            <p className="text-xs text-gray-500">
+                              P:{meal.protein}g C:{meal.carbs}g F:{meal.fats}g
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Log Mode (original content) */}
+      {tabMode === 'log' && <>
 
       {/* Daily Calorie Ring */}
       <div className="card py-6">
@@ -912,6 +1059,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           </p>
         </div>
       )}
+
+      </>}
     </div>
   );
 };

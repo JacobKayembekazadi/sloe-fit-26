@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -10,6 +10,11 @@ import OfflineBanner from './components/OfflineBanner';
 import { useUserData } from './hooks/useUserData';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { supabase } from './supabaseClient';
+import { getTodaysWorkout } from './services/workoutService';
+import { generateWorkout, GeneratedWorkout } from './services/aiService';
+import type { RecoveryState } from './components/RecoveryCheckIn';
+import type { WorkoutDraft } from './components/WorkoutSession';
+import type { UserProfile } from './hooks/useUserData';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -17,14 +22,21 @@ const BodyAnalysis = lazy(() => import('./components/BodyAnalysis'));
 const MealTracker = lazy(() => import('./components/MealTracker'));
 const Mindset = lazy(() => import('./components/Mindset'));
 const WorkoutHistory = lazy(() => import('./components/WorkoutHistory'));
+const TrainTab = lazy(() => import('./components/TrainTab'));
 const Settings = lazy(() => import('./components/Settings'));
 const TrainerDashboard = lazy(() => import('./components/TrainerDashboard'));
 const ClientTrainerView = lazy(() => import('./components/ClientTrainerView'));
 const CartDrawer = lazy(() => import('./components/CartDrawer'));
 const Onboarding = lazy(() => import('./components/Onboarding'));
 
+// Lazy load workout overlay components
+const RecoveryCheckIn = lazy(() => import('./components/RecoveryCheckIn'));
+const WorkoutPreview = lazy(() => import('./components/WorkoutPreview'));
+const WorkoutSession = lazy(() => import('./components/WorkoutSession'));
+const WorkoutSummary = lazy(() => import('./components/WorkoutSummary'));
+
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ToastProvider } from './contexts/ToastContext';
+import { ToastProvider, useToast } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ShopifyProvider } from './contexts/ShopifyContext';
@@ -38,8 +50,11 @@ const LazyFallback = () => (
   </div>
 );
 
-type Tab = 'dashboard' | 'history' | 'body' | 'meal' | 'mindset';
-type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer';
+type Tab = 'dashboard' | 'train' | 'body' | 'meal' | 'mindset';
+type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer' | 'history';
+type WorkoutStatus = 'idle' | 'recovery' | 'generating' | 'preview' | 'active' | 'completed';
+
+const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
 
 export interface ExerciseLog {
   id: number;
@@ -64,6 +79,32 @@ export interface NutritionLog {
   fats: number;
 }
 
+// Convert AI workout to exercise log format (module-level)
+const aiWorkoutToExerciseLog = (workout: GeneratedWorkout): ExerciseLog[] => {
+    return workout.exercises.map((ex, idx) => ({
+        id: idx + 1,
+        name: ex.name,
+        sets: String(ex.sets),
+        reps: ex.reps,
+        weight: ''
+    }));
+};
+
+// Helper function to extract muscle groups from workout title
+function extractMuscleGroups(title: string): string[] {
+    const titleLower = title.toLowerCase();
+    const muscles: string[] = [];
+    if (titleLower.includes('push') || titleLower.includes('chest')) muscles.push('chest', 'shoulders', 'triceps');
+    if (titleLower.includes('pull') || titleLower.includes('back')) muscles.push('back', 'biceps');
+    if (titleLower.includes('leg') || titleLower.includes('lower')) muscles.push('legs', 'glutes');
+    if (titleLower.includes('upper')) muscles.push('chest', 'back', 'shoulders', 'arms');
+    if (titleLower.includes('full body')) muscles.push('chest', 'back', 'legs', 'shoulders');
+    if (titleLower.includes('arm')) muscles.push('biceps', 'triceps');
+    if (titleLower.includes('shoulder')) muscles.push('shoulders');
+    if (titleLower.includes('core')) muscles.push('core');
+    return muscles.length > 0 ? muscles : ['full body'];
+}
+
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [currentView, setCurrentView] = useState<View>('tabs');
@@ -76,6 +117,187 @@ const AppContent: React.FC = () => {
   // Supabase Data Hook
   const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, mealEntries, favorites, updateGoal, addWorkout, saveNutrition, addMealToDaily, saveMealEntry, deleteMealEntry, addToFavorites, refetchProfile, loading: dataLoading, error: dataError, retry: retryData } = useUserData();
   const { user, loading } = useAuth();
+  const { showToast } = useToast();
+
+  // ============================================================================
+  // Workout State Machine (lifted from Dashboard)
+  // ============================================================================
+  const [workoutStatus, setWorkoutStatus] = useState<WorkoutStatus>('idle');
+  const [aiWorkout, setAiWorkout] = useState<GeneratedWorkout | null>(null);
+  const [completedLog, setCompletedLog] = useState<ExerciseLog[]>([]);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [endTime, setEndTime] = useState<number>(0);
+  const [recoveryDraft, setRecoveryDraft] = useState<WorkoutDraft | null>(null);
+  const [activeDraft, setActiveDraft] = useState<WorkoutDraft | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Workout log/title for preview and session
+  const workoutsThisWeek = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    return workouts.filter(w => {
+      const workoutDate = new Date(w.rawDate || w.date);
+      return workoutDate >= startOfWeek;
+    }).length;
+  }, [workouts]);
+
+  const fallbackWorkout = useMemo(() => getTodaysWorkout(goal, workoutsThisWeek), [goal, workoutsThisWeek]);
+  const [workoutLog, setWorkoutLog] = useState<ExerciseLog[]>(fallbackWorkout.exercises);
+  const [workoutTitle, setWorkoutTitle] = useState<string>(fallbackWorkout.title);
+
+  const recentWorkouts = useMemo(() => {
+    return workouts.slice(0, 3).map(w => ({
+      title: w.title,
+      date: w.rawDate || w.date,
+      muscles: extractMuscleGroups(w.title)
+    }));
+  }, [workouts]);
+
+  // Check for draft workout on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (saved && workoutStatus === 'idle') {
+      try {
+        const draft: WorkoutDraft = JSON.parse(saved);
+        const ageMinutes = (Date.now() - draft.savedAt) / 60000;
+        if (ageMinutes < 120) {
+          setRecoveryDraft(draft);
+        } else {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        }
+      } catch {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
+    }
+  }, [workoutStatus]);
+
+  // Get today's nutrition for saving with workout
+  const todayNutrition = useMemo(() => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return nutritionLogs.find(entry => entry.date === today) || {
+      date: today, calories: 0, protein: 0, carbs: 0, fats: 0
+    };
+  }, [nutritionLogs]);
+
+  const handleWorkoutComplete = useCallback((exercises: ExerciseLog[], title: string) => {
+    setCompletedLog(exercises);
+    setWorkoutTitle(title);
+    setEndTime(Date.now());
+    setActiveDraft(null);
+    setWorkoutStatus('completed');
+  }, []);
+
+  const handleWorkoutCancel = useCallback(() => {
+    setActiveDraft(null);
+    setWorkoutStatus('idle');
+    setAiWorkout(null);
+  }, []);
+
+  const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
+    const validLog = log.filter(ex => ex.name);
+    return await addWorkout(title, validLog, rating);
+  }, [addWorkout]);
+
+  const handleRateWorkout = useCallback(async (rating: number): Promise<boolean> => {
+    setIsSaving(true);
+    const saved = await handleAddWorkoutToHistory(completedLog, workoutTitle, rating);
+    saveNutrition(todayNutrition);
+    setIsSaving(false);
+
+    if (saved) {
+      showToast('Workout Saved!', 'success');
+      setWorkoutStatus('idle');
+      return true;
+    } else {
+      showToast('Failed to save workout. Please try again.', 'error');
+      return false;
+    }
+  }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast]);
+
+  const handleResumeDraft = useCallback(() => {
+    if (!recoveryDraft) return;
+    setActiveDraft(recoveryDraft);
+    setWorkoutTitle(recoveryDraft.workoutTitle);
+    setStartTime(Date.now() - (recoveryDraft.elapsedTime * 1000));
+    setRecoveryDraft(null);
+    setWorkoutStatus('active');
+  }, [recoveryDraft]);
+
+  const handleDiscardDraft = useCallback(() => {
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    setRecoveryDraft(null);
+  }, []);
+
+  const startNewWorkout = useCallback(() => {
+    setWorkoutStatus('recovery');
+    setAiWorkout(null);
+  }, []);
+
+  const handleRecoveryComplete = useCallback(async (recovery: RecoveryState) => {
+    setWorkoutStatus('generating');
+
+    const profile: UserProfile = userProfile || {
+      goal: goal,
+      height_inches: null,
+      weight_lbs: null,
+      age: null,
+      training_experience: 'beginner',
+      equipment_access: 'gym',
+      days_per_week: 4,
+      role: 'consumer',
+      trainer_id: null,
+      full_name: null
+    };
+
+    try {
+      const workout = await generateWorkout({ profile, recovery, recentWorkouts });
+      if (workout) {
+        setAiWorkout(workout);
+        setWorkoutLog(aiWorkoutToExerciseLog(workout));
+        setWorkoutTitle(workout.title);
+      } else {
+        setWorkoutLog(fallbackWorkout.exercises);
+        setWorkoutTitle(fallbackWorkout.title);
+        showToast('Using fallback workout — AI unavailable', 'info');
+      }
+    } catch {
+      setWorkoutLog(fallbackWorkout.exercises);
+      setWorkoutTitle(fallbackWorkout.title);
+      showToast('Using fallback workout - AI unavailable', 'info');
+    }
+
+    setWorkoutStatus('preview');
+  }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast]);
+
+  const handleStartFromPreview = useCallback(() => {
+    setStartTime(Date.now());
+    setWorkoutStatus('active');
+  }, []);
+
+  const calculateVolume = useCallback((logs: ExerciseLog[]) => {
+    return logs.reduce((acc, log) => {
+      const weight = parseFloat(log.weight) || 0;
+      const sets = parseInt(log.sets) || 0;
+      const repsStr = log.reps.split('-')[0];
+      const reps = parseInt(repsStr) || 10;
+      return acc + (weight * sets * reps);
+    }, 0);
+  }, []);
+
+  const getDurationString = useCallback(() => {
+    const diff = (endTime - startTime) / 1000 / 60;
+    const hrs = Math.floor(diff / 60);
+    const mins = Math.floor(diff % 60);
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
+  }, [endTime, startTime]);
+
+  // ============================================================================
+  // End Workout State Machine
+  // ============================================================================
 
   // Fetch user's name for avatar
   useEffect(() => {
@@ -98,22 +320,16 @@ const AppContent: React.FC = () => {
     }
   }, [updateGoal]);
 
-  const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
-    const validLog = log.filter(ex => ex.name);
-    return await addWorkout(title, validLog, rating);
-  }, [addWorkout]);
-
-  const handleSaveNutritionLog = useCallback((data: NutritionLog) => {
-    saveNutrition(data);
-  }, [saveNutrition]);
-
   const handleOnboardingComplete = useCallback(() => {
     refetchProfile();
   }, [refetchProfile]);
 
   // Stable callbacks for memo'd children
-  const showHistoryView = useCallback(() => setActiveTab('history'), []);
-  const showDashboard = useCallback(() => setActiveTab('dashboard'), []);
+  const showHistoryView = useCallback(() => setCurrentView('history'), []);
+  const showDashboard = useCallback(() => {
+    setCurrentView('tabs');
+    setActiveTab('dashboard');
+  }, []);
   const showMyTrainer = useCallback(() => setCurrentView('myTrainer'), []);
   const showSettings = useCallback(() => setCurrentView('settings'), []);
   const showTrainer = useCallback(() => setCurrentView('trainer'), []);
@@ -177,9 +393,6 @@ const AppContent: React.FC = () => {
     }
 
     if (currentView === 'settings') {
-      if (import.meta.env.DEV) {
-        console.log('[App] Rendering Settings component...');
-      }
       return (
         <Suspense fallback={<LazyFallback />}>
           <Settings onBack={showTabs} />
@@ -203,34 +416,48 @@ const AppContent: React.FC = () => {
       );
     }
 
+    if (currentView === 'history') {
+      return (
+        <Suspense fallback={<LazyFallback />}>
+          <WorkoutHistory
+            history={workouts}
+            nutritionLogs={nutritionLogs}
+            nutritionTargets={nutritionTargets}
+            onBack={showDashboard}
+            goal={goal}
+            mealEntries={mealEntries}
+          />
+        </Suspense>
+      );
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return (
           <Suspense fallback={<LazyFallback />}>
             <Dashboard
               setActiveTab={setActiveTab}
-              addWorkoutToHistory={handleAddWorkoutToHistory}
               showHistoryView={showHistoryView}
               showTrainerView={userProfile.trainer_id ? showMyTrainer : undefined}
               nutritionLog={nutritionLogs}
-              saveNutritionLog={handleSaveNutritionLog}
               nutritionTargets={nutritionTargets}
               goal={goal}
               workoutHistory={workouts}
               userProfile={userProfile}
+              onStartWorkout={startNewWorkout}
+              workoutStatus={workoutStatus}
             />
           </Suspense>
         );
-      case 'history':
+      case 'train':
         return (
           <Suspense fallback={<LazyFallback />}>
-            <WorkoutHistory
-              history={workouts}
-              nutritionLogs={nutritionLogs}
-              nutritionTargets={nutritionTargets}
-              onBack={showDashboard}
-              goal={goal}
-              mealEntries={mealEntries}
+            <TrainTab
+              workoutHistory={workouts}
+              onStartWorkout={startNewWorkout}
+              recoveryDraft={recoveryDraft}
+              onResumeDraft={handleResumeDraft}
+              onDiscardDraft={handleDiscardDraft}
             />
           </Suspense>
         );
@@ -240,7 +467,7 @@ const AppContent: React.FC = () => {
             <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />
           </Suspense>
         );
-      case 'meal':
+      case 'meal': {
         const now = new Date();
         const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const todayLog = nutritionLogs.find(l => l.date === todayDate);
@@ -256,9 +483,12 @@ const AppContent: React.FC = () => {
               onSaveMealEntry={saveMealEntry}
               onDeleteMealEntry={deleteMealEntry}
               onAddToFavorites={addToFavorites}
+              nutritionLogs={nutritionLogs}
+              goal={goal}
             />
           </Suspense>
         );
+      }
       case 'mindset':
         return (
           <Suspense fallback={<LazyFallback />}>
@@ -303,6 +533,81 @@ const AppContent: React.FC = () => {
       {/* Fixed Bottom Navigation */}
       {currentView === 'tabs' && (
         <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      )}
+
+      {/* ================================================================ */}
+      {/* Workout Overlays — rendered at App level, above all tabs         */}
+      {/* ================================================================ */}
+
+      {/* Recovery Check-In Modal */}
+      {workoutStatus === 'recovery' && (
+        <Suspense fallback={null}>
+          <RecoveryCheckIn
+            onComplete={handleRecoveryComplete}
+            onSkip={() => setWorkoutStatus('idle')}
+            isLoading={false}
+          />
+        </Suspense>
+      )}
+
+      {/* Workout Preview */}
+      {workoutStatus === 'preview' && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-dark">
+          <Suspense fallback={<LazyFallback />}>
+            <WorkoutPreview
+              title={workoutTitle}
+              duration={45}
+              difficulty="Intermediate"
+              description={aiWorkout?.recovery_notes || "A balanced session targeting hypertrophy."}
+              exercises={workoutLog.map(ex => ({
+                name: ex.name,
+                sets: parseInt(ex.sets),
+                reps: ex.reps
+              }))}
+              onStart={handleStartFromPreview}
+              onBack={() => setWorkoutStatus('idle')}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Active Workout Session */}
+      {workoutStatus === 'active' && (
+        <div className="fixed inset-0 z-[60] overflow-hidden bg-background-dark">
+          <Suspense fallback={<LazyFallback />}>
+            <WorkoutSession
+              initialExercises={workoutLog}
+              workoutTitle={workoutTitle}
+              onComplete={handleWorkoutComplete}
+              onCancel={handleWorkoutCancel}
+              recoveryAdjusted={aiWorkout?.recovery_adjusted}
+              recoveryNotes={aiWorkout?.recovery_notes}
+              initialDraft={activeDraft ?? undefined}
+              initialElapsedTime={activeDraft?.elapsedTime}
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Workout Summary */}
+      {workoutStatus === 'completed' && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-background-dark">
+          <Suspense fallback={<LazyFallback />}>
+            <WorkoutSummary
+              duration={getDurationString()}
+              volume={calculateVolume(completedLog)}
+              exercisesCount={completedLog.length}
+              onShare={() => showToast('Shared to feed!', 'success')}
+              onClose={() => handleRateWorkout(3)}
+              onRate={handleRateWorkout}
+              onViewHistory={async () => {
+                const saved = await handleRateWorkout(3);
+                if (saved) showHistoryView();
+              }}
+              isSaving={isSaving}
+            />
+          </Suspense>
+        </div>
       )}
     </div>
   );
