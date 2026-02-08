@@ -277,7 +277,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         const currentStep = getStepNumber();
         if (currentStep === 0) return null;
 
-        // Adjust so step index 1 (goal) maps to segment 0 as "current"
         const adjustedStep = currentStep - 1;
 
         return (
@@ -298,40 +297,43 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         );
     };
 
-    const renderNavButtons = (opts?: { isLast?: boolean }) => (
-        <div className="flex gap-3 pt-4">
-            <button onClick={prevStep} disabled={loading || saving} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
-                Back
-            </button>
-            {opts?.isLast ? (
-                <button
-                    onClick={handleComplete}
-                    disabled={saving}
-                    className="btn-primary flex-1 flex justify-center items-center gap-2 active:scale-[0.98] transition-transform"
-                >
-                    {saving ? (
-                        <>
-                            <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
-                            <span>Saving...</span>
-                        </>
-                    ) : (
-                        <>
-                            <span>Start Training</span>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                            </svg>
-                        </>
-                    )}
+    // Fixed bottom nav buttons — always visible
+    const renderFixedNavButtons = (opts?: { isLast?: boolean }) => (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black via-black/95 to-transparent px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
+            <div className="w-full max-w-lg mx-auto flex gap-3">
+                <button onClick={prevStep} disabled={loading || saving} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
+                    Back
                 </button>
-            ) : (
-                <button
-                    onClick={nextStep}
-                    disabled={!canProceed() || loading}
-                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                >
-                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
-                </button>
-            )}
+                {opts?.isLast ? (
+                    <button
+                        onClick={handleComplete}
+                        disabled={saving}
+                        className="btn-primary flex-1 flex justify-center items-center gap-2 active:scale-[0.98] transition-transform"
+                    >
+                        {saving ? (
+                            <>
+                                <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
+                                <span>Saving...</span>
+                            </>
+                        ) : (
+                            <>
+                                <span>Start Training</span>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                            </>
+                        )}
+                    </button>
+                ) : (
+                    <button
+                        onClick={nextStep}
+                        disabled={!canProceed() || loading}
+                        className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                    >
+                        {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
+                    </button>
+                )}
+            </div>
         </div>
     );
 
@@ -340,511 +342,499 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         : `opacity-100 scale-100 ${transitionDirection === 'forward' ? 'animate-slide-up' : 'animate-slide-down'}`;
 
     return (
-        <div className="min-h-[100dvh] bg-black flex flex-col items-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] relative overflow-y-auto">
+        <div className="h-[100dvh] bg-black flex flex-col relative">
             {/* Background Effects */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -ml-48 -mb-48 pointer-events-none"></div>
 
-            {/* Spacer to vertically center short content, collapse on tall content */}
-            <div className="flex-1 min-h-0" />
+            {/* Scrollable content area — bottom padding reserves space for fixed buttons */}
+            <div className="flex-1 overflow-y-auto p-6 pb-28">
+                <div className="w-full max-w-lg mx-auto relative z-10">
+                    {renderProgressBar()}
 
-            <div className="w-full max-w-lg z-10">
-                {renderProgressBar()}
-
-                <div className={`transition-all duration-200 ${animationClass}`}>
-                    {/* ============================================================ */}
-                    {/* STEP: Welcome                                                */}
-                    {/* ============================================================ */}
-                    {step === 'welcome' && (
-                        <div className="text-center space-y-8">
-                            <div className="space-y-4">
-                                <h1 className="text-4xl font-black text-white tracking-tight">
-                                    Welcome, <span className="text-[var(--color-primary)]">{userName}</span>
-                                </h1>
-                                <p className="text-gray-400 text-lg">
-                                    Let's set up your personalized AI fitness program.
-                                </p>
-                            </div>
-
-                            <div className="card p-8 space-y-6">
-                                <div className="text-left space-y-4">
-                                    <div className="flex items-start gap-4 group">
-                                        <span className="text-2xl group-hover:scale-110 transition-transform">🤖</span>
-                                        <div>
-                                            <h3 className="font-bold text-white">AI Workout Generator</h3>
-                                            <p className="text-gray-400 text-sm">Personalized workouts that adapt to your recovery</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4 group">
-                                        <span className="text-2xl group-hover:scale-110 transition-transform">🍽️</span>
-                                        <div>
-                                            <h3 className="font-bold text-white">Smart Meal Tracking</h3>
-                                            <p className="text-gray-400 text-sm">Photo or text - AI estimates your macros instantly</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4 group">
-                                        <span className="text-2xl group-hover:scale-110 transition-transform">📊</span>
-                                        <div>
-                                            <h3 className="font-bold text-white">Personalized Targets</h3>
-                                            <p className="text-gray-400 text-sm">Calories and macros calculated for your body</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={nextStep}
-                                    disabled={loading}
-                                    className="btn-primary w-full text-lg py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {loading ? (
-                                        <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
-                                    ) : (
-                                        <>
-                                            Get Started
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                            </svg>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-
-                            <p className="text-gray-600 text-xs">Takes about 60 seconds</p>
-                        </div>
-                    )}
-
-                    {/* ============================================================ */}
-                    {/* STEP: Goal Selection (expand on tap)                         */}
-                    {/* ============================================================ */}
-                    {step === 'goal' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">What's your goal?</h2>
-                                <p className="text-gray-400">This customizes your workouts and nutrition.</p>
-                            </div>
-
-                            <div className="space-y-3">
-                                {GOAL_OPTIONS.map((goal) => {
-                                    const isSelected = profile.goal === goal.id;
-                                    return (
-                                        <button
-                                            key={goal.id}
-                                            onClick={() => updateProfile('goal', goal.id)}
-                                            className={`w-full rounded-xl text-left transition-all duration-300 active:scale-[0.98] ${
-                                                isSelected
-                                                    ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20 p-5'
-                                                    : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80 p-4'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <span className={`text-3xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
-                                                    {goal.emoji}
-                                                </span>
-                                                <div className="flex-1">
-                                                    <h3 className="font-bold text-white text-lg">{goal.title}</h3>
-                                                    <p className="text-gray-400 text-sm">{goal.description}</p>
-                                                </div>
-                                                <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                                    <CheckIcon className="w-6 h-6 text-[var(--color-primary)]" />
-                                                </div>
-                                            </div>
-                                            {/* Expanded details — only visible when selected */}
-                                            <div className={`overflow-hidden transition-all duration-300 ${isSelected ? 'max-h-32 opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
-                                                <div className="flex flex-wrap gap-2 pl-[3.25rem]">
-                                                    {goal.details.map((detail, i) => (
-                                                        <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
-                                                            {detail}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Motivational nudge when goal is selected */}
-                            {profile.goal && (
-                                <div className="text-center animate-slide-up">
-                                    <p className="text-gray-500 text-sm">
-                                        {profile.goal === 'CUT' && "Let's shred. Your AI coach will keep protein high and workouts intense."}
-                                        {profile.goal === 'BULK' && "Time to grow. Extra calories and heavy compounds incoming."}
-                                        {profile.goal === 'RECOMP' && "The best of both worlds. Precision nutrition meets smart training."}
+                    <div className={`transition-all duration-200 ${animationClass}`}>
+                        {/* ============================================================ */}
+                        {/* STEP: Welcome                                                */}
+                        {/* ============================================================ */}
+                        {step === 'welcome' && (
+                            <div className="text-center space-y-8">
+                                <div className="space-y-4">
+                                    <h1 className="text-4xl font-black text-white tracking-tight">
+                                        Welcome, <span className="text-[var(--color-primary)]">{userName}</span>
+                                    </h1>
+                                    <p className="text-gray-400 text-lg">
+                                        Let's set up your personalized AI fitness program.
                                     </p>
                                 </div>
-                            )}
 
-                            {renderNavButtons()}
-                        </div>
-                    )}
+                                <div className="card p-8 space-y-6">
+                                    <div className="text-left space-y-4">
+                                        <div className="flex items-start gap-4 group">
+                                            <span className="text-2xl group-hover:scale-110 transition-transform">🤖</span>
+                                            <div>
+                                                <h3 className="font-bold text-white">AI Workout Generator</h3>
+                                                <p className="text-gray-400 text-sm">Personalized workouts that adapt to your recovery</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-start gap-4 group">
+                                            <span className="text-2xl group-hover:scale-110 transition-transform">🍽️</span>
+                                            <div>
+                                                <h3 className="font-bold text-white">Smart Meal Tracking</h3>
+                                                <p className="text-gray-400 text-sm">Photo or text - AI estimates your macros instantly</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-start gap-4 group">
+                                            <span className="text-2xl group-hover:scale-110 transition-transform">📊</span>
+                                            <div>
+                                                <h3 className="font-bold text-white">Personalized Targets</h3>
+                                                <p className="text-gray-400 text-sm">Calories and macros calculated for your body</p>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                    {/* ============================================================ */}
-                    {/* STEP: Body Stats (gender, height, weight, age)               */}
-                    {/* ============================================================ */}
-                    {step === 'stats' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Your Body</h2>
-                                <p className="text-gray-400">For accurate calorie and macro targets.</p>
+                                    <button
+                                        onClick={nextStep}
+                                        disabled={loading}
+                                        className="btn-primary w-full text-lg py-4 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                                    >
+                                        {loading ? (
+                                            <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
+                                        ) : (
+                                            <>
+                                                Get Started
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                                </svg>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                <p className="text-gray-600 text-xs">Takes about 60 seconds</p>
                             </div>
+                        )}
 
-                            <div className="card p-6 space-y-5">
-                                {/* Gender */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">Gender <span className="text-gray-600 font-normal">(for accurate calorie targets)</span></label>
-                                    <div className="flex gap-3">
-                                        {[
-                                            { id: 'male', label: 'Male' },
-                                            { id: 'female', label: 'Female' },
-                                        ].map((g) => (
+                        {/* ============================================================ */}
+                        {/* STEP: Goal Selection (expand on tap)                         */}
+                        {/* ============================================================ */}
+                        {step === 'goal' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">What's your goal?</h2>
+                                    <p className="text-gray-400">This customizes your workouts and nutrition.</p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {GOAL_OPTIONS.map((goal) => {
+                                        const isSelected = profile.goal === goal.id;
+                                        return (
                                             <button
-                                                key={g.id}
-                                                onClick={() => updateProfile('gender', g.id)}
-                                                className={`flex-1 py-3 rounded-xl text-center font-bold transition-all duration-200 active:scale-[0.98] ${
-                                                    profile.gender === g.id
-                                                        ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] text-white'
-                                                        : 'bg-gray-800 border-2 border-transparent text-gray-400 hover:border-gray-700'
+                                                key={goal.id}
+                                                onClick={() => updateProfile('goal', goal.id)}
+                                                className={`w-full rounded-xl text-left transition-all duration-300 active:scale-[0.98] ${
+                                                    isSelected
+                                                        ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20 p-5'
+                                                        : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80 p-4'
                                                 }`}
                                             >
-                                                {g.label}
+                                                <div className="flex items-center gap-4">
+                                                    <span className={`text-3xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
+                                                        {goal.emoji}
+                                                    </span>
+                                                    <div className="flex-1">
+                                                        <h3 className="font-bold text-white text-lg">{goal.title}</h3>
+                                                        <p className="text-gray-400 text-sm">{goal.description}</p>
+                                                    </div>
+                                                    <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                                        <CheckIcon className="w-6 h-6 text-[var(--color-primary)]" />
+                                                    </div>
+                                                </div>
+                                                {/* Expanded details — only visible when selected */}
+                                                <div className={`overflow-hidden transition-all duration-300 ${isSelected ? 'max-h-32 opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
+                                                    <div className="flex flex-wrap gap-2 pl-[3.25rem]">
+                                                        {goal.details.map((detail, i) => (
+                                                            <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                                                                {detail}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </button>
-                                        ))}
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Motivational nudge when goal is selected */}
+                                {profile.goal && (
+                                    <div className="text-center animate-slide-up">
+                                        <p className="text-gray-500 text-sm">
+                                            {profile.goal === 'CUT' && "Let's shred. Your AI coach will keep protein high and workouts intense."}
+                                            {profile.goal === 'BULK' && "Time to grow. Extra calories and heavy compounds incoming."}
+                                            {profile.goal === 'RECOMP' && "The best of both worlds. Precision nutrition meets smart training."}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ============================================================ */}
+                        {/* STEP: Body Stats (gender, height, weight, age)               */}
+                        {/* ============================================================ */}
+                        {step === 'stats' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Your Body</h2>
+                                    <p className="text-gray-400">For accurate calorie and macro targets.</p>
+                                </div>
+
+                                <div className="card p-6 space-y-5">
+                                    {/* Gender */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-400 mb-2">Gender <span className="text-gray-600 font-normal">(for accurate calorie targets)</span></label>
+                                        <div className="flex gap-3">
+                                            {[
+                                                { id: 'male', label: 'Male' },
+                                                { id: 'female', label: 'Female' },
+                                            ].map((g) => (
+                                                <button
+                                                    key={g.id}
+                                                    onClick={() => updateProfile('gender', g.id)}
+                                                    className={`flex-1 py-3 rounded-xl text-center font-bold transition-all duration-200 active:scale-[0.98] ${
+                                                        profile.gender === g.id
+                                                            ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] text-white'
+                                                            : 'bg-gray-800 border-2 border-transparent text-gray-400 hover:border-gray-700'
+                                                    }`}
+                                                >
+                                                    {g.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Height */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-400 mb-2">
+                                            Height <span className="text-gray-600">(optional)</span>
+                                        </label>
+                                        <div className="flex gap-3">
+                                            <div className="flex-1">
+                                                <input
+                                                    type="number"
+                                                    value={profile.height_ft}
+                                                    onChange={(e) => updateProfile('height_ft', e.target.value)}
+                                                    className={`input-field w-full ${validationErrors.height ? 'border-red-500' : ''}`}
+                                                    placeholder="5"
+                                                    min="3"
+                                                    max="8"
+                                                />
+                                                <span className="text-gray-500 text-xs mt-1 block text-center">feet</span>
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="number"
+                                                    value={profile.height_in}
+                                                    onChange={(e) => updateProfile('height_in', e.target.value)}
+                                                    className={`input-field w-full ${validationErrors.height ? 'border-red-500' : ''}`}
+                                                    placeholder="10"
+                                                    min="0"
+                                                    max="11"
+                                                />
+                                                <span className="text-gray-500 text-xs mt-1 block text-center">inches</span>
+                                            </div>
+                                        </div>
+                                        {validationErrors.height && (
+                                            <p className="text-red-400 text-xs mt-1">{validationErrors.height}</p>
+                                        )}
+                                    </div>
+
+                                    {/* Weight */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-400 mb-2">
+                                            Weight (lbs) <span className="text-red-400">*</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={profile.weight_lbs}
+                                            onChange={(e) => updateProfile('weight_lbs', e.target.value)}
+                                            className={`input-field w-full ${validationErrors.weight ? 'border-red-500' : ''}`}
+                                            placeholder="180"
+                                            min="80"
+                                            max="500"
+                                        />
+                                        {validationErrors.weight && (
+                                            <p className="text-red-400 text-xs mt-1">{validationErrors.weight}</p>
+                                        )}
+                                    </div>
+
+                                    {/* Age */}
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-400 mb-2">
+                                            Age <span className="text-gray-600">(optional)</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={profile.age}
+                                            onChange={(e) => updateProfile('age', e.target.value)}
+                                            className={`input-field w-full ${validationErrors.age ? 'border-red-500' : ''}`}
+                                            placeholder="25"
+                                            min="13"
+                                            max="100"
+                                        />
+                                        {validationErrors.age && (
+                                            <p className="text-red-400 text-xs mt-1">{validationErrors.age}</p>
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Height */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">
-                                        Height <span className="text-gray-600">(optional)</span>
-                                    </label>
-                                    <div className="flex gap-3">
-                                        <div className="flex-1">
-                                            <input
-                                                type="number"
-                                                value={profile.height_ft}
-                                                onChange={(e) => updateProfile('height_ft', e.target.value)}
-                                                className={`input-field w-full ${validationErrors.height ? 'border-red-500' : ''}`}
-                                                placeholder="5"
-                                                min="3"
-                                                max="8"
-                                            />
-                                            <span className="text-gray-500 text-xs mt-1 block text-center">feet</span>
-                                        </div>
-                                        <div className="flex-1">
-                                            <input
-                                                type="number"
-                                                value={profile.height_in}
-                                                onChange={(e) => updateProfile('height_in', e.target.value)}
-                                                className={`input-field w-full ${validationErrors.height ? 'border-red-500' : ''}`}
-                                                placeholder="10"
-                                                min="0"
-                                                max="11"
-                                            />
-                                            <span className="text-gray-500 text-xs mt-1 block text-center">inches</span>
-                                        </div>
+                                <p className="text-center text-gray-500 text-sm">
+                                    Used to calculate your personalized calorie and macro targets.
+                                </p>
+                            </div>
+                        )}
+
+                        {/* ============================================================ */}
+                        {/* STEP: Activity Level (own dedicated page)                    */}
+                        {/* ============================================================ */}
+                        {step === 'activity' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Activity Level</h2>
+                                    <p className="text-gray-400">How active are you throughout the week?</p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {ACTIVITY_OPTIONS.map((a) => {
+                                        const isSelected = profile.activity_level === a.id;
+                                        return (
+                                            <button
+                                                key={a.id}
+                                                onClick={() => updateProfile('activity_level', a.id)}
+                                                className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
+                                                    isSelected
+                                                        ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
+                                                        : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
+                                                }`}
+                                            >
+                                                <span className={`text-2xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
+                                                    {a.emoji}
+                                                </span>
+                                                <div className="flex-1">
+                                                    <h3 className="font-bold text-white">{a.label}</h3>
+                                                    <p className="text-gray-400 text-sm">{a.desc}</p>
+                                                </div>
+                                                <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                                    <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {profile.activity_level && (
+                                    <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
+                                        <p className="text-sm text-gray-300">
+                                            {profile.activity_level === 'sedentary' && "Your calorie targets will be set conservatively to match your lifestyle."}
+                                            {profile.activity_level === 'lightly_active' && "A solid starting point. Your targets will account for light activity."}
+                                            {profile.activity_level === 'moderately_active' && "Nice balance. Your targets will fuel your active lifestyle."}
+                                            {profile.activity_level === 'very_active' && "High energy needs. Your calories will be set higher to keep you fueled."}
+                                            {profile.activity_level === 'extremely_active' && "Beast mode. Maximum fuel for maximum output."}
+                                        </p>
                                     </div>
-                                    {validationErrors.height && (
-                                        <p className="text-red-400 text-xs mt-1">{validationErrors.height}</p>
-                                    )}
-                                </div>
-
-                                {/* Weight */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">
-                                        Weight (lbs) <span className="text-red-400">*</span>
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={profile.weight_lbs}
-                                        onChange={(e) => updateProfile('weight_lbs', e.target.value)}
-                                        className={`input-field w-full ${validationErrors.weight ? 'border-red-500' : ''}`}
-                                        placeholder="180"
-                                        min="80"
-                                        max="500"
-                                    />
-                                    {validationErrors.weight && (
-                                        <p className="text-red-400 text-xs mt-1">{validationErrors.weight}</p>
-                                    )}
-                                </div>
-
-                                {/* Age */}
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">
-                                        Age <span className="text-gray-600">(optional)</span>
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={profile.age}
-                                        onChange={(e) => updateProfile('age', e.target.value)}
-                                        className={`input-field w-full ${validationErrors.age ? 'border-red-500' : ''}`}
-                                        placeholder="25"
-                                        min="13"
-                                        max="100"
-                                    />
-                                    {validationErrors.age && (
-                                        <p className="text-red-400 text-xs mt-1">{validationErrors.age}</p>
-                                    )}
-                                </div>
+                                )}
                             </div>
+                        )}
 
-                            <p className="text-center text-gray-500 text-sm">
-                                Used to calculate your personalized calorie and macro targets.
-                            </p>
+                        {/* ============================================================ */}
+                        {/* STEP: Training Experience                                     */}
+                        {/* ============================================================ */}
+                        {step === 'experience' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Training Experience</h2>
+                                    <p className="text-gray-400">AI adjusts workout complexity for you.</p>
+                                </div>
 
-                            {renderNavButtons()}
-                        </div>
-                    )}
-
-                    {/* ============================================================ */}
-                    {/* STEP: Activity Level (own dedicated page)                    */}
-                    {/* ============================================================ */}
-                    {step === 'activity' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Activity Level</h2>
-                                <p className="text-gray-400">How active are you throughout the week?</p>
-                            </div>
-
-                            <div className="space-y-3">
-                                {ACTIVITY_OPTIONS.map((a) => {
-                                    const isSelected = profile.activity_level === a.id;
-                                    return (
+                                <div className="space-y-3">
+                                    {EXPERIENCE_OPTIONS.map((exp) => (
                                         <button
-                                            key={a.id}
-                                            onClick={() => updateProfile('activity_level', a.id)}
+                                            key={exp.id}
+                                            onClick={() => updateProfile('training_experience', exp.id)}
                                             className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
-                                                isSelected
+                                                profile.training_experience === exp.id
                                                     ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
                                                     : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
                                             }`}
                                         >
-                                            <span className={`text-2xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
-                                                {a.emoji}
+                                            <span className={`text-2xl transition-transform duration-200 ${profile.training_experience === exp.id ? 'scale-110' : ''}`}>
+                                                {exp.emoji}
                                             </span>
                                             <div className="flex-1">
-                                                <h3 className="font-bold text-white">{a.label}</h3>
-                                                <p className="text-gray-400 text-sm">{a.desc}</p>
+                                                <h3 className="font-bold text-white">{exp.label}</h3>
+                                                <p className="text-gray-400 text-sm">{exp.description}</p>
                                             </div>
-                                            <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                            <div className={`transition-all duration-200 ${profile.training_experience === exp.id ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
                                                 <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
                                             </div>
                                         </button>
-                                    );
-                                })}
-                            </div>
-
-                            {profile.activity_level && (
-                                <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
-                                    <p className="text-sm text-gray-300">
-                                        {profile.activity_level === 'sedentary' && "Your calorie targets will be set conservatively to match your lifestyle."}
-                                        {profile.activity_level === 'lightly_active' && "A solid starting point. Your targets will account for light activity."}
-                                        {profile.activity_level === 'moderately_active' && "Nice balance. Your targets will fuel your active lifestyle."}
-                                        {profile.activity_level === 'very_active' && "High energy needs. Your calories will be set higher to keep you fueled."}
-                                        {profile.activity_level === 'extremely_active' && "Beast mode. Maximum fuel for maximum output."}
-                                    </p>
+                                    ))}
                                 </div>
-                            )}
 
-                            {renderNavButtons()}
-                        </div>
-                    )}
-
-                    {/* ============================================================ */}
-                    {/* STEP: Training Experience                                     */}
-                    {/* ============================================================ */}
-                    {step === 'experience' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Training Experience</h2>
-                                <p className="text-gray-400">AI adjusts workout complexity for you.</p>
+                                {profile.training_experience && (
+                                    <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
+                                        <p className="text-sm text-gray-300">
+                                            {profile.training_experience === 'beginner' && "Perfect. AI will start with foundational movements and build from there."}
+                                            {profile.training_experience === 'intermediate' && "Great base. Expect progressive overload and periodization in your workouts."}
+                                            {profile.training_experience === 'advanced' && "Let's push limits. Advanced techniques and higher volume programming ahead."}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
+                        )}
 
-                            <div className="space-y-3">
-                                {EXPERIENCE_OPTIONS.map((exp) => (
-                                    <button
-                                        key={exp.id}
-                                        onClick={() => updateProfile('training_experience', exp.id)}
-                                        className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
-                                            profile.training_experience === exp.id
-                                                ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
-                                                : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
-                                        }`}
-                                    >
-                                        <span className={`text-2xl transition-transform duration-200 ${profile.training_experience === exp.id ? 'scale-110' : ''}`}>
-                                            {exp.emoji}
-                                        </span>
-                                        <div className="flex-1">
-                                            <h3 className="font-bold text-white">{exp.label}</h3>
-                                            <p className="text-gray-400 text-sm">{exp.description}</p>
-                                        </div>
-                                        <div className={`transition-all duration-200 ${profile.training_experience === exp.id ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                            <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-
-                            {profile.training_experience && (
-                                <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
-                                    <p className="text-sm text-gray-300">
-                                        {profile.training_experience === 'beginner' && "Perfect. AI will start with foundational movements and build from there."}
-                                        {profile.training_experience === 'intermediate' && "Great base. Expect progressive overload and periodization in your workouts."}
-                                        {profile.training_experience === 'advanced' && "Let's push limits. Advanced techniques and higher volume programming ahead."}
-                                    </p>
+                        {/* ============================================================ */}
+                        {/* STEP: Equipment Access                                        */}
+                        {/* ============================================================ */}
+                        {step === 'equipment' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Equipment Access</h2>
+                                    <p className="text-gray-400">AI picks exercises you can actually do.</p>
                                 </div>
-                            )}
 
-                            {renderNavButtons()}
-                        </div>
-                    )}
-
-                    {/* ============================================================ */}
-                    {/* STEP: Equipment Access                                        */}
-                    {/* ============================================================ */}
-                    {step === 'equipment' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Equipment Access</h2>
-                                <p className="text-gray-400">AI picks exercises you can actually do.</p>
+                                <div className="space-y-3">
+                                    {EQUIPMENT_OPTIONS.map((eq) => (
+                                        <button
+                                            key={eq.id}
+                                            onClick={() => updateProfile('equipment_access', eq.id)}
+                                            className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
+                                                profile.equipment_access === eq.id
+                                                    ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
+                                                    : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
+                                            }`}
+                                        >
+                                            <span className={`text-2xl transition-transform duration-200 ${profile.equipment_access === eq.id ? 'scale-110' : ''}`}>
+                                                {eq.emoji}
+                                            </span>
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-white">{eq.label}</h3>
+                                                <p className="text-gray-400 text-sm">{eq.description}</p>
+                                            </div>
+                                            <div className={`transition-all duration-200 ${profile.equipment_access === eq.id ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                                <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
+                        )}
 
-                            <div className="space-y-3">
-                                {EQUIPMENT_OPTIONS.map((eq) => (
-                                    <button
-                                        key={eq.id}
-                                        onClick={() => updateProfile('equipment_access', eq.id)}
-                                        className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
-                                            profile.equipment_access === eq.id
-                                                ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
-                                                : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
-                                        }`}
-                                    >
-                                        <span className={`text-2xl transition-transform duration-200 ${profile.equipment_access === eq.id ? 'scale-110' : ''}`}>
-                                            {eq.emoji}
-                                        </span>
-                                        <div className="flex-1">
-                                            <h3 className="font-bold text-white">{eq.label}</h3>
-                                            <p className="text-gray-400 text-sm">{eq.description}</p>
-                                        </div>
-                                        <div className={`transition-all duration-200 ${profile.equipment_access === eq.id ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                            <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
+                        {/* ============================================================ */}
+                        {/* STEP: Schedule + Summary + Start                              */}
+                        {/* ============================================================ */}
+                        {step === 'schedule' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Workout Schedule</h2>
+                                    <p className="text-gray-400">How many days can you train per week?</p>
+                                </div>
 
-                            {renderNavButtons()}
-                        </div>
-                    )}
-
-                    {/* ============================================================ */}
-                    {/* STEP: Schedule + Summary + Start                              */}
-                    {/* ============================================================ */}
-                    {step === 'schedule' && (
-                        <div className="space-y-6">
-                            <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Workout Schedule</h2>
-                                <p className="text-gray-400">How many days can you train per week?</p>
-                            </div>
-
-                            {error && (
-                                <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
-                                    <div className="flex items-start gap-3">
-                                        <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        <div className="flex-1">
-                                            <p className="text-red-400 text-sm">{error}</p>
-                                            <button
-                                                onClick={handleComplete}
-                                                className="text-xs mt-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-full transition-colors"
-                                            >
-                                                Try Again
-                                            </button>
+                                {error && (
+                                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
+                                        <div className="flex items-start gap-3">
+                                            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <div className="flex-1">
+                                                <p className="text-red-400 text-sm">{error}</p>
+                                                <button
+                                                    onClick={handleComplete}
+                                                    className="text-xs mt-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-full transition-colors"
+                                                >
+                                                    Try Again
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            <div className="card p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <span className="text-gray-400">Days per week</span>
-                                    <span className="text-4xl font-black text-[var(--color-primary)]">{profile.days_per_week}</span>
+                                <div className="card p-6">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <span className="text-gray-400">Days per week</span>
+                                        <span className="text-4xl font-black text-[var(--color-primary)]">{profile.days_per_week}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="2"
+                                        max="6"
+                                        value={profile.days_per_week}
+                                        onChange={(e) => updateProfile('days_per_week', parseInt(e.target.value))}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"
+                                    />
+                                    <div className="flex justify-between mt-2 text-xs text-gray-500">
+                                        <span>2</span>
+                                        <span>3</span>
+                                        <span>4</span>
+                                        <span>5</span>
+                                        <span>6</span>
+                                    </div>
                                 </div>
-                                <input
-                                    type="range"
-                                    min="2"
-                                    max="6"
-                                    value={profile.days_per_week}
-                                    onChange={(e) => updateProfile('days_per_week', parseInt(e.target.value))}
-                                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"
-                                />
-                                <div className="flex justify-between mt-2 text-xs text-gray-500">
-                                    <span>2</span>
-                                    <span>3</span>
-                                    <span>4</span>
-                                    <span>5</span>
-                                    <span>6</span>
+
+                                <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30">
+                                    <p className="text-sm text-gray-300">
+                                        {profile.days_per_week <= 3 ? (
+                                            <>Perfect for <strong className="text-white">Full Body</strong> training - hitting each muscle 2-3x/week</>
+                                        ) : profile.days_per_week <= 4 ? (
+                                            <>Ideal for <strong className="text-white">Upper/Lower</strong> or <strong className="text-white">PHUL</strong> split</>
+                                        ) : (
+                                            <>Great for <strong className="text-white">Push/Pull/Legs</strong> with maximum frequency</>
+                                        )}
+                                    </p>
+                                </div>
+
+                                {/* Summary of selections */}
+                                <div className="card p-4 space-y-2">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase">Your Program</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {profile.goal && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {GOAL_OPTIONS.find(g => g.id === profile.goal)?.emoji} {GOAL_OPTIONS.find(g => g.id === profile.goal)?.title}
+                                            </span>
+                                        )}
+                                        {profile.gender && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {profile.gender === 'male' ? '♂' : '♀'} {profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)}
+                                            </span>
+                                        )}
+                                        {profile.weight_lbs && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {profile.weight_lbs} lbs
+                                            </span>
+                                        )}
+                                        {profile.activity_level && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.emoji} {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.label}
+                                            </span>
+                                        )}
+                                        {profile.training_experience && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.emoji} {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.label}
+                                            </span>
+                                        )}
+                                        {profile.equipment_access && (
+                                            <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                                {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.emoji} {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.label}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-
-                            <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30">
-                                <p className="text-sm text-gray-300">
-                                    {profile.days_per_week <= 3 ? (
-                                        <>Perfect for <strong className="text-white">Full Body</strong> training - hitting each muscle 2-3x/week</>
-                                    ) : profile.days_per_week <= 4 ? (
-                                        <>Ideal for <strong className="text-white">Upper/Lower</strong> or <strong className="text-white">PHUL</strong> split</>
-                                    ) : (
-                                        <>Great for <strong className="text-white">Push/Pull/Legs</strong> with maximum frequency</>
-                                    )}
-                                </p>
-                            </div>
-
-                            {/* Summary of selections */}
-                            <div className="card p-4 space-y-2">
-                                <h4 className="text-xs font-bold text-gray-500 uppercase">Your Program</h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {profile.goal && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {GOAL_OPTIONS.find(g => g.id === profile.goal)?.emoji} {GOAL_OPTIONS.find(g => g.id === profile.goal)?.title}
-                                        </span>
-                                    )}
-                                    {profile.gender && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {profile.gender === 'male' ? '♂' : '♀'} {profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)}
-                                        </span>
-                                    )}
-                                    {profile.weight_lbs && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {profile.weight_lbs} lbs
-                                        </span>
-                                    )}
-                                    {profile.activity_level && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.emoji} {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.label}
-                                        </span>
-                                    )}
-                                    {profile.training_experience && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.emoji} {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.label}
-                                        </span>
-                                    )}
-                                    {profile.equipment_access && (
-                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                            {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.emoji} {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.label}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {renderNavButtons({ isLast: true })}
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
 
-            {/* Bottom spacer to match top */}
-            <div className="flex-1 min-h-0" />
+            {/* Fixed bottom nav buttons — ALWAYS visible on every step except welcome */}
+            {step !== 'welcome' && renderFixedNavButtons({ isLast: step === 'schedule' })}
         </div>
     );
 };
