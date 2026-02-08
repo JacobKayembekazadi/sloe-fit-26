@@ -116,6 +116,10 @@
     animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  .animate-slide-down {
+    animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out;
   }
@@ -123,6 +127,18 @@
   @keyframes slideUp {
     from {
       transform: translateY(20px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      transform: translateY(-20px);
       opacity: 0;
     }
 

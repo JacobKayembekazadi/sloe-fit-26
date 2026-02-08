@@ -53,7 +53,17 @@ const EQUIPMENT_OPTIONS = [
     { id: 'minimal', label: 'Minimal', description: 'Bodyweight and resistance bands', emoji: '🎯' }
 ];
 
-type Step = 'welcome' | 'goal' | 'stats' | 'experience' | 'equipment' | 'schedule';
+const ACTIVITY_OPTIONS = [
+    { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise', emoji: '🪑' },
+    { id: 'lightly_active', label: 'Lightly Active', desc: 'Exercise 1-3 days/week', emoji: '🚶' },
+    { id: 'moderately_active', label: 'Moderately Active', desc: 'Exercise 3-5 days/week', emoji: '🏃' },
+    { id: 'very_active', label: 'Very Active', desc: 'Exercise 6-7 days/week', emoji: '⚡' },
+    { id: 'extremely_active', label: 'Extremely Active', desc: 'Intense daily exercise', emoji: '🔥' },
+];
+
+type Step = 'welcome' | 'goal' | 'stats' | 'activity' | 'experience' | 'equipment' | 'schedule';
+
+const STEPS: Step[] = ['welcome', 'goal', 'stats', 'activity', 'experience', 'equipment', 'schedule'];
 
 interface ProfileData {
     goal: string | null;
@@ -101,7 +111,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     const updateProfile = (field: keyof ProfileData, value: string | number | null) => {
         setProfile(prev => ({ ...prev, [field]: value }));
-        // Clear validation error for this field
         if (field === 'height_ft' || field === 'height_in') {
             setValidationErrors(prev => ({ ...prev, height: undefined }));
         } else if (field === 'weight_lbs') {
@@ -109,7 +118,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         } else if (field === 'age') {
             setValidationErrors(prev => ({ ...prev, age: undefined }));
         }
-        // Clear general error when user makes changes
         setError(null);
     };
 
@@ -117,7 +125,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         const errors: ValidationErrors = {};
         let isValid = true;
 
-        // Height validation (optional but if entered, must be valid)
         const heightFt = parseInt(profile.height_ft);
         const heightIn = parseInt(profile.height_in);
         if (profile.height_ft || profile.height_in) {
@@ -131,7 +138,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             }
         }
 
-        // Weight validation (required)
         const weight = parseInt(profile.weight_lbs);
         if (!profile.weight_lbs) {
             errors.weight = 'Weight is required';
@@ -141,7 +147,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             isValid = false;
         }
 
-        // Age validation (optional but if entered, must be valid)
         if (profile.age) {
             const age = parseInt(profile.age);
             if (age < 13 || age > 100) {
@@ -162,14 +167,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             return;
         }
 
-        // Guard against double-invocation (timeout race + retry)
         if (isSavingRef.current) return;
         isSavingRef.current = true;
 
         setSaving(true);
         setError(null);
 
-        // Timeout safeguard - don't hang forever
         const timeout = setTimeout(() => {
             isSavingRef.current = false;
             setSaving(false);
@@ -177,10 +180,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         }, 15000);
 
         try {
-            // Convert height to inches
             const heightInches = (parseInt(profile.height_ft) || 0) * 12 + (parseInt(profile.height_in) || 0);
 
-            // Use upsert to handle both new profiles and existing ones
             const { error: updateError } = await supabase
                 .from('profiles')
                 .upsert({
@@ -203,17 +204,16 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 throw updateError;
             }
 
-            // Success! Complete onboarding
+            isSavingRef.current = false;
+            setSaving(false);
             onComplete();
         } catch (err: any) {
             clearTimeout(timeout);
 
-            // Provide helpful error messages
             if (err.message?.includes('network') || err.message?.includes('fetch')) {
                 setError('Network error. Please check your connection and try again.');
             } else if (err.code === '23505') {
                 setError('Profile already exists. Refreshing...');
-                // Try to complete anyway since profile exists
                 setTimeout(() => onComplete(), 1000);
             } else {
                 setError(err.message || 'Failed to save your profile. Please try again.');
@@ -225,41 +225,36 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     };
 
     const nextStep = () => {
-        // Validate current step before proceeding
         if (step === 'stats' && !validateStats()) {
             return;
         }
 
-        const steps: Step[] = ['welcome', 'goal', 'stats', 'experience', 'equipment', 'schedule'];
-        const currentIndex = steps.indexOf(step);
-        if (currentIndex < steps.length - 1) {
+        const currentIndex = STEPS.indexOf(step);
+        if (currentIndex < STEPS.length - 1) {
             setTransitionDirection('forward');
             setLoading(true);
-            // Small delay for visual transition
             setTimeout(() => {
-                setStep(steps[currentIndex + 1]);
+                setStep(STEPS[currentIndex + 1]);
                 setLoading(false);
             }, 150);
         }
     };
 
     const prevStep = () => {
-        const steps: Step[] = ['welcome', 'goal', 'stats', 'experience', 'equipment', 'schedule'];
-        const currentIndex = steps.indexOf(step);
+        const currentIndex = STEPS.indexOf(step);
         if (currentIndex > 0) {
             setTransitionDirection('back');
-            setError(null); // Clear errors when going back
+            setError(null);
             setLoading(true);
             setTimeout(() => {
-                setStep(steps[currentIndex - 1]);
+                setStep(STEPS[currentIndex - 1]);
                 setLoading(false);
             }, 150);
         }
     };
 
     const getStepNumber = () => {
-        const steps: Step[] = ['welcome', 'goal', 'stats', 'experience', 'equipment', 'schedule'];
-        return steps.indexOf(step);
+        return STEPS.indexOf(step);
     };
 
     const canProceed = (): boolean => {
@@ -270,6 +265,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 return !!profile.goal;
             case 'stats':
                 return !!profile.weight_lbs && parseInt(profile.weight_lbs) >= 80;
+            case 'activity':
+                return !!profile.activity_level;
             case 'experience':
                 return !!profile.training_experience;
             case 'equipment':
@@ -282,9 +279,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     };
 
     const renderProgressBar = () => {
-        const totalSteps = 5; // Excluding welcome
+        const totalSteps = STEPS.length - 1; // Excluding welcome
         const currentStep = getStepNumber();
         if (currentStep === 0) return null;
+
+        // Adjust so step index 1 (goal) maps to segment 0 as "current"
+        const adjustedStep = currentStep - 1;
 
         return (
             <div className="flex gap-2 mb-6">
@@ -292,9 +292,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     <div
                         key={i}
                         className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                            i < currentStep
+                            i < adjustedStep
                                 ? 'bg-[var(--color-primary)]'
-                                : i === currentStep
+                                : i === adjustedStep
                                     ? 'bg-[var(--color-primary)]/50'
                                     : 'bg-gray-700'
                         }`}
@@ -304,20 +304,63 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         );
     };
 
+    const renderNavButtons = (opts?: { isLast?: boolean }) => (
+        <div className="flex gap-3 pt-4">
+            <button onClick={prevStep} disabled={loading || saving} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
+                Back
+            </button>
+            {opts?.isLast ? (
+                <button
+                    onClick={handleComplete}
+                    disabled={saving}
+                    className="btn-primary flex-1 flex justify-center items-center gap-2 active:scale-[0.98] transition-transform"
+                >
+                    {saving ? (
+                        <>
+                            <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
+                            <span>Saving...</span>
+                        </>
+                    ) : (
+                        <>
+                            <span>Start Training</span>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                        </>
+                    )}
+                </button>
+            ) : (
+                <button
+                    onClick={nextStep}
+                    disabled={!canProceed() || loading}
+                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                >
+                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
+                </button>
+            )}
+        </div>
+    );
+
     const animationClass = loading
         ? 'opacity-0 scale-95'
         : `opacity-100 scale-100 ${transitionDirection === 'forward' ? 'animate-slide-up' : 'animate-slide-down'}`;
 
     return (
-        <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] relative overflow-hidden">
+        <div className="min-h-[100dvh] bg-black flex flex-col items-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] relative overflow-y-auto">
             {/* Background Effects */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -ml-48 -mb-48 pointer-events-none"></div>
+
+            {/* Spacer to vertically center short content, collapse on tall content */}
+            <div className="flex-1 min-h-0" />
 
             <div className="w-full max-w-lg z-10">
                 {renderProgressBar()}
 
                 <div className={`transition-all duration-200 ${animationClass}`}>
+                    {/* ============================================================ */}
+                    {/* STEP: Welcome                                                */}
+                    {/* ============================================================ */}
                     {step === 'welcome' && (
                         <div className="text-center space-y-8">
                             <div className="space-y-4">
@@ -371,9 +414,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     )}
                                 </button>
                             </div>
+
+                            <p className="text-gray-600 text-xs">Takes about 60 seconds</p>
                         </div>
                     )}
 
+                    {/* ============================================================ */}
+                    {/* STEP: Goal Selection (expand on tap)                         */}
+                    {/* ============================================================ */}
                     {step === 'goal' && (
                         <div className="space-y-6">
                             <div className="text-center space-y-2">
@@ -381,67 +429,75 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 <p className="text-gray-400">This customizes your workouts and nutrition.</p>
                             </div>
 
-                            <div className="space-y-4">
-                                {GOAL_OPTIONS.map((goal) => (
-                                    <button
-                                        key={goal.id}
-                                        onClick={() => updateProfile('goal', goal.id)}
-                                        className={`w-full p-5 rounded-xl text-left transition-all duration-200 active:scale-[0.98] ${
-                                            profile.goal === goal.id
-                                                ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
-                                                : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
-                                        }`}
-                                    >
-                                        <div className="flex items-start gap-4">
-                                            <span className={`text-3xl transition-transform duration-200 ${profile.goal === goal.id ? 'scale-110' : ''}`}>
-                                                {goal.emoji}
-                                            </span>
-                                            <div className="flex-1">
-                                                <h3 className="font-bold text-white text-lg">{goal.title}</h3>
-                                                <p className="text-gray-400 text-sm mb-3">{goal.description}</p>
-                                                <div className="flex flex-wrap gap-2">
+                            <div className="space-y-3">
+                                {GOAL_OPTIONS.map((goal) => {
+                                    const isSelected = profile.goal === goal.id;
+                                    return (
+                                        <button
+                                            key={goal.id}
+                                            onClick={() => updateProfile('goal', goal.id)}
+                                            className={`w-full rounded-xl text-left transition-all duration-300 active:scale-[0.98] ${
+                                                isSelected
+                                                    ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20 p-5'
+                                                    : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80 p-4'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <span className={`text-3xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
+                                                    {goal.emoji}
+                                                </span>
+                                                <div className="flex-1">
+                                                    <h3 className="font-bold text-white text-lg">{goal.title}</h3>
+                                                    <p className="text-gray-400 text-sm">{goal.description}</p>
+                                                </div>
+                                                <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                                    <CheckIcon className="w-6 h-6 text-[var(--color-primary)]" />
+                                                </div>
+                                            </div>
+                                            {/* Expanded details — only visible when selected */}
+                                            <div className={`overflow-hidden transition-all duration-300 ${isSelected ? 'max-h-32 opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
+                                                <div className="flex flex-wrap gap-2 pl-[3.25rem]">
                                                     {goal.details.map((detail, i) => (
-                                                        <span key={i} className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-300">
+                                                        <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
                                                             {detail}
                                                         </span>
                                                     ))}
                                                 </div>
                                             </div>
-                                            <div className={`transition-all duration-200 ${profile.goal === goal.id ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-                                                <CheckIcon className="w-6 h-6 text-[var(--color-primary)]" />
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button onClick={prevStep} disabled={loading} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
-                                    Back
-                                </button>
-                                <button
-                                    onClick={nextStep}
-                                    disabled={!canProceed() || loading}
-                                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
-                                </button>
-                            </div>
+                            {/* Motivational nudge when goal is selected */}
+                            {profile.goal && (
+                                <div className="text-center animate-slide-up">
+                                    <p className="text-gray-500 text-sm">
+                                        {profile.goal === 'CUT' && "Let's shred. Your AI coach will keep protein high and workouts intense."}
+                                        {profile.goal === 'BULK' && "Time to grow. Extra calories and heavy compounds incoming."}
+                                        {profile.goal === 'RECOMP' && "The best of both worlds. Precision nutrition meets smart training."}
+                                    </p>
+                                </div>
+                            )}
+
+                            {renderNavButtons()}
                         </div>
                     )}
 
+                    {/* ============================================================ */}
+                    {/* STEP: Body Stats (gender, height, weight, age)               */}
+                    {/* ============================================================ */}
                     {step === 'stats' && (
                         <div className="space-y-6">
                             <div className="text-center space-y-2">
-                                <h2 className="text-3xl font-black text-white">Your Stats</h2>
-                                <p className="text-gray-400">For accurate calorie and macro calculations.</p>
+                                <h2 className="text-3xl font-black text-white">Your Body</h2>
+                                <p className="text-gray-400">For accurate calorie and macro targets.</p>
                             </div>
 
                             <div className="card p-6 space-y-5">
+                                {/* Gender */}
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">
-                                        Gender <span className="text-gray-600">(for accurate calorie calc)</span>
-                                    </label>
+                                    <label className="block text-sm font-bold text-gray-400 mb-2">Gender</label>
                                     <div className="flex gap-3">
                                         {[
                                             { id: 'male', label: 'Male' },
@@ -462,6 +518,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     </div>
                                 </div>
 
+                                {/* Height */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-400 mb-2">
                                         Height <span className="text-gray-600">(optional)</span>
@@ -497,6 +554,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     )}
                                 </div>
 
+                                {/* Weight */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-400 mb-2">
                                         Weight (lbs) <span className="text-red-400">*</span>
@@ -515,6 +573,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     )}
                                 </div>
 
+                                {/* Age */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-400 mb-2">
                                         Age <span className="text-gray-600">(optional)</span>
@@ -534,56 +593,71 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 </div>
                             </div>
 
-                            <div className="card p-6 space-y-3">
-                                <label className="block text-sm font-bold text-gray-400 mb-1">
-                                    Activity Level <span className="text-gray-600">(including gym)</span>
-                                </label>
-                                {[
-                                    { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
-                                    { id: 'lightly_active', label: 'Lightly Active', desc: 'Exercise 1-3 days/week' },
-                                    { id: 'moderately_active', label: 'Moderately Active', desc: 'Exercise 3-5 days/week' },
-                                    { id: 'very_active', label: 'Very Active', desc: 'Exercise 6-7 days/week' },
-                                    { id: 'extremely_active', label: 'Extremely Active', desc: 'Intense daily exercise' },
-                                ].map((a) => (
-                                    <button
-                                        key={a.id}
-                                        onClick={() => updateProfile('activity_level', a.id)}
-                                        className={`w-full p-3 rounded-xl text-left transition-all duration-200 flex items-center gap-3 active:scale-[0.98] ${
-                                            profile.activity_level === a.id
-                                                ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)]'
-                                                : 'bg-gray-800 border-2 border-transparent hover:border-gray-700'
-                                        }`}
-                                    >
-                                        <div className="flex-1">
-                                            <span className="font-bold text-white text-sm">{a.label}</span>
-                                            <span className="text-gray-400 text-xs ml-2">{a.desc}</span>
-                                        </div>
-                                        {profile.activity_level === a.id && (
-                                            <CheckIcon className="w-4 h-4 text-[var(--color-primary)]" />
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-
                             <p className="text-center text-gray-500 text-sm">
-                                This helps calculate your personalized calorie targets.
+                                Used to calculate your personalized calorie and macro targets.
                             </p>
 
-                            <div className="flex gap-3 pt-4">
-                                <button onClick={prevStep} disabled={loading} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
-                                    Back
-                                </button>
-                                <button
-                                    onClick={nextStep}
-                                    disabled={!canProceed() || loading}
-                                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
-                                </button>
-                            </div>
+                            {renderNavButtons()}
                         </div>
                     )}
 
+                    {/* ============================================================ */}
+                    {/* STEP: Activity Level (own dedicated page)                    */}
+                    {/* ============================================================ */}
+                    {step === 'activity' && (
+                        <div className="space-y-6">
+                            <div className="text-center space-y-2">
+                                <h2 className="text-3xl font-black text-white">Activity Level</h2>
+                                <p className="text-gray-400">How active are you throughout the week?</p>
+                            </div>
+
+                            <div className="space-y-3">
+                                {ACTIVITY_OPTIONS.map((a) => {
+                                    const isSelected = profile.activity_level === a.id;
+                                    return (
+                                        <button
+                                            key={a.id}
+                                            onClick={() => updateProfile('activity_level', a.id)}
+                                            className={`w-full p-4 rounded-xl text-left transition-all duration-200 flex items-center gap-4 active:scale-[0.98] ${
+                                                isSelected
+                                                    ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/20'
+                                                    : 'bg-[var(--bg-card)] border-2 border-transparent hover:border-gray-700 hover:bg-gray-800/80'
+                                            }`}
+                                        >
+                                            <span className={`text-2xl transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
+                                                {a.emoji}
+                                            </span>
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-white">{a.label}</h3>
+                                                <p className="text-gray-400 text-sm">{a.desc}</p>
+                                            </div>
+                                            <div className={`transition-all duration-200 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+                                                <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {profile.activity_level && (
+                                <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
+                                    <p className="text-sm text-gray-300">
+                                        {profile.activity_level === 'sedentary' && "Your calorie targets will be set conservatively to match your lifestyle."}
+                                        {profile.activity_level === 'lightly_active' && "A solid starting point. Your targets will account for light activity."}
+                                        {profile.activity_level === 'moderately_active' && "Nice balance. Your targets will fuel your active lifestyle."}
+                                        {profile.activity_level === 'very_active' && "High energy needs. Your calories will be set higher to keep you fueled."}
+                                        {profile.activity_level === 'extremely_active' && "Beast mode. Maximum fuel for maximum output."}
+                                    </p>
+                                </div>
+                            )}
+
+                            {renderNavButtons()}
+                        </div>
+                    )}
+
+                    {/* ============================================================ */}
+                    {/* STEP: Training Experience                                     */}
+                    {/* ============================================================ */}
                     {step === 'experience' && (
                         <div className="space-y-6">
                             <div className="text-center space-y-2">
@@ -616,21 +690,23 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 ))}
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button onClick={prevStep} disabled={loading} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
-                                    Back
-                                </button>
-                                <button
-                                    onClick={nextStep}
-                                    disabled={!canProceed() || loading}
-                                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
-                                </button>
-                            </div>
+                            {profile.training_experience && (
+                                <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 animate-slide-up">
+                                    <p className="text-sm text-gray-300">
+                                        {profile.training_experience === 'beginner' && "Perfect. AI will start with foundational movements and build from there."}
+                                        {profile.training_experience === 'intermediate' && "Great base. Expect progressive overload and periodization in your workouts."}
+                                        {profile.training_experience === 'advanced' && "Let's push limits. Advanced techniques and higher volume programming ahead."}
+                                    </p>
+                                </div>
+                            )}
+
+                            {renderNavButtons()}
                         </div>
                     )}
 
+                    {/* ============================================================ */}
+                    {/* STEP: Equipment Access                                        */}
+                    {/* ============================================================ */}
                     {step === 'equipment' && (
                         <div className="space-y-6">
                             <div className="text-center space-y-2">
@@ -663,21 +739,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 ))}
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button onClick={prevStep} disabled={loading} className="btn-secondary flex-1 active:scale-[0.98] transition-transform">
-                                    Back
-                                </button>
-                                <button
-                                    onClick={nextStep}
-                                    disabled={!canProceed() || loading}
-                                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {loading ? <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : 'Continue'}
-                                </button>
-                            </div>
+                            {renderNavButtons()}
                         </div>
                     )}
 
+                    {/* ============================================================ */}
+                    {/* STEP: Schedule + Summary + Start                              */}
+                    {/* ============================================================ */}
                     {step === 'schedule' && (
                         <div className="space-y-6">
                             <div className="text-center space-y-2">
@@ -729,66 +797,60 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                             <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30">
                                 <p className="text-sm text-gray-300">
                                     {profile.days_per_week <= 3 ? (
-                                        <>💡 Perfect for <strong className="text-white">Full Body</strong> training - hitting each muscle 2-3x/week</>
+                                        <>Perfect for <strong className="text-white">Full Body</strong> training - hitting each muscle 2-3x/week</>
                                     ) : profile.days_per_week <= 4 ? (
-                                        <>💡 Ideal for <strong className="text-white">Upper/Lower</strong> or <strong className="text-white">PHUL</strong> split</>
+                                        <>Ideal for <strong className="text-white">Upper/Lower</strong> or <strong className="text-white">PHUL</strong> split</>
                                     ) : (
-                                        <>💡 Great for <strong className="text-white">Push/Pull/Legs</strong> with maximum frequency</>
+                                        <>Great for <strong className="text-white">Push/Pull/Legs</strong> with maximum frequency</>
                                     )}
                                 </p>
                             </div>
 
                             {/* Summary of selections */}
                             <div className="card p-4 space-y-2">
-                                <h4 className="text-xs font-bold text-gray-500 uppercase">Your Setup</h4>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase">Your Program</h4>
                                 <div className="flex flex-wrap gap-2">
-                                    <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                        {GOAL_OPTIONS.find(g => g.id === profile.goal)?.emoji} {profile.goal}
-                                    </span>
-                                    <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                        {profile.weight_lbs} lbs
-                                    </span>
-                                    <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                        {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.label}
-                                    </span>
-                                    <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
-                                        {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.label}
-                                    </span>
+                                    {profile.goal && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {GOAL_OPTIONS.find(g => g.id === profile.goal)?.emoji} {GOAL_OPTIONS.find(g => g.id === profile.goal)?.title}
+                                        </span>
+                                    )}
+                                    {profile.gender && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {profile.gender === 'male' ? '♂' : '♀'} {profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1)}
+                                        </span>
+                                    )}
+                                    {profile.weight_lbs && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {profile.weight_lbs} lbs
+                                        </span>
+                                    )}
+                                    {profile.activity_level && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.emoji} {ACTIVITY_OPTIONS.find(a => a.id === profile.activity_level)?.label}
+                                        </span>
+                                    )}
+                                    {profile.training_experience && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.emoji} {EXPERIENCE_OPTIONS.find(e => e.id === profile.training_experience)?.label}
+                                        </span>
+                                    )}
+                                    {profile.equipment_access && (
+                                        <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300">
+                                            {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.emoji} {EQUIPMENT_OPTIONS.find(e => e.id === profile.equipment_access)?.label}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button
-                                    onClick={prevStep}
-                                    disabled={saving}
-                                    className="btn-secondary flex-1 active:scale-[0.98] transition-transform"
-                                >
-                                    Back
-                                </button>
-                                <button
-                                    onClick={handleComplete}
-                                    disabled={saving}
-                                    className="btn-primary flex-1 flex justify-center items-center gap-2 active:scale-[0.98] transition-transform"
-                                >
-                                    {saving ? (
-                                        <>
-                                            <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
-                                            <span>Saving...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span>Start Training</span>
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                            </svg>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                            {renderNavButtons({ isLast: true })}
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* Bottom spacer to match top */}
+            <div className="flex-1 min-h-0" />
         </div>
     );
 };

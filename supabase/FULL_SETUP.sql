@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     height_inches INTEGER,
     weight_lbs INTEGER,
     age INTEGER,
+    gender TEXT CHECK (gender IN ('male', 'female')),
+    activity_level TEXT CHECK (activity_level IN ('sedentary', 'lightly_active', 'moderately_active', 'very_active', 'extremely_active')),
     training_experience TEXT CHECK (training_experience IN ('beginner', 'intermediate', 'advanced')),
     equipment_access TEXT CHECK (equipment_access IN ('gym', 'home', 'minimal')),
     days_per_week INTEGER CHECK (days_per_week >= 1 AND days_per_week <= 7),

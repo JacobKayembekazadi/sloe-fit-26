@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     height_inches INTEGER,
     weight_lbs INTEGER,
     age INTEGER,
+    gender TEXT,
+    activity_level TEXT,
     training_experience TEXT,
     equipment_access TEXT,
     days_per_week INTEGER,
@@ -34,6 +36,8 @@ BEGIN
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS height_inches INTEGER;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS weight_lbs INTEGER;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS age INTEGER;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gender TEXT;
+    ALTER TABLE profiles ADD COLUMN IF NOT EXISTS activity_level TEXT;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_experience TEXT;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS equipment_access TEXT;
     ALTER TABLE profiles ADD COLUMN IF NOT EXISTS days_per_week INTEGER;
