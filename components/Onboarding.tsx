@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, memo } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabaseUpsert } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
@@ -173,18 +173,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         setSaving(true);
         setError(null);
 
-        const timeout = setTimeout(() => {
-            isSavingRef.current = false;
-            setSaving(false);
-            setError('Request timed out. Please check your connection and try again.');
-        }, 15000);
-
         try {
             const heightInches = (parseInt(profile.height_ft) || 0) * 12 + (parseInt(profile.height_in) || 0);
 
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .upsert({
+            const { error: updateError } = await supabaseUpsert(
+                'profiles',
+                {
                     id: user.id,
                     goal: profile.goal,
                     gender: profile.gender,
@@ -196,9 +190,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     equipment_access: profile.equipment_access,
                     days_per_week: profile.days_per_week,
                     onboarding_complete: true
-                });
-
-            clearTimeout(timeout);
+                },
+                'id'
+            );
 
             if (updateError) {
                 throw updateError;
@@ -208,9 +202,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             setSaving(false);
             onComplete();
         } catch (err: any) {
-            clearTimeout(timeout);
-
-            if (err.message?.includes('network') || err.message?.includes('fetch')) {
+            if (err.message?.includes('network') || err.message?.includes('fetch') || err.message?.includes('timeout')) {
                 setError('Network error. Please check your connection and try again.');
             } else if (err.code === '23505') {
                 setError('Profile already exists. Refreshing...');
