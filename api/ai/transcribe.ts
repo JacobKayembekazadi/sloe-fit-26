@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse } from '../../lib/ai/types';
+import { apiGate, getErrorType, MAX_BASE64_LENGTH } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -18,6 +19,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
+
   const startTime = Date.now();
 
   try {
@@ -30,6 +34,16 @@ export default async function handler(req: Request): Promise<Response> {
           success: false,
           error: { type: 'invalid_request', message: 'Audio data is required', retryable: false },
         } as AIResponse<string>),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (audioBase64.length > MAX_BASE64_LENGTH) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: { type: 'invalid_request', message: 'Audio data is too large. Maximum size is ~2MB.', retryable: false },
+        }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -59,12 +73,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<string> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

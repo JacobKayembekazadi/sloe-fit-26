@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse } from '../../lib/ai/types';
+import { apiGate, getErrorType, validateImageSize } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -17,6 +18,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
+
   const startTime = Date.now();
 
   try {
@@ -33,6 +37,9 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    const tooLarge = validateImageSize(imageBase64);
+    if (tooLarge) return tooLarge;
+
     const { data: result, provider: usedProvider } = await withFallback(
       p => p.analyzeBodyPhoto(imageBase64),
       r => r.startsWith('Error:')
@@ -48,12 +55,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<string> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

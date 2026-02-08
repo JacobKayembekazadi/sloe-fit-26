@@ -8,6 +8,7 @@ import ResultDisplay from './ResultDisplay';
 import ProductCard from './ProductCard';
 import ProgressPhotos from './ProgressPhotos';
 import { PRODUCT_IDS } from '../services/shopifyService';
+import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
 
 interface BodyAnalysisProps {
   onAnalysisComplete: (result: string) => void;
@@ -69,8 +70,8 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) return;
 
-      const parsed: StoredAnalysis = JSON.parse(stored);
-      if (!parsed.result || !parsed.timestamp) return;
+      const parsed = safeJSONParse<StoredAnalysis | null>(stored, null);
+      if (!parsed || !parsed.result || !parsed.timestamp) return;
 
       const ageMs = Date.now() - parsed.timestamp;
       const ageDays = ageMs / (1000 * 60 * 60 * 24);
@@ -163,9 +164,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             timestamp: Date.now(),
             photoPreview: thumbPreview,
           };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+          safeLocalStorageSet(STORAGE_KEY, JSON.stringify(toStore));
         } catch {
-          // localStorage full or unavailable — fail silently
+          // Thumbnail creation failed — save without it
         }
       }
     } catch {

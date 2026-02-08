@@ -33,20 +33,34 @@ const RestTimer: React.FC<RestTimerProps> = ({
         onCompleteRef.current = onComplete;
     }, [onComplete]);
 
-    // Timer countdown effect
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setTimeLeft((prev) => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    setIsComplete(true);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
+    // Timer countdown effect — uses Date.now() delta so backgrounding doesn't freeze it
+    const endTimeRef = useRef(Date.now() + initialTime * 1000);
 
-        return () => clearInterval(interval);
+    useEffect(() => {
+        endTimeRef.current = Date.now() + initialTime * 1000;
+    }, [initialTime]);
+
+    useEffect(() => {
+        const tick = () => {
+            const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
+            setTimeLeft(remaining);
+            if (remaining <= 0) {
+                setIsComplete(true);
+            }
+        };
+
+        const interval = setInterval(tick, 1000);
+
+        // Recover accurate time when tab regains focus
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') tick();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, []);
 
     // Handle completion in a separate effect
@@ -63,11 +77,13 @@ const RestTimer: React.FC<RestTimerProps> = ({
     };
 
     const handleAdd = (seconds: number) => {
+        endTimeRef.current += seconds * 1000;
         setTimeLeft(prev => prev + seconds);
         setTotalTime(prev => prev + seconds);
     };
 
     const handleSubtract = (seconds: number) => {
+        endTimeRef.current -= seconds * 1000;
         setTimeLeft(prev => Math.max(0, prev - seconds));
         // Don't shrink totalTime — this makes the ring drain faster (intuitive)
     };

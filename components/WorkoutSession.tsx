@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
-import type { ExerciseLog } from '../App';
+import type { ExerciseLog, CompletedWorkout } from '../App';
 import RestTimer from './RestTimer';
 import WorkoutSetsLogger from './WorkoutSetsLogger';
+import { safeLocalStorageSet } from '../utils/safeStorage';
 
 // -- Constants --
 
@@ -47,6 +48,7 @@ interface WorkoutSessionProps {
   recoveryNotes?: string;
   initialDraft?: WorkoutDraft;
   initialElapsedTime?: number;
+  workoutHistory?: CompletedWorkout[];
 }
 
 // -- Main Component --
@@ -59,7 +61,8 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   recoveryAdjusted,
   recoveryNotes,
   initialDraft,
-  initialElapsedTime
+  initialElapsedTime,
+  workoutHistory = []
 }) => {
   // Helper to convert initial data
   const convertToTracked = (exercises: ExerciseLog[]): TrackedExercise[] => {
@@ -116,25 +119,28 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     return () => clearInterval(interval);
   }, [workoutStartTime, isPaused, restTimerOpen]);
 
-  // Autosave draft to localStorage
+  // FIX 1.4: Check return value + debounce autosave (2s) to reduce write frequency
+  const [draftSaveWarning, setDraftSaveWarning] = useState(false);
   useEffect(() => {
-    // Don't save empty state
     if (exercises.length === 0) return;
 
-    const draft: WorkoutDraft = {
-      exercises,
-      activeExerciseIndex,
-      elapsedTime: Math.floor((Date.now() - workoutStartTime) / 1000),
-      workoutTitle,
-      savedAt: Date.now()
-    };
+    const timer = setTimeout(() => {
+      const draft: WorkoutDraft = {
+        exercises,
+        activeExerciseIndex,
+        elapsedTime: Math.floor((Date.now() - workoutStartTime) / 1000),
+        workoutTitle,
+        savedAt: Date.now()
+      };
 
-    try {
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-    } catch {
-      // localStorage might be full or unavailable - fail silently
-    }
-  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle]);
+      const saved = safeLocalStorageSet(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      if (!saved && !draftSaveWarning) {
+        setDraftSaveWarning(true);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle, draftSaveWarning]);
 
   // Format elapsed time
   const formatTime = (seconds: number) => {
@@ -145,6 +151,20 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
 
   // Derived State
   const activeExercise = exercises[activeExerciseIndex];
+
+  // Look up last weight used for the active exercise from history
+  const lastWeight = useMemo(() => {
+    if (!activeExercise) return null;
+    const name = activeExercise.name.toLowerCase();
+    for (const workout of workoutHistory) {
+      for (const ex of workout.log) {
+        if (ex.name.toLowerCase() === name && ex.weight) {
+          return ex.weight;
+        }
+      }
+    }
+    return null;
+  }, [activeExercise?.name, workoutHistory]);
 
   // Guard: if exercises is somehow empty, bail out
   if (exercises.length === 0) {
@@ -280,9 +300,10 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
       };
     });
 
-    // Clear draft AFTER building final logs (onComplete triggers Supabase save)
-    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    // Call onComplete first (triggers Supabase save). Draft stays as safety net.
     onComplete(finalLogs, workoutTitle);
+    // Clear draft only after onComplete returns — save has been initiated.
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
   };
 
   return (
@@ -406,6 +427,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
               notes={activeExercise.notes}
               targetMuscles={activeExercise.targetMuscles}
               formCues={activeExercise.formCues}
+              lastWeight={lastWeight}
             />
           </div>
 

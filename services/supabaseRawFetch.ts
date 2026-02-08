@@ -330,6 +330,14 @@ async function fetchWithRetry<T>(
         lastError = classifyError(errorData, response.status);
         lastError.details = errorData;
 
+        // FIX 4.5 + FIX 18: Emit event on 401 so AuthContext can trigger session refresh/logout
+        // Guard: window doesn't exist in Edge Runtime (API routes) or SSR
+        if (response.status === 401 && typeof window !== 'undefined') {
+          try {
+            window.dispatchEvent(new CustomEvent('supabase-auth-error', { detail: { status: 401, endpoint } }));
+          } catch { /* safety fallback */ }
+        }
+
         if (shouldRetry(lastError, attempt)) {
           updateRequestLog(log, 'retrying', attempt + 1);
           await sleep(calculateRetryDelay(attempt));

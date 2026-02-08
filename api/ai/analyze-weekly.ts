@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, WeeklyNutritionInput, WeeklyNutritionInsights } from '../../lib/ai/types';
+import { apiGate, getErrorType } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -12,6 +13,9 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
 
   const startTime = Date.now();
 
@@ -43,12 +47,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<WeeklyNutritionInsights> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

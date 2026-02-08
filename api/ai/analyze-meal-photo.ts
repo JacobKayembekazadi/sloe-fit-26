@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, PhotoMealAnalysis } from '../../lib/ai/types';
+import { apiGate, getErrorType, validateImageSize, sanitizeAIInput } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -18,6 +19,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
+
   const startTime = Date.now();
 
   try {
@@ -34,8 +38,14 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    const tooLarge = validateImageSize(imageBase64);
+    if (tooLarge) return tooLarge;
+
+    // FIX 8.1: Sanitize user inputs before passing to AI
+    const safeGoal = userGoal ? sanitizeAIInput(userGoal, 'userGoal') : null;
+
     const { data: result, provider: usedProvider } = await withFallback(
-      p => p.analyzeMealPhoto(imageBase64, userGoal),
+      p => p.analyzeMealPhoto(imageBase64, safeGoal),
       r => r.markdown.startsWith('Error:')
     );
 
@@ -49,12 +59,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<PhotoMealAnalysis> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

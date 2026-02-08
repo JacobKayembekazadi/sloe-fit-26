@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 const UpdatePrompt: React.FC = () => {
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     const {
         needRefresh: [needRefresh, setNeedRefresh],
         updateServiceWorker,
     } = useRegisterSW({
         onRegistered(r) {
-            // Check for updates every hour
+            // Check for updates every hour — store ref for cleanup
             if (r) {
-                setInterval(() => {
+                intervalRef.current = setInterval(() => {
                     r.update();
                 }, 60 * 60 * 1000);
             }
@@ -18,6 +20,15 @@ const UpdatePrompt: React.FC = () => {
             console.error('SW registration error:', error);
         },
     });
+
+    // Cleanup interval on unmount to prevent memory leak
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, []);
 
     if (!needRefresh) return null;
 

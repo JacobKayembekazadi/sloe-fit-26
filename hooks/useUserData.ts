@@ -10,8 +10,10 @@ import {
     onOnline,
     hasQueuedMeals,
     getQueuedCount,
+    migrateQueueUserId,
     type QueuedMeal
 } from '../services/offlineQueue';
+import { migrateWorkoutQueueUserId } from '../services/workoutOfflineQueue';
 
 // ============================================================================
 // Types
@@ -24,11 +26,16 @@ export interface NutritionTargets {
     fats: number;
 }
 
+export type Gender = 'male' | 'female';
+export type ActivityLevel = 'sedentary' | 'lightly_active' | 'moderately_active' | 'very_active' | 'extremely_active';
+
 export interface UserProfile {
     goal: string | null;
     height_inches: number | null;
     weight_lbs: number | null;
     age: number | null;
+    gender: Gender | null;
+    activity_level: ActivityLevel | null;
     training_experience: 'beginner' | 'intermediate' | 'advanced' | null;
     equipment_access: 'gym' | 'home' | 'minimal' | null;
     days_per_week: number | null;
@@ -94,6 +101,8 @@ const DEFAULT_PROFILE: UserProfile = {
     height_inches: null,
     weight_lbs: null,
     age: null,
+    gender: null,
+    activity_level: null,
     training_experience: null,
     equipment_access: null,
     days_per_week: null,
@@ -112,17 +121,29 @@ const INITIAL_STATE: DataState = {
     favorites: []
 };
 
-// Activity multiplier for TDEE calculation
-const ACTIVITY_MULTIPLIER = 1.55;
+// Activity multiplier lookup for TDEE calculation (Harris-Benedict scale)
+// FIX 3.2: Replace hardcoded 1.55 with user-selectable activity level
+const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
+    sedentary: 1.2,
+    lightly_active: 1.375,
+    moderately_active: 1.55,
+    very_active: 1.725,
+    extremely_active: 1.9,
+};
+
+// Minimum safe calorie floor to prevent dangerously low targets
+const MIN_CALORIE_FLOOR = 1200;
 
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
-const calculateBMR = (weightLbs: number, heightInches: number, age: number): number => {
+// FIX 3.1: Mifflin-St Jeor with gender — male +5, female -161
+const calculateBMR = (weightLbs: number, heightInches: number, age: number, gender: Gender | null): number => {
     const weightKg = weightLbs * 0.453592;
     const heightCm = heightInches * 2.54;
-    return Math.round(10 * weightKg + 6.25 * heightCm - 5 * age + 5);
+    const genderOffset = gender === 'female' ? -161 : 5; // Default to male formula if unset
+    return Math.round(10 * weightKg + 6.25 * heightCm - 5 * age + genderOffset);
 };
 
 const getDefaultTargets = (goal: string | null): NutritionTargets => {
@@ -138,14 +159,21 @@ const getDefaultTargets = (goal: string | null): NutritionTargets => {
 };
 
 export const calculateNutritionTargets = (profile: UserProfile): NutritionTargets => {
-    if (profile.weight_lbs && profile.height_inches && profile.age) {
-        const bmr = calculateBMR(profile.weight_lbs, profile.height_inches, profile.age);
-        const tdee = Math.round(bmr * ACTIVITY_MULTIPLIER);
+    // FIX 19: Require gender to be set for personalized BMR — prevents biased defaults
+    // Without gender, Mifflin-St Jeor would silently use male offset (+5), giving female users
+    // targets that are 166 calories too high. Fall back to generic defaults instead.
+    if (profile.weight_lbs && profile.height_inches && profile.age && profile.gender) {
+        const bmr = calculateBMR(profile.weight_lbs, profile.height_inches, profile.age, profile.gender);
+        const multiplier = ACTIVITY_MULTIPLIERS[profile.activity_level || 'moderately_active'];
+        const tdee = Math.round(bmr * multiplier);
         const goalAdjustment = { CUT: -500, BULK: 300, RECOMP: 0 }[profile.goal || 'RECOMP'] || 0;
-        const calories = tdee + goalAdjustment;
+        // FIX 3.3: Enforce minimum calorie floor for safety
+        const calories = Math.max(MIN_CALORIE_FLOOR, tdee + goalAdjustment);
         const protein = profile.weight_lbs;
         const fats = Math.round((calories * 0.25) / 9);
-        const carbs = Math.round((calories - protein * 4 - fats * 9) / 4);
+        const carbsRaw = Math.round((calories - protein * 4 - fats * 9) / 4);
+        // FIX 22: Prevent negative carbs when calorie floor + high protein
+        const carbs = Math.max(0, carbsRaw);
 
         return { calories, protein, carbs, fats };
     }
@@ -212,7 +240,7 @@ export const useUserData = () => {
         try {
             // Fetch all data in parallel using supabaseGet (retry, timeout, dedup built-in)
             const profileFetch = supabaseGet<any[]>(
-                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,full_name,role,trainer_id&id=eq.${userId}`
+                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id&id=eq.${userId}`
             ).then(r => {
                 if (r.data && Array.isArray(r.data) && r.data.length > 0) {
                     return { data: r.data[0], error: null };
@@ -251,6 +279,8 @@ export const useUserData = () => {
                     height_inches: p.height_inches,
                     weight_lbs: p.weight_lbs,
                     age: p.age,
+                    gender: p.gender || null,
+                    activity_level: p.activity_level || null,
                     training_experience: p.training_experience,
                     equipment_access: p.equipment_access,
                     days_per_week: p.days_per_week,
@@ -395,6 +425,10 @@ export const useUserData = () => {
         }
 
         currentUserIdRef.current = user.id;
+
+        // FIX 23: Migrate legacy untagged offline queue entries to this user (one-time)
+        migrateQueueUserId(user.id);
+        migrateWorkoutQueueUserId(user.id);
 
         // Create new abort controller for this fetch
         const controller = new AbortController();
@@ -816,7 +850,7 @@ export const useUserData = () => {
                 inputMethod: entry.inputMethod,
                 photoUrl: entry.photoUrl,
                 date: today
-            });
+            }, user.id);
             setOfflineQueueCount(getQueuedCount());
             // Still update daily totals locally
             await addMealToDaily({
@@ -859,7 +893,7 @@ export const useUserData = () => {
                         inputMethod: entry.inputMethod,
                         photoUrl: entry.photoUrl,
                         date: today
-                    });
+                    }, user.id);
                     setOfflineQueueCount(getQueuedCount());
                     await addMealToDaily({
                         calories: entry.calories,
@@ -913,7 +947,7 @@ export const useUserData = () => {
                     inputMethod: entry.inputMethod,
                     photoUrl: entry.photoUrl,
                     date: today
-                });
+                }, user.id);
                 setOfflineQueueCount(getQueuedCount());
                 await addMealToDaily({
                     calories: entry.calories,
@@ -1137,23 +1171,39 @@ export const useUserData = () => {
         }
     }, [user, data.favorites]);
 
-    // Refetch profile (called after onboarding)
-    const refetchProfile = useCallback(async (): Promise<boolean> => {
+    // Refetch profile (called after onboarding or Settings save)
+    // FIX 26: Accept optional savedData for optimistic update (avoids stale read replica race)
+    const refetchProfile = useCallback(async (savedData?: Partial<UserProfile>): Promise<boolean> => {
         if (!user) return false;
 
-        // Optimistically set onboarding complete
-        setData(prev => ({
-            ...prev,
-            onboardingComplete: true
-        }));
+        // If caller provides saved data, apply it optimistically first
+        if (savedData) {
+            setData(prev => ({
+                ...prev,
+                goal: savedData.goal !== undefined ? savedData.goal : prev.goal,
+                // Preserve existing onboardingComplete — don't force true from Settings save
+                onboardingComplete: prev.onboardingComplete ?? true,
+                profile: { ...prev.profile, ...savedData }
+            }));
+        } else {
+            // Optimistically set onboarding complete
+            setData(prev => ({
+                ...prev,
+                onboardingComplete: true
+            }));
+        }
 
+        // Still fetch from DB to get authoritative state (may arrive after optimistic update)
         try {
             const { data: profile, error } = await supabaseGetSingle<any>(
-                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,full_name,role,trainer_id`
+                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id`
             );
 
             if (error) {
-                setData(prev => ({ ...prev, onboardingComplete: false }));
+                // If we had optimistic data, keep it; otherwise revert
+                if (!savedData) {
+                    setData(prev => ({ ...prev, onboardingComplete: false }));
+                }
                 return false;
             }
 
@@ -1167,6 +1217,8 @@ export const useUserData = () => {
                         height_inches: profile.height_inches,
                         weight_lbs: profile.weight_lbs,
                         age: profile.age,
+                        gender: profile.gender || null,
+                        activity_level: profile.activity_level || null,
                         training_experience: profile.training_experience,
                         equipment_access: profile.equipment_access,
                         days_per_week: profile.days_per_week,
@@ -1178,7 +1230,9 @@ export const useUserData = () => {
             }
             return true;
         } catch {
-            setData(prev => ({ ...prev, onboardingComplete: false }));
+            if (!savedData) {
+                setData(prev => ({ ...prev, onboardingComplete: false }));
+            }
             return false;
         }
     }, [user]);
@@ -1186,7 +1240,7 @@ export const useUserData = () => {
     // Computed values - memoize to prevent recalculation
     const nutritionTargets = useMemo(
         () => calculateNutritionTargets(data.profile),
-        [data.profile.weight_lbs, data.profile.height_inches, data.profile.age, data.profile.goal]
+        [data.profile.weight_lbs, data.profile.height_inches, data.profile.age, data.profile.goal, data.profile.gender, data.profile.activity_level]
     );
 
     // Single source of truth: compute daily nutrition totals from mealEntries.

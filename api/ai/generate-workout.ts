@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, GeneratedWorkout, WorkoutGenerationInput } from '../../lib/ai/types';
+import { apiGate, getErrorType, sanitizeAIObject } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -12,6 +13,9 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
 
   const startTime = Date.now();
 
@@ -29,8 +33,16 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    // FIX 8.1: Sanitize string fields in profile/recovery before passing to AI
+    const sanitizedBody = {
+      ...body,
+      profile: sanitizeAIObject(body.profile as unknown as Record<string, unknown>),
+      recovery: sanitizeAIObject(body.recovery as unknown as Record<string, unknown>),
+      recentWorkouts: body.recentWorkouts?.map(w => sanitizeAIObject(w as unknown as Record<string, unknown>)) || [],
+    } as unknown as WorkoutGenerationInput;
+
     const { data: result, provider: usedProvider } = await withFallback(
-      p => p.generateWorkout(body)
+      p => p.generateWorkout(sanitizedBody)
     );
 
     return new Response(JSON.stringify({
@@ -43,12 +55,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<GeneratedWorkout> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

@@ -68,6 +68,8 @@ const SettingsSkeleton = () => (
 
 interface SettingsProps {
     onBack: () => void;
+    // FIX 26: Accept saved profile data for optimistic update (avoids stale read replica race)
+    onProfileSaved?: (savedData?: Record<string, unknown>) => void;
 }
 
 interface ProfileData {
@@ -76,13 +78,15 @@ interface ProfileData {
     height_inches: number | null;
     weight_lbs: number | null;
     age: number | null;
+    gender: string | null;
+    activity_level: string | null;
     training_experience: string | null;
     equipment_access: string | null;
     days_per_week: number | null;
     role: string | null;
 }
 
-const Settings: React.FC<SettingsProps> = ({ onBack }) => {
+const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
     const { user, signOut } = useAuth();
     const { permission, requestPermission, sendLocalNotification } = useNotifications();
     const { showToast } = useToast();
@@ -93,6 +97,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         height_inches: null,
         weight_lbs: null,
         age: null,
+        gender: null,
+        activity_level: null,
         training_experience: null,
         equipment_access: null,
         days_per_week: null,
@@ -101,7 +107,6 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [upgrading, setUpgrading] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -112,7 +117,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
             try {
                 const { data, error } = await supabaseGetSingle<any>(
-                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,training_experience,equipment_access,days_per_week,role`
+                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,role`
                 );
 
                 if (error) {
@@ -124,6 +129,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                         height_inches: data.height_inches,
                         weight_lbs: data.weight_lbs,
                         age: data.age,
+                        gender: data.gender || null,
+                        activity_level: data.activity_level || null,
                         training_experience: data.training_experience,
                         equipment_access: data.equipment_access,
                         days_per_week: data.days_per_week,
@@ -151,6 +158,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 height_inches: profile.height_inches,
                 weight_lbs: profile.weight_lbs,
                 age: profile.age,
+                gender: profile.gender,
+                activity_level: profile.activity_level,
                 training_experience: profile.training_experience,
                 equipment_access: profile.equipment_access,
                 days_per_week: profile.days_per_week
@@ -162,6 +171,19 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 setSaved(true);
                 showToast('Settings saved!', 'success');
                 setTimeout(() => setSaved(false), 2000);
+                // FIX 3.4 + FIX 26: Pass saved values for optimistic update (avoids stale replica)
+                onProfileSaved?.({
+                    goal: profile.goal,
+                    height_inches: profile.height_inches,
+                    weight_lbs: profile.weight_lbs,
+                    age: profile.age,
+                    gender: profile.gender,
+                    activity_level: profile.activity_level,
+                    training_experience: profile.training_experience,
+                    equipment_access: profile.equipment_access,
+                    days_per_week: profile.days_per_week,
+                    full_name: profile.full_name,
+                });
             }
         } catch {
             showToast('Failed to save settings', 'error');
@@ -177,27 +199,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     };
 
     const handleBecomeTrainer = async () => {
-        if (!user) return;
-        if (!confirm('Upgrade to a trainer account? This will give you access to trainer features like managing clients.')) {
-            return;
-        }
-
-        setUpgrading(true);
-
-        try {
-            const { error } = await supabaseUpdate(`profiles?id=eq.${user.id}`, { role: 'trainer' });
-
-            if (error) {
-                showToast('Failed to upgrade account', 'error');
-            } else {
-                setProfile({ ...profile, role: 'trainer' });
-                showToast('You are now a trainer!', 'success');
-            }
-        } catch {
-            showToast('Failed to upgrade account', 'error');
-        } finally {
-            setUpgrading(false);
-        }
+        showToast('Trainer upgrades require admin approval. Contact support@sloefit.com', 'info');
     };
 
     const getInitials = () => {
@@ -302,6 +304,54 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-[var(--color-primary)] focus:outline-none transition-colors"
                             placeholder="Inches"
                         />
+                    </div>
+                </div>
+            </div>
+
+            {/* Body Profile */}
+            <div className="card space-y-4">
+                <h3 className="text-lg font-bold text-white mb-4">Body Profile</h3>
+
+                <div>
+                    <label className="block text-gray-400 text-sm mb-2">Gender</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(['male', 'female'] as const).map((g) => (
+                            <button
+                                key={g}
+                                onClick={() => setProfile({ ...profile, gender: g })}
+                                className={`py-3 px-4 min-h-[44px] rounded-xl font-bold text-sm capitalize transition-all ${profile.gender === g
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
+                            >
+                                {g}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-gray-400 text-sm mb-2">Activity Level</label>
+                    <div className="grid grid-cols-1 gap-2">
+                        {([
+                            { value: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
+                            { value: 'lightly_active', label: 'Lightly Active', desc: 'Exercise 1-3 days/week' },
+                            { value: 'moderately_active', label: 'Moderately Active', desc: 'Exercise 3-5 days/week' },
+                            { value: 'very_active', label: 'Very Active', desc: 'Exercise 6-7 days/week' },
+                            { value: 'extremely_active', label: 'Extremely Active', desc: 'Intense daily exercise' },
+                        ] as const).map((level) => (
+                            <button
+                                key={level.value}
+                                onClick={() => setProfile({ ...profile, activity_level: level.value })}
+                                className={`py-3 px-4 min-h-[44px] rounded-xl text-left transition-all ${profile.activity_level === level.value
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    }`}
+                            >
+                                <span className="font-bold text-sm">{level.label}</span>
+                                <span className="text-xs ml-2 opacity-70">{level.desc}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -411,26 +461,16 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 <div className="card space-y-4">
                     <h3 className="text-lg font-bold text-white">Trainer Account</h3>
                     <p className="text-gray-400 text-sm">
-                        Are you a fitness trainer? Upgrade your account to manage clients, create workout plans, and track their progress.
+                        Are you a fitness trainer? Contact us to upgrade your account and gain access to client management features.
                     </p>
                     <button
                         onClick={handleBecomeTrainer}
-                        disabled={upgrading}
-                        className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-[var(--color-primary)] text-white font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                        className="w-full py-3 px-4 bg-gray-700 text-gray-300 font-bold rounded-xl hover:bg-gray-600 transition-colors flex items-center justify-center gap-2"
                     >
-                        {upgrading ? (
-                            <>
-                                <LoaderIcon className="w-5 h-5 animate-spin motion-reduce:animate-none" />
-                                Upgrading...
-                            </>
-                        ) : (
-                            <>
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                                Become a Trainer
-                            </>
-                        )}
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Request Trainer Access
                     </button>
                 </div>
             )}

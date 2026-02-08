@@ -4,6 +4,7 @@ import { useUserData, UserProfile } from './useUserData';
 import { generateWeeklyPlan, WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
 import { supabaseGet, supabaseUpsert } from '../services/supabaseRawFetch';
 import { calculateRepVolume } from '../utils/workoutUtils';
+import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
 
 // ============================================================================
 // Types
@@ -44,7 +45,7 @@ interface UseWeeklyPlanResult {
   // Actions
   generateNewPlan: () => Promise<void>;
   refreshPlan: () => Promise<void>;
-  markDayCompleted: (dayIndex: number) => Promise<boolean>;
+  markDayCompleted: (dayIndex: number, weekStartOverride?: string) => Promise<boolean>;
 }
 
 // ============================================================================
@@ -91,8 +92,11 @@ function extractMusclesFromTitle(title: string): string[] {
 // Use shared utility for volume calculation
 const calculateVolume = calculateRepVolume;
 
-// localStorage cache key for offline fallback
-const PLAN_CACHE_KEY = 'sloefit_weekly_plan_cache';
+// localStorage cache key for offline fallback — scoped per user + profile hash to invalidate on settings change
+const getPlanCacheKey = (userId: string, profile?: { goal?: string | null; days_per_week?: number | null }) => {
+  const hash = profile ? `${profile.goal || ''}_${profile.days_per_week || ''}` : '';
+  return `sloefit_weekly_plan_${userId}_${hash}`;
+};
 
 // ============================================================================
 // Hook
@@ -168,16 +172,12 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
             setCompletedDays(new Set(data[0].completed_days));
           }
           // Cache to localStorage for offline fallback
-          try {
-            localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify({
-              plan: data[0].plan,
-              completedDays: data[0].completed_days || [],
-              weekStart,
-              timestamp: Date.now()
-            }));
-          } catch {
-            // localStorage may be full or unavailable - non-fatal
-          }
+          safeLocalStorageSet(getPlanCacheKey(user.id), JSON.stringify({
+            plan: data[0].plan,
+            completedDays: data[0].completed_days || [],
+            weekStart,
+            timestamp: Date.now()
+          }));
         }
       } catch (err) {
         if (isCancelled) return;
@@ -185,9 +185,11 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
 
         // Try to load from localStorage cache when offline
         try {
-          const cached = localStorage.getItem(PLAN_CACHE_KEY);
+          const cached = localStorage.getItem(getPlanCacheKey(user.id));
           if (cached) {
-            const { plan: cachedPlan, completedDays: cachedDays, weekStart: cachedWeek } = JSON.parse(cached);
+            const parsedCache = safeJSONParse<{ plan: WeeklyPlan; completedDays: number[]; weekStart: string } | null>(cached, null);
+            if (!parsedCache) throw new Error('Invalid cache');
+            const { plan: cachedPlan, completedDays: cachedDays, weekStart: cachedWeek } = parsedCache;
             if (cachedWeek === getWeekStart()) {
               setPlan(cachedPlan);
               setCompletedDays(new Set(cachedDays));
@@ -356,7 +358,8 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
   // Mark a day as completed and persist to Supabase
   // Returns true if persistence succeeded, false if it failed
   // Uses functional setState to avoid stale closure + rollback on failure
-  const markDayCompleted = useCallback(async (dayIndex: number): Promise<boolean> => {
+  // weekStartOverride: pass the weekStart captured at workout START to prevent boundary drift
+  const markDayCompleted = useCallback(async (dayIndex: number, weekStartOverride?: string): Promise<boolean> => {
     // Capture previous state for potential rollback
     let previousState: Set<number> | null = null;
 
@@ -370,7 +373,8 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     if (!user) return true;
 
     try {
-      const weekStart = getWeekStart();
+      // Use override (captured at workout start) or current week start
+      const weekStart = weekStartOverride || getWeekStart();
       // Build the array from previousState + new dayIndex
       const persistedDays = Array.from(new Set([...(previousState || []), dayIndex]));
 
@@ -392,12 +396,12 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
 
       // Update localStorage cache with new completed days
       try {
-        const cached = localStorage.getItem(PLAN_CACHE_KEY);
+        const cached = localStorage.getItem(getPlanCacheKey(user.id));
         if (cached) {
-          const cacheData = JSON.parse(cached);
+          const cacheData = safeJSONParse<Record<string, unknown>>(cached, {});
           cacheData.completedDays = persistedDays;
           cacheData.timestamp = Date.now();
-          localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify(cacheData));
+          safeLocalStorageSet(getPlanCacheKey(user.id), JSON.stringify(cacheData));
         }
       } catch {
         // Cache update failed - non-fatal

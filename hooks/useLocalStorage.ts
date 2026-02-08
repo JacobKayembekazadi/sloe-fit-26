@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
 
 /**
  * Custom hook for persisting state in localStorage
@@ -10,18 +11,15 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-            return initialValue;
+      return item ? safeJSONParse<T>(item, initialValue) : initialValue;
+    } catch {
+      return initialValue;
     }
   });
 
   // Update localStorage whenever value changes
   useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue));
-    } catch (error) {
-          }
+    safeLocalStorageSet(key, JSON.stringify(storedValue));
   }, [key, storedValue]);
 
   // Wrapper to handle function updates

@@ -1,5 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse } from '../../lib/ai/types';
+import { apiGate, getErrorType, validateImageSize, sanitizeAIInput } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -18,6 +19,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const blocked = await apiGate(req);
+  if (blocked) return blocked;
+
   const startTime = Date.now();
 
   try {
@@ -34,6 +38,12 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    // Validate size of each image
+    for (const img of images) {
+      const tooLarge = validateImageSize(img);
+      if (tooLarge) return tooLarge;
+    }
+
     if (!metrics || typeof metrics !== 'string') {
       return new Response(
         JSON.stringify({
@@ -44,8 +54,11 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    // FIX 8.1: Sanitize user metrics text before passing to AI
+    const safeMetrics = sanitizeAIInput(metrics, 'metrics');
+
     const { data: result, provider: usedProvider } = await withFallback(
-      p => p.analyzeProgress(images, metrics),
+      p => p.analyzeProgress(images, safeMetrics),
       r => r.startsWith('Error:')
     );
 
@@ -59,12 +72,12 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { type?: string; message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean };
 
     const response: AIResponse<string> = {
       success: false,
       error: {
-        type: aiError.type as any || 'unknown',
+        type: getErrorType(error),
         message: aiError.message || 'An error occurred',
         retryable: aiError.retryable ?? false,
       },

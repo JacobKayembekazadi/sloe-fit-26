@@ -125,9 +125,8 @@ export interface FallbackResult<T> {
 /**
  * Execute an AI operation with automatic provider fallback.
  *
- * Tries each available provider in priority order (AI_PROVIDER first,
- * then openai → google → anthropic). On failure, logs the error and
- * moves to the next provider. Throws the last error if all fail.
+ * FIX 2.5: Only tries primary + 1 fallback (not all providers) to limit cost.
+ * Logs which provider succeeded for debugging/cost tracking.
  */
 export async function withFallback<T>(
   fn: (provider: AIProvider) => Promise<T>,
@@ -139,9 +138,12 @@ export async function withFallback<T>(
     throw new Error('No AI providers configured. Set AI_API_KEY or a provider-specific key (OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY).');
   }
 
+  // Limit to primary + 1 fallback to control costs (max 2 API calls per request)
+  const maxAttempts = Math.min(providers.length, 2);
   let lastError: unknown;
 
-  for (const { type, provider } of providers) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const { type, provider } = providers[i];
     try {
       const data = await fn(provider);
       // Treat null/undefined as a provider failure so we try the next one
@@ -156,6 +158,7 @@ export async function withFallback<T>(
         lastError = new Error(`Provider ${type} returned soft failure`);
         continue;
       }
+      console.log(`[ai] success via ${type}${i > 0 ? ' (fallback)' : ''}`);
       return { data, provider: type };
     } catch (error) {
       lastError = error;

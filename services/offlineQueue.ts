@@ -5,6 +5,8 @@
  * Prevents silent data loss from failed saves.
  */
 
+import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
+
 const QUEUE_KEY = 'offline_meal_queue';
 
 // ============================================================================
@@ -13,6 +15,7 @@ const QUEUE_KEY = 'offline_meal_queue';
 
 export interface QueuedMeal {
   id: string;
+  userId?: string; // FIX 6.1: Scope queued meals to user to prevent cross-user sync
   payload: {
     description: string;
     calories: number;
@@ -37,20 +40,28 @@ export interface QueuedMeal {
  */
 export function getQueuedMeals(): QueuedMeal[] {
   try {
-    const stored = localStorage.getItem(QUEUE_KEY);
-    if (!stored) return [];
-    return JSON.parse(stored);
+    return safeJSONParse<QueuedMeal[]>(localStorage.getItem(QUEUE_KEY), []);
   } catch {
     return [];
   }
 }
 
 /**
- * Add a meal to the offline queue
+ * Generate an idempotency key from meal payload to prevent duplicate queuing
  */
-export function queueMeal(payload: QueuedMeal['payload']): QueuedMeal {
-  const queued: QueuedMeal = {
+function getMealHash(payload: QueuedMeal['payload']): string {
+  return `${payload.description}|${payload.date || ''}|${payload.calories}|${payload.protein}|${payload.carbs}|${payload.fats}`;
+}
+
+/**
+ * Add a meal to the offline queue (with deduplication).
+ * FIX 1.4: Returns { queued, meal } so callers can check if write succeeded.
+ * FIX 6.1: Accepts userId to scope meals to the correct user.
+ */
+export function queueMeal(payload: QueuedMeal['payload'], userId?: string): { queued: boolean; meal: QueuedMeal } {
+  const entry: QueuedMeal = {
     id: crypto.randomUUID(),
+    userId,
     payload,
     timestamp: Date.now(),
     retryCount: 0,
@@ -58,14 +69,31 @@ export function queueMeal(payload: QueuedMeal['payload']): QueuedMeal {
 
   try {
     const queue = getQueuedMeals();
-    queue.push(queued);
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  } catch {
-    // Storage failed - meal will be lost
-    console.error('[offlineQueue] Failed to queue meal');
-  }
 
-  return queued;
+    // Dedup: skip if a meal with the same hash was queued in the last 60s
+    const hash = getMealHash(payload);
+    const isDuplicate = queue.some(m => {
+      const existingHash = getMealHash(m.payload);
+      const ageMs = Date.now() - m.timestamp;
+      return existingHash === hash && ageMs < 60_000;
+    });
+
+    if (isDuplicate) {
+      console.warn('[offlineQueue] Skipping duplicate meal:', payload.description);
+      const existing = queue.find(m => getMealHash(m.payload) === hash)!;
+      return { queued: true, meal: existing };
+    }
+
+    queue.push(entry);
+    const saved = safeLocalStorageSet(QUEUE_KEY, JSON.stringify(queue));
+    if (!saved) {
+      console.error('[offlineQueue] Failed to queue meal — localStorage full or unavailable');
+    }
+    return { queued: saved, meal: entry };
+  } catch {
+    console.error('[offlineQueue] Failed to queue meal');
+    return { queued: false, meal: entry };
+  }
 }
 
 /**
@@ -75,7 +103,7 @@ export function removeFromQueue(id: string): void {
   try {
     const queue = getQueuedMeals();
     const filtered = queue.filter(m => m.id !== id);
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(filtered));
+    safeLocalStorageSet(QUEUE_KEY, JSON.stringify(filtered));
   } catch {
     console.error('[offlineQueue] Failed to remove meal from queue');
   }
@@ -90,7 +118,7 @@ export function incrementRetryCount(id: string): void {
     const updated = queue.map(m =>
       m.id === id ? { ...m, retryCount: m.retryCount + 1 } : m
     );
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(updated));
+    safeLocalStorageSet(QUEUE_KEY, JSON.stringify(updated));
   } catch {
     // Ignore
   }
@@ -122,6 +150,37 @@ export function getQueuedCount(): number {
 }
 
 // ============================================================================
+// FIX 23: Legacy Queue Migration — tag untagged entries with current user
+// ============================================================================
+
+/**
+ * One-time migration per user: tag any legacy queue entries (without userId) with the
+ * current user's ID. Prevents cross-user data leaks on shared devices.
+ * Uses per-user flag so different users on the same device each get their migration.
+ */
+export function migrateQueueUserId(userId: string): void {
+  try {
+    const flagKey = `offline_meal_queue_migrated_${userId}`;
+    if (localStorage.getItem(flagKey) === 'true') return;
+    const queue = getQueuedMeals();
+    let migrated = false;
+    const updated = queue.map(m => {
+      if (!m.userId) {
+        migrated = true;
+        return { ...m, userId };
+      }
+      return m;
+    });
+    if (migrated) {
+      safeLocalStorageSet(QUEUE_KEY, JSON.stringify(updated));
+    }
+    localStorage.setItem(flagKey, 'true');
+  } catch {
+    // Non-critical — will retry next startup
+  }
+}
+
+// ============================================================================
 // Sync Logic
 // ============================================================================
 
@@ -132,32 +191,42 @@ const MAX_RETRIES = 3;
 export type SaveMealCallback = (payload: QueuedMeal['payload']) => Promise<boolean>;
 
 /**
- * Attempt to sync all queued meals
- * Returns number of successfully synced meals
+ * Attempt to sync all queued meals.
+ * FIX 1.6: Saves queue state AFTER each individual meal to prevent
+ * duplicates if app crashes mid-sync. Exceeded-retry meals are notified.
+ * FIX 6.1: Only syncs meals matching the given userId (prevents cross-user leaks).
+ * Returns number of successfully synced meals.
  */
-export async function syncQueuedMeals(saveMeal: SaveMealCallback): Promise<number> {
+export async function syncQueuedMeals(saveMeal: SaveMealCallback, userId?: string): Promise<number> {
   if (!navigator.onLine) {
     return 0;
   }
 
-  const queue = getQueuedMeals();
+  const allQueue = getQueuedMeals();
+  // FIX 6.1 + FIX 23: Strict user filter (legacy untagged entries migrated on startup)
+  const queue = userId
+    ? allQueue.filter(m => m.userId === userId)
+    : allQueue;
   if (queue.length === 0) {
     return 0;
   }
 
   let synced = 0;
+  let dropped = 0;
 
   for (const meal of queue) {
     // Skip meals that have exceeded retry limit
     if (meal.retryCount >= MAX_RETRIES) {
-      console.warn(`[offlineQueue] Meal ${meal.id} exceeded max retries, removing`);
+      console.warn(`[offlineQueue] Meal "${meal.payload.description}" exceeded ${MAX_RETRIES} retries — dropped`);
       removeFromQueue(meal.id);
+      dropped++;
       continue;
     }
 
     try {
       const success = await saveMeal(meal.payload);
       if (success) {
+        // Remove immediately after confirmed DB save (atomic per-item)
         removeFromQueue(meal.id);
         synced++;
       } else {
@@ -166,6 +235,10 @@ export async function syncQueuedMeals(saveMeal: SaveMealCallback): Promise<numbe
     } catch {
       incrementRetryCount(meal.id);
     }
+  }
+
+  if (dropped > 0) {
+    console.warn(`[offlineQueue] ${dropped} meal(s) dropped after max retries`);
   }
 
   return synced;

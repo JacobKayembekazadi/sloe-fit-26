@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
+import SectionErrorBoundary from './components/SectionErrorBoundary';
 import LoadingScreen from './components/LoadingScreen';
 import InstallPrompt from './components/InstallPrompt';
 import UpdatePrompt from './components/UpdatePrompt';
@@ -20,29 +21,32 @@ import type { WorkoutTemplate } from './services/templateService';
 import type { RecoveryState } from './components/RecoveryCheckIn';
 import type { WorkoutDraft } from './components/WorkoutSession';
 import type { UserProfile } from './hooks/useUserData';
+import { safeJSONParse } from './utils/safeStorage';
+import { lazyWithRetry } from './utils/lazyWithRetry';
+import { queueWorkout, syncQueuedWorkouts, hasQueuedWorkouts, onOnlineWorkoutSync } from './services/workoutOfflineQueue';
 
-// Lazy load heavy components
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const BodyAnalysis = lazy(() => import('./components/BodyAnalysis'));
-const MealTracker = lazy(() => import('./components/MealTracker'));
-const Mindset = lazy(() => import('./components/Mindset'));
-const WorkoutHistory = lazy(() => import('./components/WorkoutHistory'));
-const TrainTab = lazy(() => import('./components/TrainTab'));
-const Settings = lazy(() => import('./components/Settings'));
-const TrainerDashboard = lazy(() => import('./components/TrainerDashboard'));
-const ClientTrainerView = lazy(() => import('./components/ClientTrainerView'));
-const CartDrawer = lazy(() => import('./components/CartDrawer'));
-const Onboarding = lazy(() => import('./components/Onboarding'));
+// Lazy load heavy components (with retry for stale chunk recovery after deploys)
+const Dashboard = lazyWithRetry(() => import('./components/Dashboard'), 'Dashboard');
+const BodyAnalysis = lazyWithRetry(() => import('./components/BodyAnalysis'), 'BodyAnalysis');
+const MealTracker = lazyWithRetry(() => import('./components/MealTracker'), 'MealTracker');
+const Mindset = lazyWithRetry(() => import('./components/Mindset'), 'Mindset');
+const WorkoutHistory = lazyWithRetry(() => import('./components/WorkoutHistory'), 'WorkoutHistory');
+const TrainTab = lazyWithRetry(() => import('./components/TrainTab'), 'TrainTab');
+const Settings = lazyWithRetry(() => import('./components/Settings'), 'Settings');
+const TrainerDashboard = lazyWithRetry(() => import('./components/TrainerDashboard'), 'TrainerDashboard');
+const ClientTrainerView = lazyWithRetry(() => import('./components/ClientTrainerView'), 'ClientTrainerView');
+const CartDrawer = lazyWithRetry(() => import('./components/CartDrawer'), 'CartDrawer');
+const Onboarding = lazyWithRetry(() => import('./components/Onboarding'), 'Onboarding');
 
 // Lazy load workout overlay components
-const RecoveryCheckIn = lazy(() => import('./components/RecoveryCheckIn'));
-const WorkoutPreview = lazy(() => import('./components/WorkoutPreview'));
-const WorkoutSession = lazy(() => import('./components/WorkoutSession'));
-const WorkoutSummary = lazy(() => import('./components/WorkoutSummary'));
-const ExerciseLibrary = lazy(() => import('./components/ExerciseLibrary'));
-const WorkoutBuilder = lazy(() => import('./components/WorkoutBuilder'));
-const WeeklyPlanView = lazy(() => import('./components/WeeklyPlanView'));
-const QuickRecoveryCheck = lazy(() => import('./components/QuickRecoveryCheck'));
+const RecoveryCheckIn = lazyWithRetry(() => import('./components/RecoveryCheckIn'), 'RecoveryCheckIn');
+const WorkoutPreview = lazyWithRetry(() => import('./components/WorkoutPreview'), 'WorkoutPreview');
+const WorkoutSession = lazyWithRetry(() => import('./components/WorkoutSession'), 'WorkoutSession');
+const WorkoutSummary = lazyWithRetry(() => import('./components/WorkoutSummary'), 'WorkoutSummary');
+const ExerciseLibrary = lazyWithRetry(() => import('./components/ExerciseLibrary'), 'ExerciseLibrary');
+const WorkoutBuilder = lazyWithRetry(() => import('./components/WorkoutBuilder'), 'WorkoutBuilder');
+const WeeklyPlanView = lazyWithRetry(() => import('./components/WeeklyPlanView'), 'WeeklyPlanView');
+const QuickRecoveryCheck = lazyWithRetry(() => import('./components/QuickRecoveryCheck'), 'QuickRecoveryCheck');
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider, useToast } from './contexts/ToastContext';
@@ -51,7 +55,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { ShopifyProvider } from './contexts/ShopifyContext';
 
 // Lazy load LoginScreen - only needed for unauthenticated users
-const LoginScreen = lazy(() => import('./components/LoginScreen'));
+const LoginScreen = lazyWithRetry(() => import('./components/LoginScreen'), 'LoginScreen');
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -182,7 +186,11 @@ const AppContent: React.FC = () => {
     const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
     if (saved && workoutStatus === 'idle') {
       try {
-        const draft: WorkoutDraft = JSON.parse(saved);
+        const draft = safeJSONParse<WorkoutDraft | null>(saved, null);
+        if (!draft || !draft.savedAt) {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          return;
+        }
         const ageMinutes = (Date.now() - draft.savedAt) / 60000;
 
         // Draft must be less than 2 hours old AND from today
@@ -219,6 +227,7 @@ const AppContent: React.FC = () => {
   }, []);
 
   // Note: handleWorkoutCancel is defined after resetWorkoutState to use it
+  // FIX 5.4: Also reset timing state to prevent negative duration on next workout
   const handleWorkoutCancel = useCallback(() => {
     // Clean up all workout-related state atomically
     setActiveDraft(null);
@@ -227,6 +236,8 @@ const AppContent: React.FC = () => {
     setWorkoutFromPlanDayIndex(null);
     setShowQuickRecovery(false);
     setPendingPlanWorkout(null);
+    setStartTime(0);
+    setEndTime(0);
   }, []);
 
   const handleAddWorkoutToHistory = useCallback(async (log: ExerciseLog[], title: string, rating?: number): Promise<boolean> => {
@@ -261,6 +272,8 @@ const AppContent: React.FC = () => {
       height_inches: null,
       weight_lbs: null,
       age: null,
+      gender: null,
+      activity_level: null,
       training_experience: 'beginner',
       equipment_access: 'gym',
       days_per_week: 4,
@@ -381,33 +394,87 @@ const AppContent: React.FC = () => {
   const handleCloseWeeklyPlan = useCallback(() => setShowWeeklyPlan(false), []);
 
   // Handle workout rating and save (defined here to access markDayCompleted)
+  // FIX 1.1+1.2: Queue offline on failure, retry support, don't delete draft until confirmed
   const handleRateWorkout = useCallback(async (rating: number): Promise<boolean> => {
     setIsSaving(true);
-    const saved = await handleAddWorkoutToHistory(completedLog, workoutTitle, rating);
-    saveNutrition(todayNutrition);
-    setIsSaving(false);
 
-    if (saved) {
-      // Mark plan day as completed if this workout was from the weekly plan
-      if (workoutFromPlanDayIndex !== null) {
-        const planSaved = await markDayCompleted(workoutFromPlanDayIndex);
-        setWorkoutFromPlanDayIndex(null);
-        if (!planSaved) {
-          // Workout saved but plan completion failed - warn user but don't block
-          showToast('Workout saved! (Plan sync may have failed)', 'info');
+    // Capture nutrition date at save time (not stale closure)
+    const nutritionSnapshot = { ...todayNutrition };
+
+    try {
+      const saved = await handleAddWorkoutToHistory(completedLog, workoutTitle, rating);
+      saveNutrition(nutritionSnapshot);
+
+      if (saved) {
+        // Only delete draft AFTER confirmed save
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+
+        // Mark plan day as completed if this workout was from the weekly plan
+        if (workoutFromPlanDayIndex !== null) {
+          const planSaved = await markDayCompleted(workoutFromPlanDayIndex);
+          setWorkoutFromPlanDayIndex(null);
+          if (!planSaved) {
+            showToast('Workout saved! (Plan sync may have failed)', 'info');
+          } else {
+            showToast('Workout Saved!', 'success');
+          }
         } else {
           showToast('Workout Saved!', 'success');
         }
+        setWorkoutStatus('idle');
+        setIsSaving(false);
+        return true;
       } else {
-        showToast('Workout Saved!', 'success');
+        // Save failed — queue workout offline for later sync
+        const { queued } = queueWorkout({
+          title: workoutTitle,
+          exercises: completedLog,
+          rating,
+          completedAt: Date.now(),
+        }, user?.id);
+        setIsSaving(false);
+        if (queued) {
+          showToast('Workout saved offline — will sync when connected', 'info');
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          setWorkoutStatus('idle');
+          return true;
+        } else {
+          showToast('Failed to save workout — storage full. Please retry.', 'error');
+          return false;
+        }
       }
-      setWorkoutStatus('idle');
-      return true;
-    } else {
-      showToast('Failed to save workout. Please try again.', 'error');
-      return false;
+    } catch {
+      // Network/unexpected error — queue offline
+      const { queued } = queueWorkout({
+        title: workoutTitle,
+        exercises: completedLog,
+        rating,
+        completedAt: Date.now(),
+      }, user?.id);
+      setIsSaving(false);
+      if (queued) {
+        showToast('Workout saved offline — will sync when connected', 'info');
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        setWorkoutStatus('idle');
+        return true;
+      } else {
+        showToast('Failed to save workout — storage full. Please retry.', 'error');
+        return false;
+      }
     }
   }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast, workoutFromPlanDayIndex, markDayCompleted]);
+
+  // Sync queued workouts when network comes back
+  useEffect(() => {
+    const cleanup = onOnlineWorkoutSync(async () => {
+      if (!hasQueuedWorkouts()) return;
+      const synced = await syncQueuedWorkouts(addWorkout);
+      if (synced > 0) {
+        showToast(`Synced ${synced} offline workout${synced > 1 ? 's' : ''}!`, 'success');
+      }
+    });
+    return cleanup;
+  }, [addWorkout, showToast]);
 
   // ============================================================================
   // Builder / Library / Templates
@@ -415,6 +482,38 @@ const AppContent: React.FC = () => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => getTemplates());
+
+  // Android back button: push state on overlay open, pop to close
+  // (Moved after showBuilder/showLibrary declarations to avoid forward references)
+  const hasOverlay = workoutStatus !== 'idle' || showWeeklyPlan || showBuilder || showLibrary || showQuickRecovery;
+
+  useEffect(() => {
+    if (hasOverlay) {
+      history.pushState({ overlay: true }, '');
+    }
+  }, [hasOverlay]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (showWeeklyPlan) {
+        setShowWeeklyPlan(false);
+      } else if (showBuilder) {
+        setShowBuilder(false);
+      } else if (showLibrary) {
+        setShowLibrary(false);
+      } else if (showQuickRecovery) {
+        setShowQuickRecovery(false);
+        setPendingPlanWorkout(null);
+        setPendingCustomWorkout(null);
+      } else if (workoutStatus === 'preview') {
+        setWorkoutStatus('idle');
+      } else if (workoutStatus === 'recovery') {
+        setWorkoutStatus('idle');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [showWeeklyPlan, showBuilder, showLibrary, showQuickRecovery, workoutStatus]);
 
   // Pending custom workout for recovery check (from builder or template)
   const [pendingCustomWorkout, setPendingCustomWorkout] = useState<{
@@ -590,32 +689,39 @@ const AppContent: React.FC = () => {
 
     if (currentView === 'settings') {
       return (
-        <Suspense fallback={<LazyFallback />}>
-          <Settings onBack={showTabs} />
-        </Suspense>
+        <SectionErrorBoundary sectionName="Settings">
+          <Suspense fallback={<LazyFallback />}>
+            <Settings onBack={showTabs} onProfileSaved={refetchProfile} />
+          </Suspense>
+        </SectionErrorBoundary>
       );
     }
 
     if (currentView === 'trainer') {
       return (
-        <Suspense fallback={<LazyFallback />}>
-          <TrainerDashboard onBack={showTabs} />
-        </Suspense>
+        <SectionErrorBoundary sectionName="Trainer Dashboard">
+          <Suspense fallback={<LazyFallback />}>
+            <TrainerDashboard onBack={showTabs} />
+          </Suspense>
+        </SectionErrorBoundary>
       );
     }
 
     if (currentView === 'myTrainer' && userProfile.trainer_id) {
       return (
-        <Suspense fallback={<LazyFallback />}>
-          <ClientTrainerView onBack={showTabs} trainerId={userProfile.trainer_id} />
-        </Suspense>
+        <SectionErrorBoundary sectionName="My Trainer">
+          <Suspense fallback={<LazyFallback />}>
+            <ClientTrainerView onBack={showTabs} trainerId={userProfile.trainer_id} />
+          </Suspense>
+        </SectionErrorBoundary>
       );
     }
 
     if (currentView === 'history') {
       return (
-        <Suspense fallback={<LazyFallback />}>
-          <WorkoutHistory
+        <SectionErrorBoundary sectionName="Workout History">
+          <Suspense fallback={<LazyFallback />}>
+            <WorkoutHistory
             history={workouts}
             nutritionLogs={nutritionLogs}
             nutritionTargets={nutritionTargets}
@@ -624,12 +730,14 @@ const AppContent: React.FC = () => {
             mealEntries={mealEntries}
           />
         </Suspense>
+        </SectionErrorBoundary>
       );
     }
 
     switch (activeTab) {
       case 'dashboard':
         return (
+          <SectionErrorBoundary sectionName="Dashboard">
           <Suspense fallback={<LazyFallback />}>
             <Dashboard
               setActiveTab={setActiveTab}
@@ -651,9 +759,11 @@ const AppContent: React.FC = () => {
               onStartPlanWorkout={handleStartFromPlan}
             />
           </Suspense>
+          </SectionErrorBoundary>
         );
       case 'train':
         return (
+          <SectionErrorBoundary sectionName="Train">
           <Suspense fallback={<LazyFallback />}>
             <TrainTab
               workoutHistory={workouts}
@@ -671,18 +781,22 @@ const AppContent: React.FC = () => {
               onStartPlanWorkout={handleStartFromPlan}
             />
           </Suspense>
+          </SectionErrorBoundary>
         );
       case 'body':
         return (
+          <SectionErrorBoundary sectionName="Body Analysis">
           <Suspense fallback={<LazyFallback />}>
             <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />
           </Suspense>
+          </SectionErrorBoundary>
         );
       case 'meal': {
         const now = new Date();
         const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const todayLog = nutritionLogs.find(l => l.date === todayDate);
         return (
+          <SectionErrorBoundary sectionName="Meal Tracker">
           <Suspense fallback={<LazyFallback />}>
             <MealTracker
               userGoal={goal}
@@ -698,13 +812,16 @@ const AppContent: React.FC = () => {
               goal={goal}
             />
           </Suspense>
+          </SectionErrorBoundary>
         );
       }
       case 'mindset':
         return (
+          <SectionErrorBoundary sectionName="Mindset">
           <Suspense fallback={<LazyFallback />}>
             <Mindset />
           </Suspense>
+          </SectionErrorBoundary>
         );
       default:
         return null;
@@ -798,6 +915,7 @@ const AppContent: React.FC = () => {
               recoveryNotes={aiWorkout?.recovery_notes}
               initialDraft={activeDraft ?? undefined}
               initialElapsedTime={activeDraft?.elapsedTime}
+              workoutHistory={workouts}
             />
           </Suspense>
         </div>

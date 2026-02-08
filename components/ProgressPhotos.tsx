@@ -219,7 +219,9 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
     } catch (err) {
       // Clean up orphaned storage file if upload succeeded but DB insert failed
       if (uploadResult?.success && uploadResult.path) {
-        supabase.storage.from('user-photos').remove([uploadResult.path]).catch(() => {});
+        supabase.storage.from('user-photos').remove([uploadResult.path]).catch((cleanupErr) => {
+          console.error('[ProgressPhotos] Failed to clean up orphaned file:', uploadResult.path, cleanupErr);
+        });
       }
       const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
       setError(errorMsg);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, memo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useReducer, memo } from 'react';
 import ProgressBar from './ProgressBar';
 import MealIcon from './icons/MealIcon';
 import CameraIcon from './icons/CameraIcon';
@@ -97,6 +97,25 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Memoize supplement recommendations so we don't create new objects every render
     const supplementRecs = useMemo(() => getRecommendations(goal), [goal]);
 
+    // FIX 5.2 + FIX 24: Force re-render at midnight — setTimeout to exact boundary
+    // Uses useReducer to avoid unused state variable lint warnings
+    const [, forceRender] = useReducer((x: number) => x + 1, 0);
+    useEffect(() => {
+        const scheduleNextMidnight = () => {
+            const now = new Date();
+            const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+            // Add 1s buffer to ensure we're past midnight
+            const msUntilMidnight = tomorrow.getTime() - now.getTime() + 1000;
+            return setTimeout(() => {
+                forceRender();
+                // Re-schedule for next midnight
+                timerId = scheduleNextMidnight();
+            }, msUntilMidnight);
+        };
+        let timerId = scheduleNextMidnight();
+        return () => clearTimeout(timerId);
+    }, []);
+
     // Calculate current day (day of month)
     const currentDay = new Date().getDate();
     const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
@@ -150,6 +169,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <ProgressBar label="Carbs" currentValue={nutritionData.carbs.current} targetValue={nutritionData.carbs.target} unit="g" />
                     </div>
                 </div>
+                {userProfile && (!userProfile.height_inches || !userProfile.age || !userProfile.gender) && (
+                    <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-start gap-2">
+                        <svg className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                            <p className="text-xs text-yellow-300 font-medium">Using generic baseline targets</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                                Add {!userProfile.height_inches ? 'height, ' : ''}{!userProfile.age ? 'age, ' : ''}{!userProfile.gender ? 'gender ' : ''}in Settings for personalized calorie targets.
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Unified Workout CTA - Context-Aware */}
@@ -350,6 +382,11 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Add to Home Screen - for iOS users */}
             <AddToHomeScreenButton />
+
+            {/* FIX 9.1: Health Disclaimer */}
+            <p className="text-xs text-gray-600 text-center mt-4 px-4 leading-relaxed">
+                Not medical advice. Consult a healthcare professional before starting any diet or exercise program. AI-generated nutrition estimates may not be accurate.
+            </p>
         </div>
     );
 };

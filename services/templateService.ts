@@ -1,5 +1,6 @@
 import type { ExerciseLog } from '../App';
 import { getExerciseById } from '../data/exercises';
+import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
 
 const TEMPLATES_KEY = 'sloefit_workout_templates';
 
@@ -18,20 +19,11 @@ export interface WorkoutTemplate {
 }
 
 function readTemplates(): WorkoutTemplate[] {
-  try {
-    const raw = localStorage.getItem(TEMPLATES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return safeJSONParse<WorkoutTemplate[]>(localStorage.getItem(TEMPLATES_KEY), []);
 }
 
 function writeTemplates(templates: WorkoutTemplate[]): void {
-  try {
-    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
-  } catch {
-    // QuotaExceededError or SecurityError — silently fail
-  }
+  safeLocalStorageSet(TEMPLATES_KEY, JSON.stringify(templates));
 }
 
 export function getTemplates(): WorkoutTemplate[] {

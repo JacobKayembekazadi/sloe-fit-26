@@ -36,6 +36,7 @@ interface MealTrackerProps {
     mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     inputMethod?: 'photo' | 'text' | 'quick_add';
     photoUrl?: string;
+    date?: string;
   }) => Promise<MealEntry | null>;
   onDeleteMealEntry?: (entryId: string) => Promise<boolean>;
   onAddToFavorites?: (meal: { name: string; calories: number; protein: number; carbs: number; fats: number }) => Promise<boolean>;
@@ -96,9 +97,12 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [mealDescription, setMealDescription] = useState<string>('');
   const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Store original AI values for reset functionality
   const [originalMacros, setOriginalMacros] = useState<MealAnalysisResult['macros']>(null);
   const [originalDescription, setOriginalDescription] = useState<string>('');
+  // Capture date when meal analysis starts (not save time) to handle midnight edge case
+  const [loggedAtDate, setLoggedAtDate] = useState<string>('');
 
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
@@ -230,6 +234,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setMacros(null);
     setIsLogged(false);
     setAnalyzeRetry(null);
+    // Capture date now for midnight edge case
+    const now = new Date();
+    setLoggedAtDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
 
     try {
       const analysisResult = await analyzeMealPhoto(file, userGoal);
@@ -261,6 +268,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setMacros(analysisResult.totals);
     // Store original AI values for reset functionality
     setOriginalMacros(analysisResult.totals);
+    // Capture date now for midnight edge case
+    const now = new Date();
+    setLoggedAtDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
     // Extract description from food names - Bug #6 fix
     const description = analysisResult.foods.map(f => f.name).join(', ');
     setMealDescription(description);
@@ -309,13 +319,26 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const handleLogMeal = useCallback(async () => {
     if (!macros) return;
 
+    // FIX 25: Validate that at least one macro is > 0 (prevents logging empty manual entries)
+    if (macros.calories === 0 && macros.protein === 0 && macros.carbs === 0 && macros.fats === 0) {
+      showToast('Enter at least one macro value before logging', 'error');
+      return;
+    }
+
     // Race condition protection - prevent double-clicks from creating duplicate entries
     if (isLoggingRef.current) return;
     isLoggingRef.current = true;
 
     setIsLogging(true);
     try {
-      // Use saveMealEntry if available for proper persistence - Bug #1 fix
+      // Save with 15s timeout — keeps button disabled until save resolves or rejects
+      // (no orphaned promises: we await the actual save, timeout just shows a warning)
+      let timedOut = false;
+      const warningTimer = setTimeout(() => {
+        timedOut = true;
+        showToast('Still saving... please wait', 'info');
+      }, 10000);
+
       if (onSaveMealEntry) {
         const result = await onSaveMealEntry({
           description: mealDescription || 'Logged Meal',
@@ -323,16 +346,18 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           protein: macros.protein,
           carbs: macros.carbs,
           fats: macros.fats,
-          inputMethod: inputMode === 'photo' ? 'photo' : 'text'
+          inputMethod: inputMode === 'photo' ? 'photo' : 'text',
+          date: loggedAtDate || undefined,
         });
-        // Check if save failed (returns null when not logged in)
+        clearTimeout(warningTimer);
         if (!result) {
-          showToast('Please log in to save meals', 'error');
-          return;
+          throw new Error('Please log in to save meals');
         }
       } else {
         await onLogMeal(macros);
+        clearTimeout(warningTimer);
       }
+
       setIsLogged(true);
       showToast(`Logged ${macros.calories} calories`, 'success');
     } catch (err: any) {
@@ -364,6 +389,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     // Clear original AI values
     setOriginalMacros(null);
     setOriginalDescription('');
+    setLoggedAtDate('');
   };
 
   const resetToAIValues = () => {
@@ -739,6 +765,22 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                   </button>
                 )}
                 <button
+                  onClick={() => {
+                    // FIX 7.1 + FIX 25: Manual entry fallback — keep description for context
+                    setError(null);
+                    setResult('manual_entry');
+                    // Don't clear mealDescription — user's original input is useful context
+                    setMacros({ calories: 0, protein: 0, carbs: 0, fats: 0 });
+                    setOriginalMacros({ calories: 0, protein: 0, carbs: 0, fats: 0 });
+                    // Capture date when manual entry starts
+                    const now = new Date();
+                    setLoggedAtDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                  }}
+                  className="px-4 py-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 text-[var(--color-primary)] rounded-lg text-sm font-medium transition-colors"
+                >
+                  Enter Manually
+                </button>
+                <button
                   onClick={dismissError}
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded-lg text-sm font-medium transition-colors"
                 >
@@ -752,9 +794,17 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
       {result && (
         <div className="space-y-6">
-          <div className="card">
-            <ResultDisplay result={result} />
-          </div>
+          {/* FIX 25: Show appropriate header for manual entry vs AI analysis */}
+          {result === 'manual_entry' ? (
+            <div className="card text-center py-4">
+              <p className="text-white font-bold">Manual Entry</p>
+              <p className="text-gray-400 text-sm mt-1">Enter your meal's macros below</p>
+            </div>
+          ) : (
+            <div className="card">
+              <ResultDisplay result={result} />
+            </div>
+          )}
 
           {/* Editable Macros Section */}
           {macros && !isLogged && (
@@ -785,6 +835,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                   onChange={(e) => setMealDescription(e.target.value)}
                   className="input-field w-full text-sm"
                   placeholder="e.g., Grilled Chicken, Rice, Broccoli"
+                  maxLength={500}
                 />
               </div>
 
@@ -870,6 +921,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                       >
                         Auto-fix calories to {Math.round(validation.expectedCalories)}
                       </button>
+                      <p className="text-[10px] text-gray-500 mt-1">Macros don't add up. You can still log this meal.</p>
                     </div>
                   );
                 }
@@ -922,11 +974,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
       {/* Meal Detail Modal - Bug #4 fix */}
       {selectedMeal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setSelectedMeal(null)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => { setSelectedMeal(null); setShowDeleteConfirm(false); }}>
           <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-xl font-bold text-white">{selectedMeal.description || 'Meal'}</h3>
-              <button onClick={() => setSelectedMeal(null)} className="text-gray-500 hover:text-white">
+              <button onClick={() => { setSelectedMeal(null); setShowDeleteConfirm(false); }} className="text-gray-500 hover:text-white">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -977,17 +1029,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                   <span>★</span> Favorite
                 </button>
               )}
-              {onDeleteMealEntry && (
+              {onDeleteMealEntry && !showDeleteConfirm && (
                 <button
-                  onClick={async () => {
-                    const success = await onDeleteMealEntry(selectedMeal.id);
-                    if (success) {
-                      showToast('Meal deleted', 'success');
-                      setSelectedMeal(null);
-                    } else {
-                      showToast('Failed to delete meal', 'error');
-                    }
-                  }}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="flex-1 py-2 px-4 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -995,6 +1039,32 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                   </svg>
                   Delete
                 </button>
+              )}
+              {onDeleteMealEntry && showDeleteConfirm && (
+                <div className="flex-1 flex gap-2">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2 px-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const success = await onDeleteMealEntry(selectedMeal.id);
+                      if (success) {
+                        showToast('Meal deleted', 'success');
+                        setSelectedMeal(null);
+                        setShowDeleteConfirm(false);
+                      } else {
+                        showToast('Failed to delete meal', 'error');
+                        setShowDeleteConfirm(false);
+                      }
+                    }}
+                    className="flex-1 py-2 px-3 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors"
+                  >
+                    Confirm Delete
+                  </button>
+                </div>
               )}
             </div>
           </div>

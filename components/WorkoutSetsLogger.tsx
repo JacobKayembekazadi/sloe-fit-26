@@ -18,6 +18,7 @@ interface WorkoutSetsLoggerProps {
     notes?: string;
     targetMuscles?: string[];
     formCues?: string[];
+    lastWeight?: string | null;
 }
 
 const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
@@ -29,7 +30,8 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
     targetReps,
     notes,
     targetMuscles,
-    formCues
+    formCues,
+    lastWeight
 }) => {
     const completedSets = sets.filter(s => s.completed).length;
     const [showFormTips, setShowFormTips] = useState(false);
@@ -128,6 +130,7 @@ const WorkoutSetsLogger: React.FC<WorkoutSetsLoggerProps> = ({
                                     set={set}
                                     onUpdateSet={onUpdateSet}
                                     onToggleSet={onToggleSet}
+                                    lastWeight={lastWeight}
                                 />
                             );
                         }
@@ -199,11 +202,12 @@ function CompletedSetNode({ index, set, onToggleSet }: {
 }
 
 /* ── Active Set Node ── */
-function ActiveSetNode({ index, set, onUpdateSet, onToggleSet }: {
+function ActiveSetNode({ index, set, onUpdateSet, onToggleSet, lastWeight }: {
     index: number;
     set: { id: number; weight: string; reps: string };
     onUpdateSet: (id: number, field: 'weight' | 'reps', value: string) => void;
     onToggleSet: (id: number) => void;
+    lastWeight?: string | null;
 }) {
     return (
         <div className="flex items-start gap-3 sm:gap-4 animate-fade-in-up">
@@ -222,12 +226,15 @@ function ActiveSetNode({ index, set, onUpdateSet, onToggleSet }: {
                 {/* Inputs */}
                 <div className="flex gap-3 mb-4">
                     <div className="flex-1">
-                        <label className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1.5 block">Weight (lbs)</label>
+                        <label className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1.5 block">
+                            Weight (lbs)
+                            {lastWeight && <span className="text-[var(--color-primary)] ml-1 normal-case">Last: {lastWeight}lbs</span>}
+                        </label>
                         <input
                             className="glass-input w-full h-14"
                             value={set.weight}
                             onChange={(e) => onUpdateSet(set.id, 'weight', e.target.value)}
-                            placeholder="0"
+                            placeholder={lastWeight || "0"}
                             type="number"
                             inputMode="decimal"
                         />
