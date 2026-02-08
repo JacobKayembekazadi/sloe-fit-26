@@ -263,8 +263,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 return true;
             case 'goal':
                 return !!profile.goal;
-            case 'stats':
-                return !!profile.weight_lbs && parseInt(profile.weight_lbs) >= 80;
+            case 'stats': {
+                const w = parseInt(profile.weight_lbs);
+                return !!profile.weight_lbs && w >= 80 && w <= 500;
+            }
             case 'activity':
                 return !!profile.activity_level;
             case 'experience':
@@ -497,7 +499,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                             <div className="card p-6 space-y-5">
                                 {/* Gender */}
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-400 mb-2">Gender</label>
+                                    <label className="block text-sm font-bold text-gray-400 mb-2">Gender <span className="text-gray-600 font-normal">(for accurate calorie targets)</span></label>
                                     <div className="flex gap-3">
                                         {[
                                             { id: 'male', label: 'Male' },

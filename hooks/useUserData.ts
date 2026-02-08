@@ -1201,10 +1201,8 @@ export const useUserData = () => {
             );
 
             if (error) {
-                // If we had optimistic data, keep it; otherwise revert
-                if (!savedData) {
-                    setData(prev => ({ ...prev, onboardingComplete: false }));
-                }
+                // Don't revert onboardingComplete — the upsert already saved it to DB.
+                // A transient refetch failure shouldn't bounce the user back to onboarding.
                 return false;
             }
 
@@ -1231,9 +1229,7 @@ export const useUserData = () => {
             }
             return true;
         } catch {
-            if (!savedData) {
-                setData(prev => ({ ...prev, onboardingComplete: false }));
-            }
+            // Don't revert onboardingComplete on network error
             return false;
         }
     }, [user]);

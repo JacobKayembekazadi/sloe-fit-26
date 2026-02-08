@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS meal_entries (
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     meal_type TEXT CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
+    input_method TEXT CHECK (input_method IN ('photo', 'text', 'quick_add')),
     description TEXT,
     foods JSONB DEFAULT '[]',
     calories INTEGER DEFAULT 0,
@@ -88,6 +89,20 @@ CREATE TABLE IF NOT EXISTS progress_photos (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Favorite foods table
+CREATE TABLE IF NOT EXISTS favorite_foods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    calories INTEGER DEFAULT 0,
+    protein INTEGER DEFAULT 0,
+    carbs INTEGER DEFAULT 0,
+    fats INTEGER DEFAULT 0,
+    times_logged INTEGER DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================================
 -- 2. INDEXES FOR PERFORMANCE
 -- ============================================================================
@@ -97,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_nutrition_logs_user_date ON nutrition_logs(user_i
 CREATE INDEX IF NOT EXISTS idx_meal_entries_user_date ON meal_entries(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_progress_photos_user_date ON progress_photos(user_id, taken_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_trainer ON profiles(trainer_id) WHERE trainer_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_favorite_foods_user ON favorite_foods(user_id);
 
 -- ============================================================================
 -- 3. ROW LEVEL SECURITY (RLS)
@@ -108,6 +124,7 @@ ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nutrition_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE progress_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorite_foods ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view own profile" ON profiles
@@ -169,6 +186,19 @@ CREATE POLICY "Users can update own progress photos" ON progress_photos
     FOR UPDATE USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can delete own progress photos" ON progress_photos
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Favorite foods policies
+CREATE POLICY "Users can view own favorite foods" ON favorite_foods
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own favorite foods" ON favorite_foods
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own favorite foods" ON favorite_foods
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own favorite foods" ON favorite_foods
     FOR DELETE USING (auth.uid() = user_id);
 
 -- ============================================================================
