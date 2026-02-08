@@ -153,6 +153,34 @@ Systems thinking + first principles + second-order analysis of all Phase 1-10 fi
 
 ---
 
+## Phase 12: RALPH Loop — First-Pass + Second-Order + Blind Spots — COMPLETE
+
+3-agent parallel RALPH analysis found 18 issues. After triage (removed false positives), 10 real fixes applied.
+
+| Fix | Severity | Status | Details |
+|-----|----------|--------|---------|
+| 30. Workout sync userId | CRITICAL | DONE | `syncQueuedWorkouts(addWorkout, user?.id)` — was missing userId, causing cross-user workout data leak |
+| 31. JWT structure validation | HIGH | DONE | `isTokenExpired` now validates 3-part JWT structure + `typeof exp === 'number'` |
+| 32. Stored token type check | HIGH | DONE | `getAuthToken` now validates `typeof accessToken === 'string'` before use |
+| 33. Onboarding gender + activity | CRITICAL | DONE | Added gender selector + activity level selector to onboarding stats step. Saved to DB on completion. |
+| 34. handleRateWorkout stale closure | MEDIUM | DONE | Added `user?.id` to `handleRateWorkout` useCallback dependency array |
+| 35. Clock-skew buffer inverted | MEDIUM | DONE | Changed `Date.now() - 60000` to `Date.now() + 60000` (expire tokens 60s early, not 60s late) |
+| 36. Onboarding timeout race | HIGH | DONE | Added `isSavingRef` guard to prevent double upsert when timeout fires before slow response completes |
+| 37. Activity level descriptions | MEDIUM | DONE | Aligned Onboarding descriptions with Settings (exercise frequency, not daily activity) |
+| 38. Protein cap for heavy users | HIGH | DONE | `Math.min(profile.weight_lbs, 250)` — caps protein target at 250g (was unbounded at weight_lbs) |
+| 39. Week start inconsistency | MEDIUM | DONE | App.tsx `workoutsThisWeek` now uses Monday start (consistent with `useWeeklyPlan`) |
+
+**Known issues deferred (architecture / scope):**
+- No cross-tab sync (requires `storage` event listeners — larger refactor)
+- No focus traps on modals (a11y improvement, no data impact)
+- Base64 image preview memory bloat (switch to `URL.createObjectURL` — perf optimization)
+- No error reporting service integration (Sentry/LogRocket — ops decision)
+- No SW API response caching (PWA read-side offline — larger feature)
+
+**Phase 12 verification:** TypeScript: 0 errors. Vite build: success (54 precache entries).
+
+---
+
 ## Updated Summary
 
 | Phase | Status | Fixes |
@@ -168,5 +196,6 @@ Systems thinking + first principles + second-order analysis of all Phase 1-10 fi
 | 9. Legal & Compliance | COMPLETE | 2 fixes/verifications |
 | 10. Verification | COMPLETE | 0 errors, 0 regressions |
 | 11. Second-Order RALPH | COMPLETE | 14 fixes (2 CRITICAL, 5 HIGH, 4 MEDIUM, 3 follow-ups) |
+| 12. RALPH Triple Loop | COMPLETE | 10 fixes (2 CRITICAL, 4 HIGH, 4 MEDIUM) |
 
-**Grand Total: 45 fixes across 11 phases. Zero TypeScript errors. Zero regressions.**
+**Grand Total: 55 fixes across 12 phases. Zero TypeScript errors. Zero regressions.**

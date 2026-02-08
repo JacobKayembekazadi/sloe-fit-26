@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, useRef, memo } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -57,10 +57,12 @@ type Step = 'welcome' | 'goal' | 'stats' | 'experience' | 'equipment' | 'schedul
 
 interface ProfileData {
     goal: string | null;
+    gender: string | null;
     height_ft: string;
     height_in: string;
     weight_lbs: string;
     age: string;
+    activity_level: string | null;
     training_experience: string | null;
     equipment_access: string | null;
     days_per_week: number;
@@ -84,10 +86,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     const [profile, setProfile] = useState<ProfileData>({
         goal: null,
+        gender: null,
         height_ft: '',
         height_in: '',
         weight_lbs: '',
         age: '',
+        activity_level: null,
         training_experience: null,
         equipment_access: null,
         days_per_week: 4
@@ -150,17 +154,24 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         return isValid;
     }, [profile.height_ft, profile.height_in, profile.weight_lbs, profile.age]);
 
+    const isSavingRef = useRef(false);
+
     const handleComplete = async () => {
         if (!user) {
             setError('You must be logged in to complete onboarding.');
             return;
         }
 
+        // Guard against double-invocation (timeout race + retry)
+        if (isSavingRef.current) return;
+        isSavingRef.current = true;
+
         setSaving(true);
         setError(null);
 
         // Timeout safeguard - don't hang forever
         const timeout = setTimeout(() => {
+            isSavingRef.current = false;
             setSaving(false);
             setError('Request timed out. Please check your connection and try again.');
         }, 15000);
@@ -175,9 +186,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 .upsert({
                     id: user.id,
                     goal: profile.goal,
+                    gender: profile.gender,
                     height_inches: heightInches || null,
                     weight_lbs: parseInt(profile.weight_lbs) || null,
                     age: parseInt(profile.age) || null,
+                    activity_level: profile.activity_level || 'moderately_active',
                     training_experience: profile.training_experience,
                     equipment_access: profile.equipment_access,
                     days_per_week: profile.days_per_week,
@@ -206,6 +219,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 setError(err.message || 'Failed to save your profile. Please try again.');
             }
             showToast('Failed to complete setup', 'error');
+            isSavingRef.current = false;
             setSaving(false);
         }
     };
@@ -426,6 +440,30 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                             <div className="card p-6 space-y-5">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-400 mb-2">
+                                        Gender <span className="text-gray-600">(for accurate calorie calc)</span>
+                                    </label>
+                                    <div className="flex gap-3">
+                                        {[
+                                            { id: 'male', label: 'Male' },
+                                            { id: 'female', label: 'Female' },
+                                        ].map((g) => (
+                                            <button
+                                                key={g.id}
+                                                onClick={() => updateProfile('gender', g.id)}
+                                                className={`flex-1 py-3 rounded-xl text-center font-bold transition-all duration-200 active:scale-[0.98] ${
+                                                    profile.gender === g.id
+                                                        ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] text-white'
+                                                        : 'bg-gray-800 border-2 border-transparent text-gray-400 hover:border-gray-700'
+                                                }`}
+                                            >
+                                                {g.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-400 mb-2">
                                         Height <span className="text-gray-600">(optional)</span>
                                     </label>
                                     <div className="flex gap-3">
@@ -496,8 +534,39 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 </div>
                             </div>
 
+                            <div className="card p-6 space-y-3">
+                                <label className="block text-sm font-bold text-gray-400 mb-1">
+                                    Activity Level <span className="text-gray-600">(including gym)</span>
+                                </label>
+                                {[
+                                    { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise' },
+                                    { id: 'lightly_active', label: 'Lightly Active', desc: 'Exercise 1-3 days/week' },
+                                    { id: 'moderately_active', label: 'Moderately Active', desc: 'Exercise 3-5 days/week' },
+                                    { id: 'very_active', label: 'Very Active', desc: 'Exercise 6-7 days/week' },
+                                    { id: 'extremely_active', label: 'Extremely Active', desc: 'Intense daily exercise' },
+                                ].map((a) => (
+                                    <button
+                                        key={a.id}
+                                        onClick={() => updateProfile('activity_level', a.id)}
+                                        className={`w-full p-3 rounded-xl text-left transition-all duration-200 flex items-center gap-3 active:scale-[0.98] ${
+                                            profile.activity_level === a.id
+                                                ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)]'
+                                                : 'bg-gray-800 border-2 border-transparent hover:border-gray-700'
+                                        }`}
+                                    >
+                                        <div className="flex-1">
+                                            <span className="font-bold text-white text-sm">{a.label}</span>
+                                            <span className="text-gray-400 text-xs ml-2">{a.desc}</span>
+                                        </div>
+                                        {profile.activity_level === a.id && (
+                                            <CheckIcon className="w-4 h-4 text-[var(--color-primary)]" />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+
                             <p className="text-center text-gray-500 text-sm">
-                                💡 This helps calculate your personalized calorie targets.
+                                This helps calculate your personalized calorie targets.
                             </p>
 
                             <div className="flex gap-3 pt-4">

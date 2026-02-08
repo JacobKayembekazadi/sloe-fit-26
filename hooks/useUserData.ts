@@ -169,7 +169,8 @@ export const calculateNutritionTargets = (profile: UserProfile): NutritionTarget
         const goalAdjustment = { CUT: -500, BULK: 300, RECOMP: 0 }[profile.goal || 'RECOMP'] || 0;
         // FIX 3.3: Enforce minimum calorie floor for safety
         const calories = Math.max(MIN_CALORIE_FLOOR, tdee + goalAdjustment);
-        const protein = profile.weight_lbs;
+        // Cap protein at 1g/lb up to 250g max (prevents excessive targets for heavy users)
+        const protein = Math.min(profile.weight_lbs, 250);
         const fats = Math.round((calories * 0.25) / 9);
         const carbsRaw = Math.round((calories - protein * 4 - fats * 9) / 4);
         // FIX 22: Prevent negative carbs when calorie floor + high protein

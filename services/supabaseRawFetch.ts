@@ -249,9 +249,14 @@ import { supabase } from '../supabaseClient';
 // Helper to check if a JWT token is expired
 const isTokenExpired = (token: string): boolean => {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    // Add 60 second buffer for clock skew
-    return payload.exp * 1000 < Date.now() - 60000;
+    // Validate JWT structure: must have exactly 3 dot-separated parts
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    // Validate exp is a number
+    if (typeof payload.exp !== 'number') return true;
+    // Expire 60 seconds early to avoid in-flight failures from clock skew
+    return payload.exp * 1000 < Date.now() + 60000;
   } catch {
     return true; // If we can't parse it, assume it's invalid
   }
@@ -268,8 +273,8 @@ export const getAuthToken = async (): Promise<string> => {
     if (stored) {
       const parsed = JSON.parse(stored);
       const accessToken = parsed?.access_token;
-      // Return token if it exists and isn't expired
-      if (accessToken && !isTokenExpired(accessToken)) {
+      // Return token if it exists, is a string, and isn't expired
+      if (accessToken && typeof accessToken === 'string' && !isTokenExpired(accessToken)) {
         return accessToken;
       }
       // Token is expired — attempt refresh via Supabase client (triggers autoRefreshToken)

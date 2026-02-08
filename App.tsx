@@ -161,7 +161,10 @@ const AppContent: React.FC = () => {
   const workoutsThisWeek = useMemo(() => {
     const now = new Date();
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    // Use Monday as week start (consistent with useWeeklyPlan)
+    const dayOfWeek = now.getDay();
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    startOfWeek.setDate(now.getDate() + diff);
     startOfWeek.setHours(0, 0, 0, 0);
     return workouts.filter(w => {
       const workoutDate = new Date(w.rawDate || w.date);
@@ -462,19 +465,19 @@ const AppContent: React.FC = () => {
         return false;
       }
     }
-  }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast, workoutFromPlanDayIndex, markDayCompleted]);
+  }, [completedLog, workoutTitle, todayNutrition, handleAddWorkoutToHistory, saveNutrition, showToast, workoutFromPlanDayIndex, markDayCompleted, user?.id]);
 
   // Sync queued workouts when network comes back
   useEffect(() => {
     const cleanup = onOnlineWorkoutSync(async () => {
       if (!hasQueuedWorkouts()) return;
-      const synced = await syncQueuedWorkouts(addWorkout);
+      const synced = await syncQueuedWorkouts(addWorkout, user?.id);
       if (synced > 0) {
         showToast(`Synced ${synced} offline workout${synced > 1 ? 's' : ''}!`, 'success');
       }
     });
     return cleanup;
-  }, [addWorkout, showToast]);
+  }, [addWorkout, showToast, user?.id]);
 
   // ============================================================================
   // Builder / Library / Templates
