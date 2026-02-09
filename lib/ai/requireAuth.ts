@@ -12,6 +12,8 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
 
 export interface AuthResult {
   userId: string;
+  subscriptionStatus: 'trial' | 'active' | 'expired' | 'none';
+  trialStartedAt: string | null;
 }
 
 export function unauthorizedResponse(message = 'Unauthorized'): Response {
@@ -43,7 +45,18 @@ export async function requireAuth(req: Request): Promise<AuthResult | null> {
 
     if (error || !user) return null;
 
-    return { userId: user.id };
+    // Fetch subscription status from profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_status, trial_started_at')
+      .eq('id', user.id)
+      .single();
+
+    return {
+      userId: user.id,
+      subscriptionStatus: profile?.subscription_status || 'trial',
+      trialStartedAt: profile?.trial_started_at || null,
+    };
   } catch {
     return null;
   }

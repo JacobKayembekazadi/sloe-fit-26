@@ -33,6 +33,8 @@ const Mindset = lazyWithRetry(() => import('./components/Mindset'), 'Mindset');
 const WorkoutHistory = lazyWithRetry(() => import('./components/WorkoutHistory'), 'WorkoutHistory');
 const TrainTab = lazyWithRetry(() => import('./components/TrainTab'), 'TrainTab');
 const Settings = lazyWithRetry(() => import('./components/Settings'), 'Settings');
+const PrivacyPolicy = lazyWithRetry(() => import('./components/PrivacyPolicy'), 'PrivacyPolicy');
+const TermsOfService = lazyWithRetry(() => import('./components/TermsOfService'), 'TermsOfService');
 const TrainerDashboard = lazyWithRetry(() => import('./components/TrainerDashboard'), 'TrainerDashboard');
 const ClientTrainerView = lazyWithRetry(() => import('./components/ClientTrainerView'), 'ClientTrainerView');
 const CartDrawer = lazyWithRetry(() => import('./components/CartDrawer'), 'CartDrawer');
@@ -64,7 +66,7 @@ const LazyFallback = () => (
 );
 
 type Tab = 'dashboard' | 'train' | 'body' | 'meal' | 'mindset';
-type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer' | 'history';
+type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer' | 'history' | 'privacy' | 'terms';
 type WorkoutStatus = 'idle' | 'recovery' | 'generating' | 'preview' | 'active' | 'completed';
 
 const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
@@ -282,7 +284,9 @@ const AppContent: React.FC = () => {
       days_per_week: 4,
       role: 'consumer',
       trainer_id: null,
-      full_name: null
+      full_name: null,
+      subscription_status: 'trial',
+      trial_started_at: null
     };
 
     try {
@@ -632,6 +636,8 @@ const AppContent: React.FC = () => {
   const showSettings = useCallback(() => setCurrentView('settings'), []);
   const showTrainer = useCallback(() => setCurrentView('trainer'), []);
   const showTabs = useCallback(() => setCurrentView('tabs'), []);
+  const showPrivacy = useCallback(() => setCurrentView('privacy'), []);
+  const showTerms = useCallback(() => setCurrentView('terms'), []);
   const openCart = useCallback(() => setIsCartOpen(true), []);
   const closeCart = useCallback(() => setIsCartOpen(false), []);
 
@@ -694,7 +700,27 @@ const AppContent: React.FC = () => {
       return (
         <SectionErrorBoundary sectionName="Settings">
           <Suspense fallback={<LazyFallback />}>
-            <Settings onBack={showTabs} onProfileSaved={refetchProfile} />
+            <Settings onBack={showTabs} onProfileSaved={refetchProfile} onPrivacy={showPrivacy} onTerms={showTerms} />
+          </Suspense>
+        </SectionErrorBoundary>
+      );
+    }
+
+    if (currentView === 'privacy') {
+      return (
+        <SectionErrorBoundary sectionName="Privacy Policy">
+          <Suspense fallback={<LazyFallback />}>
+            <PrivacyPolicy onBack={showSettings} />
+          </Suspense>
+        </SectionErrorBoundary>
+      );
+    }
+
+    if (currentView === 'terms') {
+      return (
+        <SectionErrorBoundary sectionName="Terms of Service">
+          <Suspense fallback={<LazyFallback />}>
+            <TermsOfService onBack={showSettings} />
           </Suspense>
         </SectionErrorBoundary>
       );

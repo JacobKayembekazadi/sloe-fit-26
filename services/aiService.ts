@@ -300,6 +300,31 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
 
     if (!response.ok) {
       updateRequestLog(log, 'error');
+
+      // FIX 3.1: Handle 402 subscription required responses
+      if (response.status === 402) {
+        try {
+          const errorBody = await response.json();
+          return {
+            success: false,
+            error: errorBody.error || {
+              type: 'subscription_required',
+              message: 'A subscription is required to use AI features.',
+              retryable: false,
+            },
+          };
+        } catch {
+          return {
+            success: false,
+            error: {
+              type: 'subscription_required',
+              message: 'A subscription is required to use AI features.',
+              retryable: false,
+            },
+          };
+        }
+      }
+
       const type = response.status === 413 ? 'payload_too_large'
         : response.status >= 500 ? 'server_error'
         : 'api';
@@ -361,9 +386,27 @@ function formatErrorForUser(error: AIResponse<unknown>['error']): string {
       return 'Content could not be processed. Please try different content.';
     case 'server_error':
       return 'Service temporarily unavailable. Please try again.';
+    // FIX 3.1: Subscription required errors
+    case 'subscription_required':
+      return error.message || 'A subscription is required to use AI features.';
     default:
       return error.message || 'An unexpected error occurred. Please try again.';
   }
+}
+
+/**
+ * Check if an error is a subscription-related error.
+ */
+export function isSubscriptionError(error: AIResponse<unknown>['error']): boolean {
+  return error?.type === 'subscription_required';
+}
+
+/**
+ * Get subscription error code (TRIAL_EXPIRED or SUBSCRIPTION_REQUIRED).
+ */
+export function getSubscriptionErrorCode(error: AIResponse<unknown>['error']): string | null {
+  if (!isSubscriptionError(error)) return null;
+  return (error as { code?: string }).code || null;
 }
 
 // ============================================================================

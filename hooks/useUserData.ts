@@ -28,6 +28,7 @@ export interface NutritionTargets {
 
 export type Gender = 'male' | 'female';
 export type ActivityLevel = 'sedentary' | 'lightly_active' | 'moderately_active' | 'very_active' | 'extremely_active';
+export type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'none';
 
 export interface UserProfile {
     goal: string | null;
@@ -42,6 +43,9 @@ export interface UserProfile {
     role: 'consumer' | 'client' | 'trainer';
     trainer_id: string | null;
     full_name: string | null;
+    // FIX 3.1: Subscription status for payment gating
+    subscription_status: SubscriptionStatus | null;
+    trial_started_at: string | null;
 }
 
 // Meal entry type matching database schema
@@ -108,7 +112,9 @@ const DEFAULT_PROFILE: UserProfile = {
     days_per_week: null,
     role: 'consumer',
     trainer_id: null,
-    full_name: null
+    full_name: null,
+    subscription_status: 'trial',
+    trial_started_at: null
 };
 
 const INITIAL_STATE: DataState = {
@@ -287,7 +293,9 @@ export const useUserData = () => {
                     days_per_week: p.days_per_week,
                     role: p.role || 'consumer',
                     trainer_id: p.trainer_id,
-                    full_name: p.full_name
+                    full_name: p.full_name,
+                    subscription_status: p.subscription_status || 'trial',
+                    trial_started_at: p.trial_started_at || null
                 };
                 goal = p.goal;
                 onboardingComplete = p.onboarding_complete ?? false;
@@ -1223,7 +1231,9 @@ export const useUserData = () => {
                         days_per_week: profile.days_per_week,
                         role: profile.role || 'consumer',
                         trainer_id: profile.trainer_id,
-                        full_name: profile.full_name
+                        full_name: profile.full_name,
+                        subscription_status: profile.subscription_status || 'trial',
+                        trial_started_at: profile.trial_started_at || null
                     }
                 }));
             }

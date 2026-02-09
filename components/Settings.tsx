@@ -1,8 +1,9 @@
-import React, { useState, useEffect, memo, useCallback } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useToast } from '@/contexts/ToastContext';
 import { supabaseGetSingle, supabaseUpdate } from '@/services/supabaseRawFetch';
+import { supabase } from '@/supabaseClient';
 import LoaderIcon from './icons/LoaderIcon';
 import Skeleton from './ui/Skeleton';
 
@@ -70,6 +71,9 @@ interface SettingsProps {
     onBack: () => void;
     // FIX 26: Accept saved profile data for optimistic update (avoids stale read replica race)
     onProfileSaved?: (savedData?: Record<string, unknown>) => void;
+    // GDPR: Navigation to legal pages
+    onPrivacy?: () => void;
+    onTerms?: () => void;
 }
 
 interface ProfileData {
@@ -84,9 +88,12 @@ interface ProfileData {
     equipment_access: string | null;
     days_per_week: number | null;
     role: string | null;
+    // FIX 3.1: Subscription status
+    subscription_status: 'trial' | 'active' | 'expired' | 'none' | null;
+    trial_started_at: string | null;
 }
 
-const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
+const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, onTerms }) => {
     const { user, signOut } = useAuth();
     const { permission, requestPermission, sendLocalNotification } = useNotifications();
     const { showToast } = useToast();
@@ -102,11 +109,21 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
         training_experience: null,
         equipment_access: null,
         days_per_week: null,
-        role: null
+        role: null,
+        subscription_status: 'trial',
+        trial_started_at: null
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+
+    // GDPR: Account deletion state
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [deleting, setDeleting] = useState(false);
+
+    // GDPR: Data export state
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -117,7 +134,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
 
             try {
                 const { data, error } = await supabaseGetSingle<any>(
-                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,role`
+                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,role,subscription_status,trial_started_at`
                 );
 
                 if (error) {
@@ -134,7 +151,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
                         training_experience: data.training_experience,
                         equipment_access: data.equipment_access,
                         days_per_week: data.days_per_week,
-                        role: data.role
+                        role: data.role,
+                        subscription_status: data.subscription_status || 'trial',
+                        trial_started_at: data.trial_started_at || null
                     });
                 }
             } catch {
@@ -200,6 +219,95 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
 
     const handleBecomeTrainer = async () => {
         showToast('Trainer upgrades require admin approval. Contact support@sloefit.com', 'info');
+    };
+
+    // GDPR: Handle data export
+    const handleExportData = async () => {
+        if (!user) return;
+        setExporting(true);
+
+        try {
+            const session = await supabase.auth.getSession();
+            const token = session.data.session?.access_token;
+
+            if (!token) {
+                showToast('Please sign in again to export data', 'error');
+                return;
+            }
+
+            const response = await fetch('/api/account/export', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Export failed');
+            }
+
+            // Trigger download
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sloefit-data-export-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast('Data exported successfully', 'success');
+        } catch {
+            showToast('Failed to export data. Please try again.', 'error');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // GDPR: Handle account deletion
+    const handleDeleteAccount = async () => {
+        if (deleteConfirmText !== 'DELETE') return;
+        if (!user) return;
+
+        setDeleting(true);
+
+        try {
+            const session = await supabase.auth.getSession();
+            const token = session.data.session?.access_token;
+
+            if (!token) {
+                showToast('Please sign in again to delete account', 'error');
+                return;
+            }
+
+            const response = await fetch('/api/account/delete', {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Deletion failed');
+            }
+
+            // Clear localStorage
+            localStorage.clear();
+
+            // Sign out
+            await signOut();
+
+            showToast('Account deleted successfully', 'success');
+        } catch (err) {
+            showToast(err instanceof Error ? err.message : 'Failed to delete account', 'error');
+        } finally {
+            setDeleting(false);
+            setShowDeleteModal(false);
+            setDeleteConfirmText('');
+        }
     };
 
     const getInitials = () => {
@@ -523,6 +631,143 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
                 )}
             </div>
 
+            {/* FIX 3.1: Subscription Status */}
+            <div className="card space-y-4">
+                <h3 className="text-lg font-bold text-white">Subscription</h3>
+                <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Status</span>
+                    <span className={`font-medium ${
+                        profile.subscription_status === 'active' ? 'text-green-400' :
+                        profile.subscription_status === 'trial' ? 'text-blue-400' :
+                        'text-red-400'
+                    }`}>
+                        {profile.subscription_status === 'active' ? 'Active' :
+                         profile.subscription_status === 'trial' ? 'Free Trial' :
+                         profile.subscription_status === 'expired' ? 'Expired' : 'None'}
+                    </span>
+                </div>
+                {profile.subscription_status === 'trial' && profile.trial_started_at && (
+                    <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Trial Days Remaining</span>
+                        <span className="text-blue-400 font-medium">
+                            {(() => {
+                                const trialStart = new Date(profile.trial_started_at!).getTime();
+                                const daysSinceStart = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
+                                return Math.max(0, Math.ceil(7 - daysSinceStart));
+                            })()}
+                        </span>
+                    </div>
+                )}
+                {(profile.subscription_status === 'trial' || profile.subscription_status === 'expired') && (
+                    <p className="text-xs text-gray-500">
+                        Contact support@sloefit.com to upgrade your account.
+                    </p>
+                )}
+            </div>
+
+            {/* GDPR: Data & Privacy */}
+            <div className="card space-y-4">
+                <h3 className="text-lg font-bold text-white">Data & Privacy</h3>
+                <p className="text-gray-400 text-sm">
+                    Manage your personal data in compliance with GDPR regulations.
+                </p>
+
+                {/* Export Data */}
+                <button
+                    onClick={handleExportData}
+                    disabled={exporting}
+                    className="w-full py-3 px-4 bg-gray-700 text-gray-300 font-bold rounded-xl hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                    {exporting ? (
+                        <>
+                            <LoaderIcon className="w-5 h-5 animate-spin" />
+                            Exporting...
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download My Data
+                        </>
+                    )}
+                </button>
+
+                {/* Delete Account */}
+                <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="w-full py-3 px-4 bg-red-500/10 text-red-400 font-bold rounded-xl hover:bg-red-500/20 border border-red-500/30 transition-colors flex items-center justify-center gap-2"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete Account
+                </button>
+            </div>
+
+            {/* Delete Account Confirmation Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full space-y-4 border border-gray-800">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+                                <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h4 className="text-lg font-bold text-white">Delete Account</h4>
+                                <p className="text-sm text-gray-400">This cannot be undone</p>
+                            </div>
+                        </div>
+
+                        <p className="text-gray-300 text-sm">
+                            This will permanently delete your account and all associated data including workouts, meals, progress photos, and measurements.
+                        </p>
+
+                        <div>
+                            <label className="block text-gray-400 text-sm mb-2">
+                                Type <span className="font-mono font-bold text-red-400">DELETE</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-red-500 focus:outline-none transition-colors font-mono"
+                                placeholder="DELETE"
+                                autoComplete="off"
+                            />
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={() => {
+                                    setShowDeleteModal(false);
+                                    setDeleteConfirmText('');
+                                }}
+                                className="flex-1 py-3 px-4 bg-gray-700 text-gray-300 font-bold rounded-xl hover:bg-gray-600 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteAccount}
+                                disabled={deleteConfirmText !== 'DELETE' || deleting}
+                                className="flex-1 py-3 px-4 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <LoaderIcon className="w-4 h-4 animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    'Delete Forever'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Sign Out */}
             <button
                 onClick={handleSignOut}
@@ -532,9 +777,27 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved }) => {
                 Sign Out
             </button>
 
-            {/* App Info */}
-            <div className="text-center text-gray-500 text-sm pt-4">
+            {/* App Info & Legal Links */}
+            <div className="text-center text-gray-500 text-sm pt-4 space-y-3">
                 <p>SLOE FIT AI v1.0</p>
+                <div className="flex justify-center gap-4">
+                    {onPrivacy && (
+                        <button
+                            onClick={onPrivacy}
+                            className="text-gray-400 hover:text-white underline underline-offset-2 transition-colors"
+                        >
+                            Privacy Policy
+                        </button>
+                    )}
+                    {onTerms && (
+                        <button
+                            onClick={onTerms}
+                            className="text-gray-400 hover:text-white underline underline-offset-2 transition-colors"
+                        >
+                            Terms of Service
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );

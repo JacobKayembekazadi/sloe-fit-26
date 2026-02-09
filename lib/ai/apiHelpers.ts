@@ -1,23 +1,92 @@
 /**
  * Shared helpers for API route handlers.
- * Combines auth check, rate limiting, and error type guards.
+ * Combines auth check, subscription check, rate limiting, and error type guards.
  */
 
 import { requireAuth, unauthorizedResponse } from './requireAuth';
 import { checkRateLimit, checkDailyLimit } from './rateLimit';
 import type { AIErrorType } from './types';
 
+// ============================================================================
+// FIX 3.1: Subscription / Trial System
+// ============================================================================
+
+const TRIAL_DAYS = 7;
+
 /**
- * Run auth + rate limit + daily cap checks.
+ * Check if a trial has expired based on trial start date.
+ */
+function isTrialExpired(trialStartedAt: string | null): boolean {
+  if (!trialStartedAt) return false;
+  const trialStart = new Date(trialStartedAt).getTime();
+  const now = Date.now();
+  const daysSinceStart = (now - trialStart) / (1000 * 60 * 60 * 24);
+  return daysSinceStart > TRIAL_DAYS;
+}
+
+/**
+ * Get remaining trial days.
+ */
+export function getTrialDaysRemaining(trialStartedAt: string | null): number {
+  if (!trialStartedAt) return 0;
+  const trialStart = new Date(trialStartedAt).getTime();
+  const now = Date.now();
+  const daysSinceStart = (now - trialStart) / (1000 * 60 * 60 * 24);
+  return Math.max(0, Math.ceil(TRIAL_DAYS - daysSinceStart));
+}
+
+/**
+ * Run auth + subscription + rate limit + daily cap checks.
  * Returns a Response to send if blocked, or null to proceed.
  *
  * FIX 2.1: Daily AI call limit per user (50/day)
  * FIX 2.2: Per-user rate limiting using userId from auth
+ * FIX 3.1: Subscription/trial check for AI features
  */
 export async function apiGate(req: Request): Promise<Response | null> {
   // Auth check first — rejects invalid tokens before burning rate limit budget
   const auth = await requireAuth(req);
   if (!auth) return unauthorizedResponse();
+
+  // FIX 3.1: Check subscription status
+  const { subscriptionStatus, trialStartedAt } = auth;
+
+  // Active subscribers can proceed
+  if (subscriptionStatus === 'active') {
+    // Skip subscription check, continue to rate limit
+  }
+  // Trial users: check if trial expired
+  else if (subscriptionStatus === 'trial') {
+    if (isTrialExpired(trialStartedAt)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            type: 'subscription_required',
+            code: 'TRIAL_EXPIRED',
+            message: 'Your 7-day trial has expired. Upgrade to continue using AI features.',
+            retryable: false,
+          },
+        }),
+        { status: 402, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+  // Expired or no subscription
+  else if (subscriptionStatus === 'expired' || subscriptionStatus === 'none') {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          type: 'subscription_required',
+          code: 'SUBSCRIPTION_REQUIRED',
+          message: 'A subscription is required to use AI features.',
+          retryable: false,
+        },
+      }),
+      { status: 402, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 
   // Per-user rate limit (30 req/min)
   const rateLimited = checkRateLimit(req, auth.userId);

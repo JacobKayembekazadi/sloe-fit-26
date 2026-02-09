@@ -182,6 +182,28 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                     </div>
                 )}
+
+                {/* FIX 3.1: Trial Status Banner */}
+                {userProfile?.subscription_status === 'trial' && userProfile.trial_started_at && (
+                    <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-2">
+                        <svg className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                            <p className="text-xs text-blue-300 font-medium">Free Trial Active</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                                {(() => {
+                                    const trialStart = new Date(userProfile.trial_started_at!).getTime();
+                                    const daysSinceStart = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
+                                    const daysRemaining = Math.max(0, Math.ceil(7 - daysSinceStart));
+                                    return daysRemaining > 0
+                                        ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining. Upgrade for unlimited AI features.`
+                                        : 'Trial expired. Upgrade to continue using AI features.';
+                                })()}
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Unified Workout CTA - Context-Aware */}

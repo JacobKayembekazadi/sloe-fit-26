@@ -26,6 +26,9 @@ interface ProgressPhotoEntry {
 // View mode for the component
 type ViewMode = 'capture' | 'timeline' | 'compare';
 
+// FIX T11: Pagination constants to avoid loading all photos at once
+const PHOTOS_PAGE_SIZE = 30;
+
 interface ProgressPhotosProps {
   onPhotoSaved?: () => void;
 }
@@ -51,6 +54,10 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   const [comparePhotos, setComparePhotos] = useState<[ProgressPhotoEntry | null, ProgressPhotoEntry | null]>([null, null]);
   const [compareSelectingSlot, setCompareSelectingSlot] = useState<0 | 1 | null>(null);
 
+  // FIX T11: Pagination state
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   // AI analysis state
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -65,30 +72,53 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
-  // Fetch photos from Supabase
-  const fetchPhotos = useCallback(async () => {
+  // FIX T11: Fetch photos from Supabase with pagination
+  const fetchPhotos = useCallback(async (append = false) => {
     if (!user) return;
 
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
+      const offset = append ? photos.length : 0;
       const { data, error: fetchError } = await supabaseGet<ProgressPhotoEntry[]>(
-        `progress_photos?user_id=eq.${user.id}&select=*&order=created_at.desc`
+        `progress_photos?user_id=eq.${user.id}&select=*&order=created_at.desc&limit=${PHOTOS_PAGE_SIZE}&offset=${offset}`
       );
 
       if (fetchError) throw fetchError;
-      setPhotos(data || []);
+
+      const newPhotos = data || [];
+      if (append) {
+        setPhotos(prev => [...prev, ...newPhotos]);
+      } else {
+        setPhotos(newPhotos);
+      }
+
+      // Check if there are more photos to load
+      setHasMore(newPhotos.length === PHOTOS_PAGE_SIZE);
     } catch (err) {
-            setError('Failed to load photos');
-      setRetryAction(() => fetchPhotos);
+      setError('Failed to load photos');
+      setRetryAction(() => () => fetchPhotos(append));
       showToast('Failed to load photos', 'error');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [user, showToast]);
+  }, [user, photos.length, showToast]);
+
+  const loadMorePhotos = useCallback(() => {
+    if (!loadingMore && hasMore) {
+      fetchPhotos(true);
+    }
+  }, [fetchPhotos, loadingMore, hasMore]);
 
   useEffect(() => {
-    fetchPhotos();
-  }, [fetchPhotos]);
+    fetchPhotos(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Cleanup camera on unmount
   useEffect(() => {
@@ -113,9 +143,9 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       setSelectedFile(file);
       setError(null);
 
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result as string);
-      reader.readAsDataURL(file);
+      // FIX T10: Use blob URL instead of base64 to reduce memory usage
+      const blobUrl = URL.createObjectURL(file);
+      setPreview(blobUrl);
 
       // Reset input so re-selecting the same file triggers onChange
       e.target.value = '';
@@ -124,6 +154,15 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       stopCamera();
     }
   };
+
+  // FIX T10: Clean up blob URL when preview changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (preview && preview.startsWith('blob:')) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
 
   // Start camera for photo capture
   const startCamera = async () => {
@@ -537,40 +576,62 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
               </button>
             </div>
           ) : (
-            Object.entries(photosByDate).map(([date, datePhotos]) => (
-              <div key={date}>
-                <h3 className="text-sm font-bold text-gray-400 mb-3">{date}</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {datePhotos.map(photo => (
-                    <div
-                      key={photo.id}
-                      className="relative aspect-[3/4] bg-gray-900 rounded-lg overflow-hidden group"
-                    >
-                      <img
-                        src={photo.photo_url}
-                        alt={`${photo.photo_type} view`}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                        <span className="text-xs text-white/80 uppercase">{photo.photo_type}</span>
-                        {photo.weight_lbs && (
-                          <span className="text-sm text-white font-bold">{photo.weight_lbs} lbs</span>
-                        )}
-                        <button
-                          onClick={() => handleDelete(photo)}
-                          className="mt-2 p-2 bg-red-500/80 text-white rounded-full hover:bg-red-500"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
+            <>
+              {Object.entries(photosByDate).map(([date, datePhotos]) => (
+                <div key={date}>
+                  <h3 className="text-sm font-bold text-gray-400 mb-3">{date}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {datePhotos.map(photo => (
+                      <div
+                        key={photo.id}
+                        className="relative aspect-[3/4] bg-gray-900 rounded-lg overflow-hidden group"
+                      >
+                        <img
+                          src={photo.photo_url}
+                          alt={`${photo.photo_type} view`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                          <span className="text-xs text-white/80 uppercase">{photo.photo_type}</span>
+                          {photo.weight_lbs && (
+                            <span className="text-sm text-white font-bold">{photo.weight_lbs} lbs</span>
+                          )}
+                          <button
+                            onClick={() => handleDelete(photo)}
+                            className="mt-2 p-2 bg-red-500/80 text-white rounded-full hover:bg-red-500"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                          <span className="text-[10px] text-white/60 uppercase">{photo.photo_type}</span>
+                        </div>
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                        <span className="text-[10px] text-white/60 uppercase">{photo.photo_type}</span>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+
+              {/* FIX T11: Load More button for pagination */}
+              {loadingMore && (
+                <div className="flex items-center justify-center py-4">
+                  <LoaderIcon className="w-6 h-6 text-[var(--color-primary)] animate-spin" />
+                </div>
+              )}
+              {hasMore && !loadingMore && (
+                <button
+                  onClick={loadMorePhotos}
+                  className="w-full py-3 text-sm font-medium text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  Load More Photos
+                </button>
+              )}
+              {!hasMore && photos.length > PHOTOS_PAGE_SIZE && (
+                <p className="text-center text-xs text-gray-500 py-2">
+                  All {photos.length} photos loaded
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -666,6 +727,20 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
                     />
                   </button>
                 ))}
+                {/* FIX T11: Load more in compare selection */}
+                {hasMore && (
+                  <button
+                    onClick={loadMorePhotos}
+                    disabled={loadingMore}
+                    className="aspect-square rounded-lg bg-gray-800 border-2 border-dashed border-gray-600 hover:border-[var(--color-primary)] flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+                  >
+                    {loadingMore ? (
+                      <LoaderIcon className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <span className="text-xs text-center px-1">Load More</span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           )}

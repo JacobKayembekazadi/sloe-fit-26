@@ -92,11 +92,28 @@ function extractMusclesFromTitle(title: string): string[] {
 // Use shared utility for volume calculation
 const calculateVolume = calculateRepVolume;
 
-// localStorage cache key for offline fallback — scoped per user + profile hash to invalidate on settings change
-const getPlanCacheKey = (userId: string, profile?: { goal?: string | null; days_per_week?: number | null }) => {
-  const hash = profile ? `${profile.goal || ''}_${profile.days_per_week || ''}` : '';
-  return `sloefit_weekly_plan_${userId}_${hash}`;
+// FIX T9: localStorage cache key for offline fallback — simplified to one key per user to prevent unbounded growth
+const getPlanCacheKey = (userId: string) => {
+  return `sloefit_weekly_plan_${userId}`;
 };
+
+// FIX T9: Clean up old plan cache keys (from previous hash-based implementation) before writing new cache
+function cleanupOldPlanCaches(userId: string): void {
+  try {
+    const keys = Object.keys(localStorage);
+    const prefix = `sloefit_weekly_plan_${userId}`;
+    const currentKey = getPlanCacheKey(userId);
+
+    for (const key of keys) {
+      // Remove any old hash-based keys for this user (they have extra suffix after userId)
+      if (key.startsWith(prefix) && key !== currentKey) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+}
 
 // ============================================================================
 // Hook
@@ -172,6 +189,8 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
             setCompletedDays(new Set(data[0].completed_days));
           }
           // Cache to localStorage for offline fallback
+          // FIX T9: Clean up old hash-based cache keys before writing
+          cleanupOldPlanCaches(user.id);
           safeLocalStorageSet(getPlanCacheKey(user.id), JSON.stringify({
             plan: data[0].plan,
             completedDays: data[0].completed_days || [],

@@ -107,13 +107,20 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       setResult(null);
       setError(null);
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
+      // FIX T10: Use blob URL instead of base64 to reduce memory usage
+      const blobUrl = URL.createObjectURL(selectedFile);
+      setPreview(blobUrl);
     }
   };
+
+  // FIX T10: Clean up blob URL when preview changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (preview && preview.startsWith('blob:')) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
 
   const handleAnalyze = useCallback(async () => {
     if (!file) {

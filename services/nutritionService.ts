@@ -7,8 +7,13 @@
  */
 
 // API Configuration
-const USDA_API_KEY = import.meta.env.VITE_USDA_API_KEY || 'UgKzABfLT4U5MuCDCYkI4KbLARumUfJyb6rMWAvK';
+const USDA_API_KEY = import.meta.env.VITE_USDA_API_KEY || '';
 const USDA_BASE_URL = 'https://api.nal.usda.gov/fdc/v1';
+
+// Warn if API key is missing (in development)
+if (!USDA_API_KEY && import.meta.env.DEV) {
+  console.warn('[nutritionService] VITE_USDA_API_KEY not configured. USDA lookups will be skipped.');
+}
 
 // Cache configuration
 const CACHE_KEY_PREFIX = 'usda_cache_';
@@ -230,6 +235,11 @@ function setCache<T>(key: string, data: T): void {
  * Search for foods in the USDA database
  */
 export async function searchFood(query: string, pageSize: number = 5): Promise<USDAFood[]> {
+  // Skip if API key not configured
+  if (!USDA_API_KEY) {
+    return [];
+  }
+
   if (!query || query.trim().length < 2) {
     return [];
   }
@@ -278,6 +288,11 @@ export async function searchFood(query: string, pageSize: number = 5): Promise<U
  * Get detailed nutrition data for a specific food by FDC ID
  */
 export async function getFoodDetails(fdcId: number): Promise<USDAFood | null> {
+  // Skip if API key not configured
+  if (!USDA_API_KEY) {
+    return null;
+  }
+
   // Check cache first
   const cacheKey = getCacheKey('food', fdcId.toString());
   const cached = getFromCache<USDAFood>(cacheKey);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, ChangeEvent, memo, useMemo, useRef } from 'react';
+import React, { useState, useCallback, ChangeEvent, memo, useMemo, useRef, useEffect } from 'react';
 import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
@@ -215,13 +215,20 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       setError(null);
       setAnalyzeRetry(null);
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
+      // FIX T10: Use blob URL instead of base64 to reduce memory usage
+      const blobUrl = URL.createObjectURL(selectedFile);
+      setPreview(blobUrl);
     }
   };
+
+  // FIX T10: Clean up blob URL when preview changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (preview && preview.startsWith('blob:')) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
 
   const handlePhotoAnalyze = useCallback(async () => {
     if (!file) {
