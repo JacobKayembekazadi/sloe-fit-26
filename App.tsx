@@ -348,6 +348,7 @@ const AppContent: React.FC = () => {
     completedDays,
     isLoading: isWeeklyPlanLoading,
     isGenerating: isGeneratingPlan,
+    isPreviousWeekPlan,
     generateNewPlan,
     refreshPlan,
     markDayCompleted
@@ -1020,6 +1021,7 @@ const AppContent: React.FC = () => {
               plan={weeklyPlan}
               isLoading={isWeeklyPlanLoading}
               isGenerating={isGeneratingPlan}
+              isPreviousWeekPlan={isPreviousWeekPlan}
               onBack={handleCloseWeeklyPlan}
               onGenerate={generateNewPlan}
               onStartWorkout={handleStartFromPlan}

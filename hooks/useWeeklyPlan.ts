@@ -41,6 +41,7 @@ interface UseWeeklyPlanResult {
   isLoading: boolean;
   isGenerating: boolean;
   error: string | null;
+  isPreviousWeekPlan: boolean; // True if showing a plan from a previous week
 
   // Actions
   generateNewPlan: () => Promise<void>;
@@ -129,6 +130,7 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
   const [error, setError] = useState<string | null>(null);
   const [completedDays, setCompletedDays] = useState<Set<number>>(new Set());
   const [realRecoveryData, setRealRecoveryData] = useState<RecoveryPattern[]>([]);
+  const [isPreviousWeekPlan, setIsPreviousWeekPlan] = useState(false);
 
   // Track mounted state for async cleanup
   const isMountedRef = useRef(true);
@@ -147,11 +149,12 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     const loadData = async () => {
       setIsLoading(true);
       setError(null);
+      setIsPreviousWeekPlan(false);
 
       try {
         const weekStart = getWeekStart();
 
-        // Fetch plan and recovery logs in parallel
+        // Fetch plan for current week and recovery logs in parallel
         const [planResult, recoveryResult] = await Promise.all([
           supabaseGet<any[]>(
             `weekly_plans?user_id=eq.${user.id}&week_start=eq.${weekStart}&limit=1`
@@ -183,13 +186,14 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
           console.error('[useWeeklyPlan] Error loading plan:', fetchError);
           setError('Failed to load weekly plan');
         } else if (data && data.length > 0) {
+          // Found plan for current week
           setPlan(data[0].plan as WeeklyPlan);
+          setIsPreviousWeekPlan(false);
           // Load persisted completed days
           if (data[0].completed_days && Array.isArray(data[0].completed_days)) {
             setCompletedDays(new Set(data[0].completed_days));
           }
           // Cache to localStorage for offline fallback
-          // FIX T9: Clean up old hash-based cache keys before writing
           cleanupOldPlanCaches(user.id);
           safeLocalStorageSet(getPlanCacheKey(user.id), JSON.stringify({
             plan: data[0].plan,
@@ -197,6 +201,22 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
             weekStart,
             timestamp: Date.now()
           }));
+        } else {
+          // No plan for current week - try to fetch most recent plan as fallback
+          const fallbackResult = await supabaseGet<any[]>(
+            `weekly_plans?user_id=eq.${user.id}&order=week_start.desc&limit=1`
+          );
+
+          if (isCancelled) return;
+
+          if (fallbackResult.data && fallbackResult.data.length > 0) {
+            const previousPlan = fallbackResult.data[0];
+            setPlan(previousPlan.plan as WeeklyPlan);
+            setIsPreviousWeekPlan(true); // Flag that this is from a previous week
+            // Don't load completed_days from previous week - start fresh
+            setCompletedDays(new Set());
+            console.info('[useWeeklyPlan] Showing previous week plan as fallback');
+          }
         }
       } catch (err) {
         if (isCancelled) return;
@@ -314,6 +334,7 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
       if (result) {
         setPlan(result);
         setCompletedDays(new Set());
+        setIsPreviousWeekPlan(false); // New plan is for current week
 
         // Save to Supabase (include empty completed_days array)
         try {
@@ -457,6 +478,7 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     isLoading,
     isGenerating,
     error,
+    isPreviousWeekPlan,
     generateNewPlan,
     refreshPlan,
     markDayCompleted

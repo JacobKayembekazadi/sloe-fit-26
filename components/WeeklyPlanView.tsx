@@ -20,6 +20,7 @@ interface WeeklyPlanViewProps {
   plan: WeeklyPlan | null;
   isLoading: boolean;
   isGenerating: boolean;
+  isPreviousWeekPlan?: boolean; // True if showing a plan from a previous week
   onBack: () => void;
   onGenerate: () => void;
   onStartWorkout: (workout: GeneratedWorkout) => void;
@@ -32,6 +33,7 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
   plan,
   isLoading,
   isGenerating,
+  isPreviousWeekPlan = false,
   onBack,
   onGenerate,
   onStartWorkout,
@@ -157,6 +159,38 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
         </button>
         <h1 className="text-xl font-bold text-white">Weekly Plan</h1>
       </div>
+
+      {/* Previous week banner */}
+      {isPreviousWeekPlan && (
+        <div className="bg-amber-900/30 border border-amber-600/50 rounded-xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <Calendar className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-amber-400 font-medium text-sm">Previous Week's Plan</div>
+              <p className="text-amber-200/80 text-sm mt-1">
+                This plan was created for a previous week. Generate a new plan for this week to get fresh recommendations.
+              </p>
+              <button
+                onClick={onGenerate}
+                disabled={isGenerating}
+                className="mt-3 px-4 py-2 bg-amber-500 text-black font-medium rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Generate New Plan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Plan info card */}
       <div className="bg-zinc-900 rounded-2xl p-4 mb-6 border border-zinc-800">
