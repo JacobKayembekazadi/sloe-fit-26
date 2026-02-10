@@ -1,28 +1,64 @@
 /**
  * Rate limiter for API routes.
  *
+ * Uses Upstash Redis for persistent rate limiting that survives Edge Function cold starts.
+ * Falls back to in-memory limiting if Redis is not configured.
+ *
  * FIX 2.1: Per-user daily AI call limit (50/day)
  * FIX 2.2: Per-user rate limiting (30 req/min) instead of per-IP
- * FIX 2.3: In-memory store is a cache; daily limit checked via userId param
  * FIX 2.4: Uses x-vercel-forwarded-for (trusted) instead of x-forwarded-for (spoofable)
  */
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
 const WINDOW_MS = 60_000; // 1 minute
 const MAX_REQUESTS_PER_MINUTE = 30;
 const MAX_DAILY_AI_CALLS = 50;
 
-// In-memory store — per-minute burst limiter (cache only, resets on cold start)
-const minuteStore = new Map<string, RateLimitEntry>();
+// Check if Upstash is configured
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const USE_REDIS = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 
-// In-memory daily counter cache (backed by Supabase in apiGate)
+// Redis client (only created if configured)
+let redis: Redis | null = null;
+let minuteRateLimiter: Ratelimit | null = null;
+let dailyRateLimiter: Ratelimit | null = null;
+
+if (USE_REDIS) {
+  redis = new Redis({
+    url: UPSTASH_URL!,
+    token: UPSTASH_TOKEN!,
+  });
+
+  // Per-minute rate limiter: 30 requests per minute sliding window
+  minuteRateLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(MAX_REQUESTS_PER_MINUTE, '1m'),
+    prefix: 'sloefit:ratelimit:minute',
+    analytics: true,
+  });
+
+  // Daily rate limiter: 50 requests per day
+  dailyRateLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(MAX_DAILY_AI_CALLS, '1d'),
+    prefix: 'sloefit:ratelimit:daily',
+    analytics: true,
+  });
+}
+
+// Fallback in-memory stores (used when Redis not configured)
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const minuteStore = new Map<string, RateLimitEntry>();
 const dailyStore = new Map<string, { count: number; date: string }>();
 
-// Cleanup stale entries periodically
+// Cleanup stale entries periodically (only for in-memory fallback)
 let lastCleanup = Date.now();
 const CLEANUP_INTERVAL = 300_000; // 5 minutes
 
@@ -72,14 +108,24 @@ function make429Response(message: string, retryAfterMs: number): Response {
 
 /**
  * Check per-minute rate limit.
- * FIX 2.2: Uses userId when available (from auth), falls back to IP for unauthenticated.
+ * Uses Redis if configured, falls back to in-memory.
  * Returns null if within limits, or a 429 Response if exceeded.
  */
-export function checkRateLimit(req: Request, userId?: string): Response | null {
-  cleanup();
-
-  // Use userId for per-user limiting; fall back to IP for unauthenticated requests
+export async function checkRateLimit(req: Request, userId?: string): Promise<Response | null> {
   const key = userId || `ip:${getClientIP(req)}`;
+
+  // Use Redis rate limiter if available
+  if (minuteRateLimiter) {
+    const { success, reset } = await minuteRateLimiter.limit(key);
+    if (!success) {
+      const retryAfterMs = Math.max(0, reset - Date.now());
+      return make429Response('Too many requests. Please try again later.', retryAfterMs);
+    }
+    return null;
+  }
+
+  // Fallback to in-memory
+  cleanup();
   const now = Date.now();
   const entry = minuteStore.get(key);
 
@@ -102,10 +148,24 @@ export function checkRateLimit(req: Request, userId?: string): Response | null {
 
 /**
  * Check daily AI call limit for a user.
- * FIX 2.1: 50 calls/day per user. Uses in-memory cache.
+ * Uses Redis if configured, falls back to in-memory.
  * Returns null if within limits, or a 429 Response if exceeded.
  */
-export function checkDailyLimit(userId: string): Response | null {
+export async function checkDailyLimit(userId: string): Promise<Response | null> {
+  // Use Redis rate limiter if available
+  if (dailyRateLimiter) {
+    const { success, reset } = await dailyRateLimiter.limit(userId);
+    if (!success) {
+      const retryAfterMs = Math.max(0, reset - Date.now());
+      return make429Response(
+        `Daily AI limit reached (${MAX_DAILY_AI_CALLS} calls/day). Resets at midnight.`,
+        retryAfterMs
+      );
+    }
+    return null;
+  }
+
+  // Fallback to in-memory
   const today = new Date().toISOString().split('T')[0];
   const entry = dailyStore.get(userId);
 
@@ -119,10 +179,17 @@ export function checkDailyLimit(userId: string): Response | null {
   if (entry.count > MAX_DAILY_AI_CALLS) {
     return make429Response(
       `Daily AI limit reached (${MAX_DAILY_AI_CALLS} calls/day). Resets at midnight.`,
-      // Rough estimate to midnight
       86400000 - (Date.now() % 86400000)
     );
   }
 
   return null;
+}
+
+/**
+ * Check if Redis rate limiting is active.
+ * Useful for health checks and debugging.
+ */
+export function isRedisEnabled(): boolean {
+  return USE_REDIS;
 }

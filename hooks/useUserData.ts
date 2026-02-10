@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert, supabaseDelete } from '../services/supabaseRawFetch';
 import { useAuth } from '../contexts/AuthContext';
+import { reportError, createScopedReporter } from '../utils/sentryHelpers';
 import { CompletedWorkout, NutritionLog } from '../App';
 import {
     queueMeal,
@@ -307,8 +308,14 @@ export const useUserData = () => {
                         onboarding_complete: false,
                         created_at: new Date().toISOString()
                     });
-                } catch {
+                } catch (err) {
                     // Profile creation failed - will be retried on next load
+                    reportError(err, {
+                        category: 'data_save',
+                        operation: 'createProfile',
+                        userId,
+                        severity: 'warning',
+                    });
                 }
                 onboardingComplete = false;
             } else if (profileResult.error) {
@@ -507,7 +514,12 @@ export const useUserData = () => {
                         incrementRetryCount(meal.id);
                     }
                 } catch (err) {
-                    console.error(`[useUserData] Error syncing meal ${meal.id}:`, err);
+                    reportError(err, {
+                        category: 'offline_sync',
+                        operation: 'syncMeal',
+                        userId: user?.id,
+                        context: { mealId: meal.id },
+                    });
                     incrementRetryCount(meal.id);
                 }
             }
@@ -942,7 +954,12 @@ export const useUserData = () => {
 
             return optimisticEntry;
         } catch (err) {
-            console.error('[saveMealEntry] Error:', err);
+            reportError(err, {
+                category: 'data_save',
+                operation: 'saveMealEntry',
+                userId: user?.id,
+                context: { date: today, calories: entry.calories },
+            });
             // On network error, queue for later
             if (!navigator.onLine) {
                 console.log('[saveMealEntry] Caught error while offline - queuing meal');

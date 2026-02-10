@@ -88,12 +88,12 @@ export async function apiGate(req: Request): Promise<Response | null> {
     );
   }
 
-  // Per-user rate limit (30 req/min)
-  const rateLimited = checkRateLimit(req, auth.userId);
+  // Per-user rate limit (30 req/min) - async for Redis support
+  const rateLimited = await checkRateLimit(req, auth.userId);
   if (rateLimited) return rateLimited;
 
-  // Per-user daily limit (50 calls/day)
-  const dailyLimited = checkDailyLimit(auth.userId);
+  // Per-user daily limit (50 calls/day) - async for Redis support
+  const dailyLimited = await checkDailyLimit(auth.userId);
   if (dailyLimited) return dailyLimited;
 
   return null;

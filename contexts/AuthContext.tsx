@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { supabase } from '../supabaseClient';
 import { supabaseGetSingle, supabaseInsert } from '../services/supabaseRawFetch';
 import type { User, Session } from '@supabase/supabase-js';
+import { reportError, reportWarning, setUserContext, clearUserContext } from '../utils/sentryHelpers';
 
 interface AuthContextType {
     user: User | null;
@@ -44,8 +45,14 @@ const ensureProfileExists = async (user: User) => {
                 created_at: new Date().toISOString()
             });
         }
-    } catch {
+    } catch (err) {
         // Profile creation failed - will be retried on next auth event
+        reportWarning('Profile creation failed, will retry on next auth', {
+            category: 'auth',
+            operation: 'ensureProfileExists',
+            userId: user.id,
+            consoleLog: false,
+        });
     }
 };
 
@@ -77,8 +84,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (projectId) {
                     localStorage.removeItem(`sb-${projectId}-auth-token`);
                 }
-            } catch {
-                // Ignore localStorage errors
+            } catch (err) {
+                reportWarning('Failed to clear auth token from localStorage', {
+                    category: 'auth',
+                    operation: 'clearInvalidSession',
+                    consoleLog: false,
+                });
             }
             setSessionExpired(true);
             setSession(null);
@@ -142,6 +153,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // FIX 4.4: Reset sessionExpired on successful re-login
             if (event === 'SIGNED_IN' && session?.user) {
                 setSessionExpired(false);
+                // Set Sentry user context for error tracking
+                setUserContext(session.user.id, session.user.email);
             }
 
             // Create profile on signup or ensure it exists on login
@@ -169,7 +182,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     clearInvalidSession();
                 }
                 // If refresh succeeded, Supabase will fire TOKEN_REFRESHED event
-            } catch {
+            } catch (err) {
+                reportError(err, {
+                    category: 'auth',
+                    operation: 'refreshSession',
+                    severity: 'warning',
+                });
                 clearInvalidSession();
             } finally {
                 isRefreshingRef.current = false;
@@ -196,10 +214,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
             keysToRemove.forEach(key => localStorage.removeItem(key));
-        } catch {
-            // localStorage may be unavailable
+        } catch (err) {
+            reportWarning('localStorage unavailable during signOut', {
+                category: 'auth',
+                operation: 'signOut',
+                consoleLog: false,
+            });
         }
         setSessionExpired(false);
+        clearUserContext();
         await supabase.auth.signOut();
     }, []);
 

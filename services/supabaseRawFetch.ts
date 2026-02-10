@@ -263,8 +263,8 @@ const isTokenExpired = (token: string): boolean => {
 };
 
 // Helper to get auth token — attempts session refresh when stored token is expired
-export const getAuthToken = async (): Promise<string> => {
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Returns null if no valid user token available (caller should handle auth required)
+export const getAuthToken = async (): Promise<string | null> => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   try {
     const projectId = supabaseUrl.match(/https:\/\/([^.]+)\.supabase/)?.[1] || '';
@@ -284,21 +284,24 @@ export const getAuthToken = async (): Promise<string> => {
           return data.session.access_token;
         }
       } catch {
-        // Refresh failed — fall through to anon key
+        // Refresh failed — no valid token
       }
     }
   } catch {
     // Failed to parse token
   }
-  return supabaseKey;
+  // FIX AUTH1: Return null instead of anon key — caller must handle no-auth case
+  return null;
 };
 
 // Get common headers for Supabase requests
+// For Supabase REST API, use user token if available, otherwise anon key (RLS handles permissions)
 export const getSupabaseHeaders = async (prefer?: string): Promise<Record<string, string>> => {
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const authToken = await getAuthToken();
   return {
-    'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${authToken}`,
+    'apikey': anonKey,
+    'Authorization': `Bearer ${authToken || anonKey}`,
     'Content-Type': 'application/json',
     'Prefer': prefer || 'return=representation',
   };

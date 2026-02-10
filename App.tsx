@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import { reportError, reportWarning } from './utils/sentryHelpers';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -208,7 +209,11 @@ const AppContent: React.FC = () => {
         } else {
           localStorage.removeItem(DRAFT_STORAGE_KEY);
         }
-      } catch {
+      } catch (err) {
+        reportWarning('Failed to parse workout draft, removing corrupted data', {
+            category: 'data_fetch',
+            operation: 'recoverDraft',
+        });
         localStorage.removeItem(DRAFT_STORAGE_KEY);
       }
     }
@@ -300,14 +305,20 @@ const AppContent: React.FC = () => {
         setWorkoutTitle(fallbackWorkout.title);
         showToast('Using fallback workout — AI unavailable', 'info');
       }
-    } catch {
+    } catch (err) {
+      reportError(err, {
+        category: 'ai',
+        operation: 'generateWorkout',
+        userId: user?.id,
+        severity: 'warning',
+      });
       setWorkoutLog(fallbackWorkout.exercises);
       setWorkoutTitle(fallbackWorkout.title);
       showToast('Using fallback workout - AI unavailable', 'info');
     }
 
     setWorkoutStatus('preview');
-  }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast]);
+  }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast, user?.id]);
 
   const handleStartFromPreview = useCallback(() => {
     setStartTime(Date.now());
@@ -450,8 +461,14 @@ const AppContent: React.FC = () => {
           return false;
         }
       }
-    } catch {
+    } catch (err) {
       // Network/unexpected error — queue offline
+      reportError(err, {
+        category: 'data_save',
+        operation: 'saveWorkout',
+        userId: user?.id,
+        context: { title: workoutTitle, exerciseCount: completedLog.length },
+      });
       const { queued } = queueWorkout({
         title: workoutTitle,
         exercises: completedLog,

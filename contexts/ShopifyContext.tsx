@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { createCheckout, addToCart as addToCartService, removeFromCart, updateCartQuantity, getCheckoutUrl, initializeShopifyClient } from '../services/shopifyService';
+import { reportError } from '../utils/sentryHelpers';
 
 interface ShopifyContextType {
     checkout: any | null;
@@ -57,7 +58,10 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
                     localStorage.setItem('shopify_checkout_id', response.data.id);
                 }
             } catch (error) {
-                console.error('Failed to initialize checkout:', error);
+                reportError(error, {
+                    category: 'payment',
+                    operation: 'initCheckout',
+                });
             } finally {
                 setIsLoading(false);
             }
@@ -76,7 +80,11 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
                 setCheckout(response.data);
             }
         } catch (error) {
-            console.error('Failed to add to cart:', error);
+            reportError(error, {
+                category: 'payment',
+                operation: 'addToCart',
+                context: { variantId, quantity },
+            });
         } finally {
             setIsLoading(false);
         }
@@ -92,7 +100,11 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
                 setCheckout(response.data);
             }
         } catch (error) {
-            console.error('Failed to remove from cart:', error);
+            reportError(error, {
+                category: 'payment',
+                operation: 'removeFromCart',
+                context: { lineItemId },
+            });
         } finally {
             setIsLoading(false);
         }
@@ -108,7 +120,11 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
                 setCheckout(response.data);
             }
         } catch (error) {
-            console.error('Failed to update quantity:', error);
+            reportError(error, {
+                category: 'payment',
+                operation: 'updateQuantity',
+                context: { lineItemId, quantity },
+            });
         } finally {
             setIsLoading(false);
         }

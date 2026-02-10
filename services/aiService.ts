@@ -10,6 +10,7 @@
 
 import { RecoveryState } from '../components/RecoveryCheckIn';
 import { UserProfile } from '../hooks/useUserData';
+import { getAuthToken } from './supabaseRawFetch';
 
 // ============================================================================
 // Types (matching the API response types)
@@ -289,10 +290,27 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // FIX AUTH1: Get auth token and include in request headers
+    const authToken = await getAuthToken();
+
+    // If no valid auth token, return auth error immediately (don't waste API call)
+    if (!authToken) {
+      updateRequestLog(log, 'error');
+      return {
+        success: false,
+        error: {
+          type: 'auth',
+          message: 'Please log in to use AI features.',
+          retryable: false,
+        },
+      };
+    }
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify(body),
       signal: controller.signal,

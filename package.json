@@ -9,8 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^10.38.0",
     "@shopify/buy-button-js": "^3.0.6",
     "@supabase/supabase-js": "^2.91.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.36.2",
+    "inngest": "^3.52.0",
     "lucide-react": "^0.563.0",
     "openai": "^6.16.0",
     "react": "^19.2.3",
