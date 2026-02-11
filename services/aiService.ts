@@ -279,6 +279,24 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
   });
 };
 
+// ============================================================================
+// Client-Side Retry Configuration
+// ============================================================================
+
+const MAX_CLIENT_RETRIES = 2; // Total of 3 attempts (1 initial + 2 retries)
+const BASE_RETRY_DELAY_MS = 1500;
+const MAX_RETRY_DELAY_MS = 10000;
+
+function calculateClientRetryDelay(attempt: number): number {
+  const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
+  const jitter = Math.random() * 500;
+  return Math.min(exponentialDelay + jitter, MAX_RETRY_DELAY_MS);
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function callAPI<T>(endpoint: string, body: unknown, operation: string): Promise<AIResponse<T>> {
   const log = logRequest(operation);
 
@@ -286,102 +304,131 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
   const hasImage = body && typeof body === 'object' && ('imageBase64' in (body as Record<string, unknown>) || 'images' in (body as Record<string, unknown>));
   const timeoutMs = hasImage ? 60000 : 30000;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // FIX AUTH1: Get auth token upfront (don't retry auth failures)
+  const authToken = await getAuthToken();
+  if (!authToken) {
+    updateRequestLog(log, 'error');
+    return {
+      success: false,
+      error: {
+        type: 'auth',
+        message: 'Please log in to use AI features.',
+        retryable: false,
+      },
+    };
+  }
 
-  try {
-    // FIX AUTH1: Get auth token and include in request headers
-    const authToken = await getAuthToken();
+  let lastError: AIResponse<T>['error'] = undefined;
 
-    // If no valid auth token, return auth error immediately (don't waste API call)
-    if (!authToken) {
-      updateRequestLog(log, 'error');
-      return {
-        success: false,
-        error: {
-          type: 'auth',
-          message: 'Please log in to use AI features.',
-          retryable: false,
-        },
-      };
+  // Client-side retry loop for transient failures
+  for (let attempt = 0; attempt <= MAX_CLIENT_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = calculateClientRetryDelay(attempt - 1);
+      if (DEBUG_MODE) {
+        console.log(`[AI #${log.id}] Retry ${attempt}/${MAX_CLIENT_RETRIES} after ${Math.round(delay)}ms`);
+      }
+      await sleep(delay);
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      updateRequestLog(log, 'error');
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-      // FIX 3.1: Handle 402 subscription required responses
-      if (response.status === 402) {
-        try {
-          const errorBody = await response.json();
-          return {
-            success: false,
-            error: errorBody.error || {
-              type: 'subscription_required',
-              message: 'A subscription is required to use AI features.',
-              retryable: false,
-            },
-          };
-        } catch {
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        // FIX 3.1: Handle 402 subscription required responses (don't retry)
+        if (response.status === 402) {
+          updateRequestLog(log, 'error');
+          try {
+            const errorBody = await response.json();
+            return {
+              success: false,
+              error: errorBody.error || {
+                type: 'subscription_required',
+                message: 'A subscription is required to use AI features.',
+                retryable: false,
+              },
+            };
+          } catch {
+            return {
+              success: false,
+              error: {
+                type: 'subscription_required',
+                message: 'A subscription is required to use AI features.',
+                retryable: false,
+              },
+            };
+          }
+        }
+
+        // Don't retry 4xx errors (except 429 rate limit)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          updateRequestLog(log, 'error');
+          const type = response.status === 413 ? 'payload_too_large' : 'api';
           return {
             success: false,
             error: {
-              type: 'subscription_required',
-              message: 'A subscription is required to use AI features.',
+              type,
+              message: `Request failed (${response.status})`,
               retryable: false,
             },
           };
         }
-      }
 
-      const type = response.status === 413 ? 'payload_too_large'
-        : response.status >= 500 ? 'server_error'
-        : 'api';
-      return {
-        success: false,
-        error: {
+        // Server error or rate limit — retry
+        const type = response.status === 429 ? 'rate_limit' : 'server_error';
+        lastError = {
           type,
           message: `Server error (${response.status})`,
-          retryable: response.status >= 500,
-        },
-      };
-    }
+          retryable: true,
+        };
+        continue; // Retry
+      }
 
-    const result: AIResponse<T> = await response.json();
-    updateRequestLog(log, result.success ? 'success' : 'error', result.provider);
-    return result;
-  } catch (error: any) {
-    updateRequestLog(log, 'error');
-    if (error?.name === 'AbortError') {
-      return {
-        success: false,
-        error: {
+      const result: AIResponse<T> = await response.json();
+      updateRequestLog(log, result.success ? 'success' : 'error', result.provider);
+      return result;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      if (error?.name === 'AbortError') {
+        lastError = {
           type: 'timeout',
           message: 'Request timed out. Please try again.',
           retryable: true,
-        },
-      };
+        };
+      } else {
+        lastError = {
+          type: 'network',
+          message: error instanceof Error ? error.message : 'Network error',
+          retryable: true,
+        };
+      }
+      // Continue to retry
     }
-    return {
-      success: false,
-      error: {
-        type: 'network',
-        message: error instanceof Error ? error.message : 'Network error',
-        retryable: true,
-      },
-    };
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  // All retries exhausted
+  updateRequestLog(log, 'error');
+  return {
+    success: false,
+    error: lastError || {
+      type: 'unknown',
+      message: 'Request failed after multiple attempts.',
+      retryable: false,
+    },
+  };
 }
 
 function formatErrorForUser(error: AIResponse<unknown>['error']): string {

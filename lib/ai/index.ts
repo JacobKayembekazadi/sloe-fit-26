@@ -125,7 +125,10 @@ export interface FallbackResult<T> {
 /**
  * Execute an AI operation with automatic provider fallback.
  *
- * FIX 2.5: Only tries primary + 1 fallback (not all providers) to limit cost.
+ * Tries ALL available providers (up to 3) to maximize reliability.
+ * Cost impact is minimal since we only pay for successful completions,
+ * and failed requests usually don't incur charges.
+ *
  * Logs which provider succeeded for debugging/cost tracking.
  */
 export async function withFallback<T>(
@@ -138,8 +141,8 @@ export async function withFallback<T>(
     throw new Error('No AI providers configured. Set AI_API_KEY or a provider-specific key (OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY).');
   }
 
-  // Limit to primary + 1 fallback to control costs (max 2 API calls per request)
-  const maxAttempts = Math.min(providers.length, 2);
+  // Try ALL available providers for maximum reliability
+  const maxAttempts = providers.length;
   let lastError: unknown;
 
   for (let i = 0; i < maxAttempts; i++) {
@@ -158,7 +161,7 @@ export async function withFallback<T>(
         lastError = new Error(`Provider ${type} returned soft failure`);
         continue;
       }
-      console.log(`[ai] success via ${type}${i > 0 ? ' (fallback)' : ''}`);
+      console.log(`[ai] success via ${type}${i > 0 ? ` (fallback #${i})` : ''}`);
       return { data, provider: type };
     } catch (error) {
       lastError = error;
