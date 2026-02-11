@@ -277,13 +277,28 @@ export const getAuthToken = async (): Promise<string | null> => {
       if (accessToken && typeof accessToken === 'string' && !isTokenExpired(accessToken)) {
         return accessToken;
       }
-      // Token is expired — attempt refresh via Supabase client (triggers autoRefreshToken)
+      // Token is expired — force refresh (getSession returns cached, refreshSession forces new token)
       try {
-        const { data } = await supabase.auth.getSession();
-        if (data.session?.access_token) {
-          return data.session.access_token;
+        // First try getSession - it may trigger autoRefresh if configured
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.access_token && !isTokenExpired(sessionData.session.access_token)) {
+          return sessionData.session.access_token;
         }
-      } catch {
+        // Session token still expired - force refresh
+        const { data: refreshData, error } = await supabase.auth.refreshSession();
+        if (!error && refreshData.session?.access_token) {
+          if (DEBUG_MODE) {
+            console.log('[Auth] Token refreshed successfully');
+          }
+          return refreshData.session.access_token;
+        }
+        if (DEBUG_MODE && error) {
+          console.warn('[Auth] Token refresh failed:', error.message);
+        }
+      } catch (e) {
+        if (DEBUG_MODE) {
+          console.warn('[Auth] Token refresh exception:', e);
+        }
         // Refresh failed — no valid token
       }
     }
