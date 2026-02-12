@@ -11,11 +11,11 @@ export const AI_CONFIG = {
 
   // Model identifiers
   gemini3Model: process.env.GEMINI_3_MODEL || 'gemini-3-flash-preview',
-  gemini1Model: 'gemini-1.5-flash',
+  gemini2Model: 'gemini-2.0-flash-001',  // Stable fallback
 
   // Timeouts (Agentic Vision is slower due to Think → Act → Observe loop)
   gemini3VisionTimeoutMs: 60000,  // 60s for agentic loop
-  gemini1VisionTimeoutMs: 30000,  // 30s for single-pass
+  gemini2VisionTimeoutMs: 30000,  // 30s for single-pass
   textTimeoutMs: 30000,           // 30s for text-only tasks
 
   // Circuit breaker settings
@@ -57,7 +57,7 @@ export function getModelForTask(isVisionTask: boolean): string {
   if (isVisionTask && isGemini3Available()) {
     return AI_CONFIG.gemini3Model;
   }
-  return AI_CONFIG.gemini1Model;
+  return AI_CONFIG.gemini2Model;
 }
 
 /**
@@ -68,7 +68,7 @@ export function getTimeoutForTask(isVisionTask: boolean): number {
     return AI_CONFIG.gemini3VisionTimeoutMs;
   }
   if (isVisionTask) {
-    return AI_CONFIG.gemini1VisionTimeoutMs;
+    return AI_CONFIG.gemini2VisionTimeoutMs;
   }
   return AI_CONFIG.textTimeoutMs;
 }
