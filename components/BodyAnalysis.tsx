@@ -63,6 +63,31 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [isRestored, setIsRestored] = useState(false);
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
+  // Progressive loading phase for Agentic Vision (Gemini 3 Flash takes longer)
+  const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
+
+  // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingPhase('Scanning physique...');
+      return;
+    }
+
+    const phases = [
+      { delay: 0, text: 'Scanning physique...' },
+      { delay: 5000, text: 'Analyzing body composition...' },
+      { delay: 12000, text: 'Examining muscle groups...' },
+      { delay: 20000, text: 'Assessing posture...' },
+      { delay: 30000, text: 'Generating workout plan...' },
+      { delay: 45000, text: 'Finalizing recommendations...' },
+    ];
+
+    const timers = phases.map(({ delay, text }) =>
+      setTimeout(() => setLoadingPhase(text), delay)
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [isLoading]);
 
   // Restore previous analysis from localStorage on mount
   useEffect(() => {
@@ -279,6 +304,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         </div>
       )}
 
+      {/* Loading State - Progressive phases for Agentic Vision */}
       {tabMode === 'analyze' && isLoading && (
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">
@@ -288,8 +314,8 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
                 <span className="text-3xl">💪</span>
               </div>
             </div>
-            <p className="text-xl font-black text-white uppercase tracking-wide">Scanning Physique...</p>
-            <p className="text-gray-400 mt-2 text-sm">AI is analyzing body composition</p>
+            <p className="text-xl font-black text-white uppercase tracking-wide">{loadingPhase}</p>
+            <p className="text-gray-400 mt-2 text-sm">AI is examining your physique in detail</p>
           </div>
           <div className="card">
             <AnalysisResultSkeleton />

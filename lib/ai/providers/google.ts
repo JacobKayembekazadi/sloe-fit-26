@@ -13,6 +13,8 @@ import type {
   AIError,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
+import { AI_CONFIG, getModelForTask, getTimeoutForTask, shouldEnableCodeExecution, isGemini3Available } from '../config';
+import { recordGemini3Result } from '../circuitBreaker';
 import {
   BODY_ANALYSIS_PROMPT,
   MEAL_ANALYSIS_PROMPT,
@@ -27,12 +29,16 @@ import {
 // Configuration
 // ============================================================================
 
-const DEFAULT_MODEL = 'gemini-1.5-flash';
 const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_TIMEOUT_MS = 30000;
 const BASE_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
 const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Extended options for vision tasks
+interface ExtendedChatOptions extends ChatOptions {
+  isVisionTask?: boolean;
+}
 
 // ============================================================================
 // Error Handling
@@ -191,52 +197,105 @@ function formatMessagesForGemini(messages: ChatMessage[]): { systemInstruction?:
 export function createGoogleProvider(apiKey: string): AIProvider {
   async function callGeminiAPI(
     messages: ChatMessage[],
-    options: ChatOptions = {}
+    options: ExtendedChatOptions = {}
   ): Promise<string> {
-    const { temperature = 0.7, maxTokens = 1000, timeoutMs = DEFAULT_TIMEOUT_MS, jsonMode = false } = options;
+    const {
+      temperature = 0.7,
+      maxTokens = 1000,
+      timeoutMs,
+      jsonMode = false,
+      isVisionTask = false,
+    } = options;
+
+    // Select model based on task type and feature flag (respects circuit breaker)
+    const model = getModelForTask(isVisionTask);
+    const effectiveTimeout = timeoutMs ?? getTimeoutForTask(isVisionTask);
+    const enableCodeExecution = shouldEnableCodeExecution(isVisionTask);
+    const usingGemini3 = isVisionTask && isGemini3Available();
+
     const { systemInstruction, contents } = formatMessagesForGemini(messages);
 
-    return withRetry(async (signal) => {
-      const url = `${API_BASE_URL}/models/${DEFAULT_MODEL}:generateContent?key=${apiKey}`;
+    try {
+      const result = await withRetry(async (signal) => {
+        const url = `${API_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
-      const body: Record<string, unknown> = {
-        contents,
-        generationConfig: {
-          temperature,
-          maxOutputTokens: maxTokens,
-          ...(jsonMode && { responseMimeType: 'application/json' }),
-        },
-      };
+        const body: Record<string, unknown> = {
+          contents,
+          generationConfig: {
+            temperature,
+            maxOutputTokens: maxTokens,
+            ...(jsonMode && { responseMimeType: 'application/json' }),
+          },
+        };
 
-      if (systemInstruction) {
-        body.systemInstruction = { parts: [{ text: systemInstruction }] };
+        // Enable code execution for Gemini 3 Flash Agentic Vision
+        // This allows the model to run Python code for deterministic calorie math
+        if (enableCodeExecution) {
+          body.tools = [{ codeExecution: {} }];
+        }
+
+        if (systemInstruction) {
+          body.systemInstruction = { parts: [{ text: systemInstruction }] };
+        }
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal,
+        });
+
+        if (!response.ok) {
+          throw classifyGoogleError(new Error(`HTTP ${response.status}`), response.status);
+        }
+
+        const data = await response.json();
+
+        // Extract text from Gemini response, including code execution results
+        if (data.candidates && data.candidates[0]?.content?.parts) {
+          const parts = data.candidates[0].content.parts;
+          const textParts: string[] = [];
+
+          for (const p of parts) {
+            // Standard text parts
+            if (p.text) {
+              textParts.push(p.text);
+            }
+            // Code execution results (deterministic math output from Agentic Vision)
+            else if (p.codeExecutionResult?.output) {
+              // Include calculation results inline for transparency
+              const output = p.codeExecutionResult.output.trim();
+              if (output) {
+                textParts.push(`\n[Calculated: ${output}]\n`);
+              }
+            }
+            // Log executed code for debugging (not included in user output)
+            else if (p.executableCode?.code && process.env.NODE_ENV === 'development') {
+              console.log('[Gemini3] Executed Python:', p.executableCode.code.slice(0, 200));
+            }
+          }
+
+          return textParts.join('');
+        }
+
+        return '';
+      }, { timeoutMs: effectiveTimeout });
+
+      // Record success for circuit breaker (only matters when using Gemini 3)
+      if (usingGemini3) {
+        recordGemini3Result(true);
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal,
-      });
-
-      if (!response.ok) {
-        throw classifyGoogleError(new Error(`HTTP ${response.status}`), response.status);
+      return result;
+    } catch (error) {
+      // Record failure for circuit breaker (only matters when using Gemini 3)
+      if (usingGemini3) {
+        recordGemini3Result(false);
       }
-
-      const data = await response.json();
-
-      // Extract text from Gemini response
-      if (data.candidates && data.candidates[0]?.content?.parts) {
-        const textParts = data.candidates[0].content.parts
-          .filter((p: any) => p.text)
-          .map((p: any) => p.text);
-        return textParts.join('');
-      }
-
-      return '';
-    }, { timeoutMs });
+      throw error;
+    }
   }
 
   return {
@@ -286,7 +345,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         : 'The user has not set a specific goal yet. Provide general nutrition advice.';
 
       try {
-        const content = await this.chat(
+        const content = await callGeminiAPI(
           [
             { role: 'system', content: MEAL_ANALYSIS_PROMPT },
             {
@@ -297,7 +356,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
               ],
             },
           ],
-          { maxTokens: 1500, timeoutMs: 25000 }
+          { maxTokens: 1500, isVisionTask: true }
         );
 
         if (content) {
@@ -315,7 +374,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
     async analyzeBodyPhoto(imageBase64: string): Promise<string> {
       try {
-        return await this.chat(
+        return await callGeminiAPI(
           [
             { role: 'system', content: BODY_ANALYSIS_PROMPT },
             {
@@ -326,7 +385,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
               ],
             },
           ],
-          { maxTokens: 1500, timeoutMs: 25000 }
+          { maxTokens: 1500, isVisionTask: true }
         );
       } catch (error) {
         const aiError = error as AIError;
@@ -338,7 +397,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       try {
         const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        return await this.chat(
+        return await callGeminiAPI(
           [
             { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
             {
@@ -349,7 +408,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
               ],
             },
           ],
-          { maxTokens: 2000, timeoutMs: 60000 }
+          { maxTokens: 2000, isVisionTask: true }
         );
       } catch (error) {
         const aiError = error as AIError;

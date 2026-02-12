@@ -97,6 +97,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [mealDescription, setMealDescription] = useState<string>('');
   const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
+  // Progressive loading phase for Agentic Vision (longer wait times)
+  const [loadingPhase, setLoadingPhase] = useState<string>('Scanning meal...');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Store original AI values for reset functionality
   const [originalMacros, setOriginalMacros] = useState<MealAnalysisResult['macros']>(null);
@@ -198,6 +200,29 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   );
 
   const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
+
+  // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingPhase('Scanning meal...');
+      return;
+    }
+
+    const phases = [
+      { delay: 0, text: 'Scanning meal...' },
+      { delay: 5000, text: 'Identifying ingredients...' },
+      { delay: 12000, text: 'Zooming into details...' },
+      { delay: 20000, text: 'Calculating macros...' },
+      { delay: 35000, text: 'Finalizing analysis...' },
+      { delay: 50000, text: 'Almost there...' },
+    ];
+
+    const timers = phases.map(({ delay, text }) =>
+      setTimeout(() => setLoadingPhase(text), delay)
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [isLoading]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -727,7 +752,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         </div>
       )}
 
-      {/* Loading State with Skeleton */}
+      {/* Loading State with Skeleton - Progressive phases for Agentic Vision */}
       {isLoading && (
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">
@@ -737,8 +762,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                 <span className="text-2xl">🍽️</span>
               </div>
             </div>
-            <p className="text-xl font-black text-white">ANALYZING...</p>
-            <p className="text-gray-500 text-sm mt-1">Scanning your meal for nutrition info</p>
+            <p className="text-xl font-black text-white">{loadingPhase.toUpperCase()}</p>
+            <p className="text-gray-500 text-sm mt-1">AI is examining your meal in detail</p>
           </div>
           <AnalysisSkeleton />
         </div>
