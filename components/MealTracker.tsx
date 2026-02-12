@@ -97,7 +97,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [mealDescription, setMealDescription] = useState<string>('');
   const [selectedMeal, setSelectedMeal] = useState<MealEntry | null>(null);
-  // Progressive loading phase for Agentic Vision (longer wait times)
+  // Progressive loading phase for AI analysis
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning meal...');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Store original AI values for reset functionality
@@ -201,7 +201,6 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
   const [selectedMealDate, setSelectedMealDate] = useState<string | null>(null);
 
-  // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
   useEffect(() => {
     if (!isLoading) {
       setLoadingPhase('Scanning meal...');
@@ -210,11 +209,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
     const phases = [
       { delay: 0, text: 'Scanning meal...' },
-      { delay: 5000, text: 'Identifying ingredients...' },
-      { delay: 12000, text: 'Zooming into details...' },
-      { delay: 20000, text: 'Calculating macros...' },
-      { delay: 35000, text: 'Finalizing analysis...' },
-      { delay: 50000, text: 'Almost there...' },
+      { delay: 3000, text: 'Identifying ingredients...' },
+      { delay: 8000, text: 'Calculating macros...' },
+      { delay: 15000, text: 'Finalizing analysis...' },
     ];
 
     const timers = phases.map(({ delay, text }) =>
@@ -752,7 +749,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         </div>
       )}
 
-      {/* Loading State with Skeleton - Progressive phases for Agentic Vision */}
+      {/* Loading State with Skeleton */}
       {isLoading && (
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">

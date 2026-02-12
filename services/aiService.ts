@@ -308,9 +308,9 @@ async function sleep(ms: number): Promise<void> {
 async function callAPI<T>(endpoint: string, body: unknown, operation: string): Promise<AIResponse<T>> {
   const log = logRequest(operation);
 
-  // Adaptive timeout: 90s for image payloads (Agentic Vision takes longer), 30s for text-only
+  // Adaptive timeout: 45s for image payloads (30s server + network buffer), 30s for text-only
   const hasImage = body && typeof body === 'object' && ('imageBase64' in (body as Record<string, unknown>) || 'images' in (body as Record<string, unknown>));
-  const timeoutMs = hasImage ? 90000 : 30000;
+  const timeoutMs = hasImage ? 45000 : 30000;
 
   // FIX AUTH1: Get auth token upfront (don't retry auth failures)
   const authToken = await getAuthToken();

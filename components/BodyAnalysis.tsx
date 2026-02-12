@@ -63,10 +63,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [isRestored, setIsRestored] = useState(false);
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
-  // Progressive loading phase for Agentic Vision (Gemini 3 Flash takes longer)
+  // Progressive loading phase for AI analysis
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
 
-  // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
   useEffect(() => {
     if (!isLoading) {
       setLoadingPhase('Scanning physique...');
@@ -75,11 +74,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
 
     const phases = [
       { delay: 0, text: 'Scanning physique...' },
-      { delay: 5000, text: 'Analyzing body composition...' },
-      { delay: 12000, text: 'Examining muscle groups...' },
-      { delay: 20000, text: 'Assessing posture...' },
-      { delay: 30000, text: 'Generating workout plan...' },
-      { delay: 45000, text: 'Finalizing recommendations...' },
+      { delay: 3000, text: 'Analyzing body composition...' },
+      { delay: 8000, text: 'Examining muscle groups...' },
+      { delay: 15000, text: 'Finalizing assessment...' },
     ];
 
     const timers = phases.map(({ delay, text }) =>
@@ -304,7 +301,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         </div>
       )}
 
-      {/* Loading State - Progressive phases for Agentic Vision */}
+      {/* Loading State */}
       {tabMode === 'analyze' && isLoading && (
         <div className="space-y-4">
           <div className="card flex flex-col items-center justify-center text-center p-8">

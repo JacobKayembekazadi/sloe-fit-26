@@ -15,8 +15,7 @@ import type {
   AIError,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
-import { getModelForTask, getTimeoutForTask, shouldEnableCodeExecution, isGemini3Available } from '../config';
-import { recordGemini3Result } from '../circuitBreaker';
+import { getModelForTask, getTimeoutForTask } from '../config';
 import {
   BODY_ANALYSIS_PROMPT,
   MEAL_ANALYSIS_PROMPT,
@@ -41,7 +40,6 @@ const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 interface ExtendedChatOptions extends ChatOptions {
   isVisionTask?: boolean;
 }
-
 
 // ============================================================================
 // Error Handling
@@ -199,7 +197,7 @@ function formatMessagesForGemini(messages: ChatMessage[]): { systemInstruction?:
 
 export function createGoogleProvider(apiKey: string): AIProvider {
   /**
-   * Core Gemini API call with support for code execution (deterministic math).
+   * Core Gemini API call.
    */
   async function callGeminiAPI(
     messages: ChatMessage[],
@@ -213,95 +211,51 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       isVisionTask = false,
     } = options;
 
-    // Select model based on task type and feature flag (respects circuit breaker)
-    const model = getModelForTask(isVisionTask);
+    const model = getModelForTask();
     const effectiveTimeout = timeoutMs ?? getTimeoutForTask(isVisionTask);
-    const enableCodeExecution = shouldEnableCodeExecution(isVisionTask);
-    const usingGemini3 = isVisionTask && isGemini3Available();
-
     const { systemInstruction, contents } = formatMessagesForGemini(messages);
 
-    try {
-      const result = await withRetry(async (signal) => {
-        const url = `${API_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
+    return withRetry(async (signal) => {
+      const url = `${API_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
 
-        const body: Record<string, unknown> = {
-          contents,
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-            ...(jsonMode && { responseMimeType: 'application/json' }),
-          },
-        };
+      const body: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          ...(jsonMode && { responseMimeType: 'application/json' }),
+        },
+      };
 
-        // Enable code execution for Gemini 3 Flash Agentic Vision
-        // This allows the model to run Python code for deterministic calorie math
-        if (enableCodeExecution) {
-          body.tools = [{ codeExecution: {} }];
-        }
-
-        if (systemInstruction) {
-          body.systemInstruction = { parts: [{ text: systemInstruction }] };
-        }
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-          signal,
-        });
-
-        if (!response.ok) {
-          throw classifyGoogleError(new Error(`HTTP ${response.status}`), response.status);
-        }
-
-        const data = await response.json();
-
-        // Extract text from Gemini response (including code execution results)
-        if (data.candidates && data.candidates[0]?.content?.parts) {
-          const parts = data.candidates[0].content.parts;
-          const textParts: string[] = [];
-
-          for (const p of parts) {
-            // Standard text parts
-            if (p.text) {
-              textParts.push(p.text);
-            }
-            // Code execution results (deterministic math output from Agentic Vision)
-            else if (p.codeExecutionResult?.output) {
-              // Include calculation results inline for transparency
-              const output = p.codeExecutionResult.output.trim();
-              if (output) {
-                textParts.push(`\n[Calculated: ${output}]\n`);
-              }
-            }
-            // Log executed code for debugging (not included in user output)
-            else if (p.executableCode?.code && process.env.NODE_ENV === 'development') {
-              console.log('[Gemini3] Executed Python:', p.executableCode.code.slice(0, 200));
-            }
-          }
-
-          return textParts.join('');
-        }
-
-        return '';
-      }, { timeoutMs: effectiveTimeout });
-
-      // Record success for circuit breaker (only matters when using Gemini 3)
-      if (usingGemini3) {
-        recordGemini3Result(true);
+      if (systemInstruction) {
+        body.systemInstruction = { parts: [{ text: systemInstruction }] };
       }
 
-      return result;
-    } catch (error) {
-      // Record failure for circuit breaker (only matters when using Gemini 3)
-      if (usingGemini3) {
-        recordGemini3Result(false);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (!response.ok) {
+        throw classifyGoogleError(new Error(`HTTP ${response.status}`), response.status);
       }
-      throw error;
-    }
+
+      const data = await response.json();
+
+      if (data.candidates && data.candidates[0]?.content?.parts) {
+        const parts = data.candidates[0].content.parts;
+        return parts
+          .filter((p: { text?: string }) => p.text)
+          .map((p: { text: string }) => p.text)
+          .join('');
+      }
+
+      return '';
+    }, { timeoutMs: effectiveTimeout });
   }
 
   return {
