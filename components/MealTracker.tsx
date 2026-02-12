@@ -1,5 +1,5 @@
 import React, { useState, useCallback, ChangeEvent, memo, useMemo, useRef, useEffect } from 'react';
-import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult, AnnotatedImage } from '../services/aiService';
+import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
@@ -105,8 +105,6 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [originalDescription, setOriginalDescription] = useState<string>('');
   // Capture date when meal analysis starts (not save time) to handle midnight edge case
   const [loggedAtDate, setLoggedAtDate] = useState<string>('');
-  // Annotated images from Gemini 3 Agentic Vision
-  const [annotatedImages, setAnnotatedImages] = useState<AnnotatedImage[] | undefined>(undefined);
 
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
@@ -289,8 +287,6 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           : 'Photo meal';
         setMealDescription(description);
         setOriginalDescription(description);
-        // Store annotated images from Gemini 3 Agentic Vision
-        setAnnotatedImages(analysisResult.annotatedImages);
       }
     } catch (err) {
       setError('Failed to analyze photo. Please check your connection and try again.');
@@ -426,8 +422,6 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setOriginalMacros(null);
     setOriginalDescription('');
     setLoggedAtDate('');
-    // Clear annotated images from Gemini 3
-    setAnnotatedImages(undefined);
   };
 
   const resetToAIValues = () => {
@@ -840,7 +834,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
             </div>
           ) : (
             <div className="card">
-              <ResultDisplay result={result} annotatedImages={annotatedImages} />
+              <ResultDisplay result={result} />
             </div>
           )}
 

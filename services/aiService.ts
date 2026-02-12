@@ -36,15 +36,6 @@ export interface TextMealAnalysisResult {
   markdown: string;
 }
 
-/**
- * Annotated image from Gemini 3 Agentic Vision
- */
-export interface AnnotatedImage {
-  mimeType: string;
-  data: string;  // base64
-  description?: string;
-}
-
 export interface MealAnalysisResult {
   markdown: string;
   macros: {
@@ -54,17 +45,14 @@ export interface MealAnalysisResult {
     fats: number;
   } | null;
   foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
-  annotatedImages?: AnnotatedImage[]; // AI-annotated images from Gemini 3 Agentic Vision
 }
 
 export interface BodyAnalysisResult {
   markdown: string;
-  annotatedImages?: AnnotatedImage[]; // AI-annotated images (posture lines, muscle highlights)
 }
 
 export interface ProgressAnalysisResult {
   markdown: string;
-  annotatedImages?: AnnotatedImage[]; // AI-annotated images (side-by-side comparison)
 }
 
 export interface GeneratedWorkout {

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, ChangeEvent, memo } from 'react';
-import { analyzeBodyPhoto, AnnotatedImage } from '../services/aiService';
+import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
@@ -65,8 +65,6 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
   // Progressive loading phase for Agentic Vision (Gemini 3 Flash takes longer)
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
-  // Annotated images from Gemini 3 Agentic Vision
-  const [annotatedImages, setAnnotatedImages] = useState<AnnotatedImage[] | undefined>(undefined);
 
   // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
   useEffect(() => {
@@ -157,7 +155,6 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
-    setAnnotatedImages(undefined);
     setAnalyzeRetry(null);
 
     try {
@@ -168,7 +165,6 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         showToast('Body analysis failed', 'error');
       } else {
         setResult(analysisResult.markdown);
-        setAnnotatedImages(analysisResult.annotatedImages);
         setIsRestored(false);
         setRestoredTimestamp(null);
         onAnalysisComplete(analysisResult.markdown);
@@ -223,7 +219,6 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setAnalyzeRetry(null);
     setIsRestored(false);
     setRestoredTimestamp(null);
-    setAnnotatedImages(undefined);
     localStorage.removeItem(STORAGE_KEY);
   };
 
@@ -377,7 +372,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           )}
 
           <div className="card">
-            <ResultDisplay result={result} annotatedImages={annotatedImages} />
+            <ResultDisplay result={result} />
           </div>
 
           <button

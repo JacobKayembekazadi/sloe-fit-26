@@ -13,10 +13,9 @@ import type {
   WeeklyPlan,
   WeeklyPlanGenerationInput,
   AIError,
-  AnnotatedImage,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
-import { AI_CONFIG, getModelForTask, getTimeoutForTask, shouldEnableCodeExecution, isGemini3Available } from '../config';
+import { getModelForTask, getTimeoutForTask, shouldEnableCodeExecution, isGemini3Available } from '../config';
 import { recordGemini3Result } from '../circuitBreaker';
 import {
   BODY_ANALYSIS_PROMPT,
@@ -43,11 +42,6 @@ interface ExtendedChatOptions extends ChatOptions {
   isVisionTask?: boolean;
 }
 
-// Result from vision API calls that may include annotated images
-interface VisionAPIResult {
-  text: string;
-  annotatedImages: AnnotatedImage[];
-}
 
 // ============================================================================
 // Error Handling
@@ -205,13 +199,12 @@ function formatMessagesForGemini(messages: ChatMessage[]): { systemInstruction?:
 
 export function createGoogleProvider(apiKey: string): AIProvider {
   /**
-   * Core Gemini API call with support for Agentic Vision features.
-   * Returns both text and annotated images from Gemini 3 Flash.
+   * Core Gemini API call with support for code execution (deterministic math).
    */
-  async function callGeminiAPIWithImages(
+  async function callGeminiAPI(
     messages: ChatMessage[],
     options: ExtendedChatOptions = {}
-  ): Promise<VisionAPIResult> {
+  ): Promise<string> {
     const {
       temperature = 0.7,
       maxTokens = 1000,
@@ -266,11 +259,10 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
         const data = await response.json();
 
-        // Extract text and images from Gemini response
+        // Extract text from Gemini response (including code execution results)
         if (data.candidates && data.candidates[0]?.content?.parts) {
           const parts = data.candidates[0].content.parts;
           const textParts: string[] = [];
-          const annotatedImages: AnnotatedImage[] = [];
 
           for (const p of parts) {
             // Standard text parts
@@ -285,29 +277,16 @@ export function createGoogleProvider(apiKey: string): AIProvider {
                 textParts.push(`\n[Calculated: ${output}]\n`);
               }
             }
-            // Annotated images from Agentic Vision (model draws on photos)
-            else if (p.inlineData?.mimeType?.startsWith('image/')) {
-              // Validate image size (max 2MB base64 ≈ 2.7M chars)
-              if (p.inlineData.data && p.inlineData.data.length < 2700000) {
-                annotatedImages.push({
-                  mimeType: p.inlineData.mimeType,
-                  data: p.inlineData.data,
-                });
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`[Gemini3] Received annotated image: ${p.inlineData.mimeType}, ${Math.round(p.inlineData.data.length / 1024)}KB`);
-                }
-              }
-            }
             // Log executed code for debugging (not included in user output)
             else if (p.executableCode?.code && process.env.NODE_ENV === 'development') {
               console.log('[Gemini3] Executed Python:', p.executableCode.code.slice(0, 200));
             }
           }
 
-          return { text: textParts.join(''), annotatedImages };
+          return textParts.join('');
         }
 
-        return { text: '', annotatedImages: [] };
+        return '';
       }, { timeoutMs: effectiveTimeout });
 
       // Record success for circuit breaker (only matters when using Gemini 3)
@@ -323,17 +302,6 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       }
       throw error;
     }
-  }
-
-  /**
-   * Simplified API call that returns only text (for non-vision tasks)
-   */
-  async function callGeminiAPI(
-    messages: ChatMessage[],
-    options: ExtendedChatOptions = {}
-  ): Promise<string> {
-    const result = await callGeminiAPIWithImages(messages, options);
-    return result.text;
   }
 
   return {
@@ -383,7 +351,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         : 'The user has not set a specific goal yet. Provide general nutrition advice.';
 
       try {
-        const result = await callGeminiAPIWithImages(
+        const responseText = await callGeminiAPI(
           [
             { role: 'system', content: MEAL_ANALYSIS_PROMPT },
             {
@@ -397,14 +365,13 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           { maxTokens: 1500, isVisionTask: true }
         );
 
-        if (result.text) {
-          const { macros, foods } = parseMacrosFromResponse(result.text);
-          const markdown = stripMacrosBlock(result.text);
+        if (responseText) {
+          const { macros, foods } = parseMacrosFromResponse(responseText);
+          const markdown = stripMacrosBlock(responseText);
           return {
             markdown,
             macros,
             foods: foods.length > 0 ? foods : undefined,
-            annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
           };
         }
 
@@ -417,7 +384,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
     async analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult> {
       try {
-        const result = await callGeminiAPIWithImages(
+        const responseText = await callGeminiAPI(
           [
             { role: 'system', content: BODY_ANALYSIS_PROMPT },
             {
@@ -430,10 +397,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 1500, isVisionTask: true }
         );
-        return {
-          markdown: result.text,
-          annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
-        };
+        return { markdown: responseText || 'Error: No response from model.' };
       } catch (error) {
         const aiError = error as AIError;
         return { markdown: `Error: ${aiError.message}` };
@@ -444,7 +408,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       try {
         const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        const result = await callGeminiAPIWithImages(
+        const responseText = await callGeminiAPI(
           [
             { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
             {
@@ -457,10 +421,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 2000, isVisionTask: true }
         );
-        return {
-          markdown: result.text,
-          annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
-        };
+        return { markdown: responseText || 'Error: No response from model.' };
       } catch (error) {
         const aiError = error as AIError;
         return { markdown: `Error: ${aiError.message}` };
