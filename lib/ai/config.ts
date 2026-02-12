@@ -11,7 +11,7 @@ export const AI_CONFIG = {
 
   // Model identifiers
   gemini3Model: process.env.GEMINI_3_MODEL || 'gemini-3-flash-preview',
-  gemini2Model: 'gemini-2.0-flash-001',  // Stable fallback
+  gemini2Model: 'gemini-2.5-flash',  // Stable fallback (2.0 deprecated March 2026)
 
   // Timeouts (Agentic Vision is slower due to Think → Act → Observe loop)
   gemini3VisionTimeoutMs: 60000,  // 60s for agentic loop
