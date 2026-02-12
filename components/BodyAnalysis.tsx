@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, ChangeEvent, memo } from 'react';
-import { analyzeBodyPhoto } from '../services/aiService';
+import { analyzeBodyPhoto, AnnotatedImage } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
@@ -65,6 +65,8 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
   // Progressive loading phase for Agentic Vision (Gemini 3 Flash takes longer)
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
+  // Annotated images from Gemini 3 Agentic Vision
+  const [annotatedImages, setAnnotatedImages] = useState<AnnotatedImage[] | undefined>(undefined);
 
   // Progressive loading messages for Agentic Vision (Gemini 3 Flash takes longer)
   useEffect(() => {
@@ -155,19 +157,21 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setAnnotatedImages(undefined);
     setAnalyzeRetry(null);
 
     try {
       const analysisResult = await analyzeBodyPhoto(file);
-      if (analysisResult.startsWith('An error occurred') || analysisResult.startsWith('Error:')) {
-        setError(analysisResult);
+      if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
+        setError(analysisResult.markdown);
         setAnalyzeRetry(() => handleAnalyze);
         showToast('Body analysis failed', 'error');
       } else {
-        setResult(analysisResult);
+        setResult(analysisResult.markdown);
+        setAnnotatedImages(analysisResult.annotatedImages);
         setIsRestored(false);
         setRestoredTimestamp(null);
-        onAnalysisComplete(analysisResult);
+        onAnalysisComplete(analysisResult.markdown);
         showToast('Analysis complete', 'success');
 
         // Persist to localStorage (compress preview to avoid quota issues)
@@ -192,7 +196,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             }
           }
           const toStore: StoredAnalysis = {
-            result: analysisResult,
+            result: analysisResult.markdown,
             timestamp: Date.now(),
             photoPreview: thumbPreview,
           };
@@ -219,6 +223,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setAnalyzeRetry(null);
     setIsRestored(false);
     setRestoredTimestamp(null);
+    setAnnotatedImages(undefined);
     localStorage.removeItem(STORAGE_KEY);
   };
 
@@ -372,7 +377,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           )}
 
           <div className="card">
-            <ResultDisplay result={result} />
+            <ResultDisplay result={result} annotatedImages={annotatedImages} />
           </div>
 
           <button

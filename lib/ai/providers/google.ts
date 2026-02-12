@@ -4,6 +4,8 @@ import type {
   ChatOptions,
   TextMealAnalysis,
   PhotoMealAnalysis,
+  BodyAnalysisResult,
+  ProgressAnalysisResult,
   GeneratedWorkout,
   WorkoutGenerationInput,
   WeeklyNutritionInput,
@@ -11,6 +13,7 @@ import type {
   WeeklyPlan,
   WeeklyPlanGenerationInput,
   AIError,
+  AnnotatedImage,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
 import { AI_CONFIG, getModelForTask, getTimeoutForTask, shouldEnableCodeExecution, isGemini3Available } from '../config';
@@ -38,6 +41,12 @@ const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 // Extended options for vision tasks
 interface ExtendedChatOptions extends ChatOptions {
   isVisionTask?: boolean;
+}
+
+// Result from vision API calls that may include annotated images
+interface VisionAPIResult {
+  text: string;
+  annotatedImages: AnnotatedImage[];
 }
 
 // ============================================================================
@@ -195,10 +204,14 @@ function formatMessagesForGemini(messages: ChatMessage[]): { systemInstruction?:
 // ============================================================================
 
 export function createGoogleProvider(apiKey: string): AIProvider {
-  async function callGeminiAPI(
+  /**
+   * Core Gemini API call with support for Agentic Vision features.
+   * Returns both text and annotated images from Gemini 3 Flash.
+   */
+  async function callGeminiAPIWithImages(
     messages: ChatMessage[],
     options: ExtendedChatOptions = {}
-  ): Promise<string> {
+  ): Promise<VisionAPIResult> {
     const {
       temperature = 0.7,
       maxTokens = 1000,
@@ -253,10 +266,11 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
         const data = await response.json();
 
-        // Extract text from Gemini response, including code execution results
+        // Extract text and images from Gemini response
         if (data.candidates && data.candidates[0]?.content?.parts) {
           const parts = data.candidates[0].content.parts;
           const textParts: string[] = [];
+          const annotatedImages: AnnotatedImage[] = [];
 
           for (const p of parts) {
             // Standard text parts
@@ -271,16 +285,29 @@ export function createGoogleProvider(apiKey: string): AIProvider {
                 textParts.push(`\n[Calculated: ${output}]\n`);
               }
             }
+            // Annotated images from Agentic Vision (model draws on photos)
+            else if (p.inlineData?.mimeType?.startsWith('image/')) {
+              // Validate image size (max 2MB base64 ≈ 2.7M chars)
+              if (p.inlineData.data && p.inlineData.data.length < 2700000) {
+                annotatedImages.push({
+                  mimeType: p.inlineData.mimeType,
+                  data: p.inlineData.data,
+                });
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`[Gemini3] Received annotated image: ${p.inlineData.mimeType}, ${Math.round(p.inlineData.data.length / 1024)}KB`);
+                }
+              }
+            }
             // Log executed code for debugging (not included in user output)
             else if (p.executableCode?.code && process.env.NODE_ENV === 'development') {
               console.log('[Gemini3] Executed Python:', p.executableCode.code.slice(0, 200));
             }
           }
 
-          return textParts.join('');
+          return { text: textParts.join(''), annotatedImages };
         }
 
-        return '';
+        return { text: '', annotatedImages: [] };
       }, { timeoutMs: effectiveTimeout });
 
       // Record success for circuit breaker (only matters when using Gemini 3)
@@ -296,6 +323,17 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       }
       throw error;
     }
+  }
+
+  /**
+   * Simplified API call that returns only text (for non-vision tasks)
+   */
+  async function callGeminiAPI(
+    messages: ChatMessage[],
+    options: ExtendedChatOptions = {}
+  ): Promise<string> {
+    const result = await callGeminiAPIWithImages(messages, options);
+    return result.text;
   }
 
   return {
@@ -345,7 +383,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         : 'The user has not set a specific goal yet. Provide general nutrition advice.';
 
       try {
-        const content = await callGeminiAPI(
+        const result = await callGeminiAPIWithImages(
           [
             { role: 'system', content: MEAL_ANALYSIS_PROMPT },
             {
@@ -359,10 +397,15 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           { maxTokens: 1500, isVisionTask: true }
         );
 
-        if (content) {
-          const { macros, foods } = parseMacrosFromResponse(content);
-          const markdown = stripMacrosBlock(content);
-          return { markdown, macros, foods: foods.length > 0 ? foods : undefined };
+        if (result.text) {
+          const { macros, foods } = parseMacrosFromResponse(result.text);
+          const markdown = stripMacrosBlock(result.text);
+          return {
+            markdown,
+            macros,
+            foods: foods.length > 0 ? foods : undefined,
+            annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
+          };
         }
 
         return { markdown: 'Error: No response from model.', macros: null };
@@ -372,9 +415,9 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       }
     },
 
-    async analyzeBodyPhoto(imageBase64: string): Promise<string> {
+    async analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult> {
       try {
-        return await callGeminiAPI(
+        const result = await callGeminiAPIWithImages(
           [
             { role: 'system', content: BODY_ANALYSIS_PROMPT },
             {
@@ -387,17 +430,21 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 1500, isVisionTask: true }
         );
+        return {
+          markdown: result.text,
+          annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
+        };
       } catch (error) {
         const aiError = error as AIError;
-        return `Error: ${aiError.message}`;
+        return { markdown: `Error: ${aiError.message}` };
       }
     },
 
-    async analyzeProgress(images: string[], metrics: string): Promise<string> {
+    async analyzeProgress(images: string[], metrics: string): Promise<ProgressAnalysisResult> {
       try {
         const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        return await callGeminiAPI(
+        const result = await callGeminiAPIWithImages(
           [
             { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
             {
@@ -410,9 +457,13 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 2000, isVisionTask: true }
         );
+        return {
+          markdown: result.text,
+          annotatedImages: result.annotatedImages.length > 0 ? result.annotatedImages : undefined,
+        };
       } catch (error) {
         const aiError = error as AIError;
-        return `Error: ${aiError.message}`;
+        return { markdown: `Error: ${aiError.message}` };
       }
     },
 

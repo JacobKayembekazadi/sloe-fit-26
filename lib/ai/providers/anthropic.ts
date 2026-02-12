@@ -11,6 +11,8 @@ import type {
   WeeklyPlan,
   WeeklyPlanGenerationInput,
   AIError,
+  BodyAnalysisResult,
+  ProgressAnalysisResult,
 } from '../types';
 import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlock } from '../utils';
 import {
@@ -306,9 +308,9 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
       }
     },
 
-    async analyzeBodyPhoto(imageBase64: string): Promise<string> {
+    async analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult> {
       try {
-        return await this.chat(
+        const markdown = await this.chat(
           [
             { role: 'system', content: BODY_ANALYSIS_PROMPT },
             {
@@ -321,17 +323,19 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 1500, timeoutMs: 25000 }
         );
+        // Anthropic doesn't support annotated images, return text only
+        return { markdown };
       } catch (error) {
         const aiError = error as AIError;
-        return `Error: ${aiError.message}`;
+        return { markdown: `Error: ${aiError.message}` };
       }
     },
 
-    async analyzeProgress(images: string[], metrics: string): Promise<string> {
+    async analyzeProgress(images: string[], metrics: string): Promise<ProgressAnalysisResult> {
       try {
         const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        return await this.chat(
+        const markdown = await this.chat(
           [
             { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
             {
@@ -344,9 +348,11 @@ export function createAnthropicProvider(apiKey: string): AIProvider {
           ],
           { maxTokens: 2000, timeoutMs: 60000 }
         );
+        // Anthropic doesn't support annotated images, return text only
+        return { markdown };
       } catch (error) {
         const aiError = error as AIError;
-        return `Error: ${aiError.message}`;
+        return { markdown: `Error: ${aiError.message}` };
       }
     },
 

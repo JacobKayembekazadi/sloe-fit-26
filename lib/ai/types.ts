@@ -79,10 +79,21 @@ export interface TextMealAnalysis {
   markdown: string;
 }
 
+/**
+ * Annotated image from Gemini 3 Agentic Vision
+ * When the model draws on images (circles food, marks posture lines, etc.)
+ */
+export interface AnnotatedImage {
+  mimeType: string;    // e.g., 'image/png', 'image/jpeg'
+  data: string;        // base64-encoded image data
+  description?: string; // optional description of annotations
+}
+
 export interface PhotoMealAnalysis {
   markdown: string;
   macros: MacroTotals | null;
   foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
+  annotatedImages?: AnnotatedImage[]; // Images with AI annotations (Gemini 3 Agentic Vision)
 }
 
 export interface MealAnalysisInput {
@@ -174,6 +185,16 @@ export interface BodyAnalysisInput {
   imageBase64: string;
 }
 
+export interface BodyAnalysisResult {
+  markdown: string;
+  annotatedImages?: AnnotatedImage[]; // Images with AI annotations (posture lines, muscle highlights)
+}
+
+export interface ProgressAnalysisResult {
+  markdown: string;
+  annotatedImages?: AnnotatedImage[]; // Side-by-side comparison annotations
+}
+
 export interface ProgressAnalysisInput {
   images: string[]; // base64 data URLs
   metrics: string;
@@ -226,7 +247,7 @@ export interface AIProvider {
   /**
    * Analyze body composition photo
    */
-  analyzeBodyPhoto(imageBase64: string): Promise<string>;
+  analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult>;
 
   /**
    * Analyze progress photos
@@ -234,7 +255,7 @@ export interface AIProvider {
   analyzeProgress(
     images: string[],
     metrics: string
-  ): Promise<string>;
+  ): Promise<ProgressAnalysisResult>;
 
   /**
    * Generate personalized workout

@@ -353,11 +353,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       const result = await analyzeProgress(files, metrics.join('\n'));
 
       if (gen !== analysisGenRef.current) return;
-      if (result.startsWith('Error:')) {
-        setAnalysisError(result.replace(/^Error:\s*/, ''));
+      if (result.markdown.startsWith('Error:')) {
+        setAnalysisError(result.markdown.replace(/^Error:\s*/, ''));
         showToast('Progress analysis failed', 'error');
       } else {
-        setAnalysisResult(result);
+        setAnalysisResult(result.markdown);
       }
     } catch {
       if (gen !== analysisGenRef.current) return;

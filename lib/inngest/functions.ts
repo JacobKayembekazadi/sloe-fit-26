@@ -101,7 +101,7 @@ export const analyzeBodyPhoto = inngest.createFunction(
     const result = await step.run('analyze-body', async () => {
       const { data, provider } = await withFallback(
         p => p.analyzeBodyPhoto(imageBase64),
-        r => typeof r === 'string' && r.startsWith('Error:')
+        r => r.markdown.startsWith('Error:')
       );
       return { data, provider };
     });

@@ -1,5 +1,5 @@
 import { withFallback } from '../../lib/ai';
-import type { AIResponse } from '../../lib/ai/types';
+import type { AIResponse, ProgressAnalysisResult } from '../../lib/ai/types';
 import { apiGate, getErrorType, validateImageSize, sanitizeAIInput } from '../../lib/ai/apiHelpers';
 
 export const config = {
@@ -33,7 +33,7 @@ export default async function handler(req: Request): Promise<Response> {
         JSON.stringify({
           success: false,
           error: { type: 'invalid_request', message: 'Images are required', retryable: false },
-        } as AIResponse<string>),
+        } as AIResponse<ProgressAnalysisResult>),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -49,7 +49,7 @@ export default async function handler(req: Request): Promise<Response> {
         JSON.stringify({
           success: false,
           error: { type: 'invalid_request', message: 'Metrics are required', retryable: false },
-        } as AIResponse<string>),
+        } as AIResponse<ProgressAnalysisResult>),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -59,7 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: result, provider: usedProvider } = await withFallback(
       p => p.analyzeProgress(images, safeMetrics),
-      r => r.startsWith('Error:')
+      r => r.markdown.startsWith('Error:')
     );
 
     return new Response(JSON.stringify({
@@ -67,14 +67,14 @@ export default async function handler(req: Request): Promise<Response> {
       data: result,
       provider: usedProvider,
       durationMs: Date.now() - startTime,
-    } as AIResponse<string>), {
+    } as AIResponse<ProgressAnalysisResult>), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
     const aiError = error as { message?: string; retryable?: boolean };
 
-    const response: AIResponse<string> = {
+    const response: AIResponse<ProgressAnalysisResult> = {
       success: false,
       error: {
         type: getErrorType(error),

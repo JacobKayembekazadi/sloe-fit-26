@@ -36,6 +36,15 @@ export interface TextMealAnalysisResult {
   markdown: string;
 }
 
+/**
+ * Annotated image from Gemini 3 Agentic Vision
+ */
+export interface AnnotatedImage {
+  mimeType: string;
+  data: string;  // base64
+  description?: string;
+}
+
 export interface MealAnalysisResult {
   markdown: string;
   macros: {
@@ -45,6 +54,17 @@ export interface MealAnalysisResult {
     fats: number;
   } | null;
   foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
+  annotatedImages?: AnnotatedImage[]; // AI-annotated images from Gemini 3 Agentic Vision
+}
+
+export interface BodyAnalysisResult {
+  markdown: string;
+  annotatedImages?: AnnotatedImage[]; // AI-annotated images (posture lines, muscle highlights)
+}
+
+export interface ProgressAnalysisResult {
+  markdown: string;
+  annotatedImages?: AnnotatedImage[]; // AI-annotated images (side-by-side comparison)
 }
 
 export interface GeneratedWorkout {
@@ -481,14 +501,14 @@ export function getSubscriptionErrorCode(error: AIResponse<unknown>['error']): s
 /**
  * Analyze a body photo for composition assessment
  */
-export const analyzeBodyPhoto = async (image: File): Promise<string> => {
+export const analyzeBodyPhoto = async (image: File): Promise<BodyAnalysisResult> => {
   const imageBase64 = await compressImageForAnalysis(image);
-  const result = await callAPI<string>('/analyze-body', { imageBase64 }, 'analyzeBodyPhoto');
+  const result = await callAPI<BodyAnalysisResult>('/analyze-body', { imageBase64 }, 'analyzeBodyPhoto');
 
   if (result.success && result.data) {
     return result.data;
   }
-  return `Error: ${formatErrorForUser(result.error)}`;
+  return { markdown: `Error: ${formatErrorForUser(result.error)}` };
 };
 
 /**
@@ -510,14 +530,14 @@ export const analyzeMealPhoto = async (image: File, userGoal: string | null): Pr
 /**
  * Analyze progress photos and metrics
  */
-export const analyzeProgress = async (images: File[], metrics: string): Promise<string> => {
+export const analyzeProgress = async (images: File[], metrics: string): Promise<ProgressAnalysisResult> => {
   const imageUrls = await Promise.all(images.map(compressImageForAnalysis));
-  const result = await callAPI<string>('/analyze-progress', { images: imageUrls, metrics }, 'analyzeProgress');
+  const result = await callAPI<ProgressAnalysisResult>('/analyze-progress', { images: imageUrls, metrics }, 'analyzeProgress');
 
   if (result.success && result.data) {
     return result.data;
   }
-  return `Error: ${formatErrorForUser(result.error)}`;
+  return { markdown: `Error: ${formatErrorForUser(result.error)}` };
 };
 
 /**
