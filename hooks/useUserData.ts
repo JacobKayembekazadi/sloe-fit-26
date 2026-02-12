@@ -3,6 +3,7 @@ import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate, supabas
 import { useAuth } from '../contexts/AuthContext';
 import { reportError, createScopedReporter } from '../utils/sentryHelpers';
 import { CompletedWorkout, NutritionLog } from '../App';
+import type { SupplementPreferences } from '../services/supplementService';
 import {
     queueMeal,
     getQueuedMeals,
@@ -47,6 +48,10 @@ export interface UserProfile {
     // FIX 3.1: Subscription status for payment gating
     subscription_status: SubscriptionStatus | null;
     trial_started_at: string | null;
+    // Supplement preferences for smart recommendations
+    supplement_preferences: SupplementPreferences | null;
+    // When user signed up (for day counter)
+    created_at: string | null;
 }
 
 // Meal entry type matching database schema
@@ -115,7 +120,9 @@ const DEFAULT_PROFILE: UserProfile = {
     trainer_id: null,
     full_name: null,
     subscription_status: 'trial',
-    trial_started_at: null
+    trial_started_at: null,
+    supplement_preferences: null,
+    created_at: null
 };
 
 const INITIAL_STATE: DataState = {
@@ -248,7 +255,7 @@ export const useUserData = () => {
         try {
             // Fetch all data in parallel using supabaseGet (retry, timeout, dedup built-in)
             const profileFetch = supabaseGet<any[]>(
-                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id&id=eq.${userId}`
+                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at&id=eq.${userId}`
             ).then(r => {
                 if (r.data && Array.isArray(r.data) && r.data.length > 0) {
                     return { data: r.data[0], error: null };
@@ -296,7 +303,9 @@ export const useUserData = () => {
                     trainer_id: p.trainer_id,
                     full_name: p.full_name,
                     subscription_status: p.subscription_status || 'trial',
-                    trial_started_at: p.trial_started_at || null
+                    trial_started_at: p.trial_started_at || null,
+                    supplement_preferences: p.supplement_preferences || null,
+                    created_at: p.created_at || null
                 };
                 goal = p.goal;
                 onboardingComplete = p.onboarding_complete ?? false;
@@ -612,10 +621,17 @@ export const useUserData = () => {
     }, [user, fetchAllData]);
 
     // Update goal
-    const updateGoal = useCallback(async (newGoal: string): Promise<boolean> => {
+    // RALPH LOOP 20: Returns info about whether supplements should be reviewed
+    const updateGoal = useCallback(async (
+        newGoal: string,
+        showToast?: (message: string, type: 'success' | 'error' | 'info') => void
+    ): Promise<boolean> => {
         if (!user) return false;
 
         const oldGoal = data.goal;
+        const hasSupplements = data.profile.supplement_preferences?.enabled &&
+            (data.profile.supplement_preferences.products?.length > 0 ||
+             data.profile.supplement_preferences.openToRecommendations);
 
         // Optimistic update
         setData(prev => ({
@@ -638,6 +654,12 @@ export const useUserData = () => {
                 }));
                 return false;
             }
+
+            // RALPH LOOP 20: Prompt user to review supplements when goal changes
+            if (hasSupplements && oldGoal && oldGoal !== newGoal) {
+                showToast?.('Goal updated! Review your supplement stack for your new goal.', 'info');
+            }
+
             return true;
         } catch {
             setData(prev => ({
@@ -647,7 +669,7 @@ export const useUserData = () => {
             }));
             return false;
         }
-    }, [user, data.goal]);
+    }, [user, data.goal, data.profile.supplement_preferences]);
 
     // Add workout - returns true if saved successfully, false otherwise
     const addWorkout = useCallback(async (title: string, exercises: any[], recoveryRating?: number): Promise<boolean> => {
@@ -1197,8 +1219,72 @@ export const useUserData = () => {
         }
     }, [user, data.favorites]);
 
+    // Update supplement preferences
+    // RALPH LOOP 10: Added error feedback (was silent failure)
+    // RALPH LOOP 17: Validates supplement IDs exist in catalog
+    // RALPH LOOP 18: Fixed stale closure - uses functional updater for revert
+    const updateSupplementPreferences = useCallback(async (
+        prefs: SupplementPreferences,
+        showToast?: (message: string, type: 'success' | 'error' | 'info') => void
+    ): Promise<boolean> => {
+        if (!user) return false;
+
+        // RALPH LOOP 17: Validate supplement IDs exist in catalog
+        // Import dynamically to avoid circular dependency
+        const { SUPPLEMENT_CATALOG } = await import('../services/supplementService');
+        const validIds = SUPPLEMENT_CATALOG.map(s => s.id);
+        const validatedProducts = prefs.products.filter(id => validIds.includes(id));
+
+        // Warn if some IDs were invalid (removed)
+        if (validatedProducts.length !== prefs.products.length) {
+            console.warn('[updateSupplementPreferences] Removed invalid supplement IDs:',
+                prefs.products.filter(id => !validIds.includes(id))
+            );
+        }
+
+        const validatedPrefs: SupplementPreferences = {
+            ...prefs,
+            products: validatedProducts
+        };
+
+        // Optimistic update
+        setData(prev => ({
+            ...prev,
+            profile: { ...prev.profile, supplement_preferences: validatedPrefs }
+        }));
+
+        try {
+            const { error } = await supabaseUpdate(
+                `profiles?id=eq.${user.id}`,
+                { supplement_preferences: validatedPrefs }
+            );
+
+            if (error) {
+                // RALPH LOOP 10: Show error toast
+                showToast?.('Failed to save supplement preferences. Please try again.', 'error');
+                // RALPH LOOP 18: Use functional updater to get current state (not stale closure)
+                setData(prev => ({
+                    ...prev,
+                    profile: { ...prev.profile, supplement_preferences: prev.profile.supplement_preferences }
+                }));
+                return false;
+            }
+            return true;
+        } catch {
+            // RALPH LOOP 10: Show error toast
+            showToast?.('Network error. Please check your connection.', 'error');
+            // RALPH LOOP 18: Use functional updater to get current state
+            setData(prev => ({
+                ...prev,
+                profile: { ...prev.profile, supplement_preferences: prev.profile.supplement_preferences }
+            }));
+            return false;
+        }
+    }, [user]);
+
     // Refetch profile (called after onboarding or Settings save)
     // FIX 26: Accept optional savedData for optimistic update (avoids stale read replica race)
+    // RALPH LOOP 9: Bypasses hasFetchedRef guard to allow legitimate refetch after onboarding
     const refetchProfile = useCallback(async (savedData?: Partial<UserProfile>): Promise<boolean> => {
         if (!user) return false;
 
@@ -1219,10 +1305,11 @@ export const useUserData = () => {
             }));
         }
 
-        // Still fetch from DB to get authoritative state (may arrive after optimistic update)
+        // RALPH LOOP 9: Directly call supabaseGetSingle instead of going through fetchAllData
+        // This bypasses the hasFetchedRef guard that was preventing legitimate refetches
         try {
             const { data: profile, error } = await supabaseGetSingle<any>(
-                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id`
+                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at,subscription_status,trial_started_at`
             );
 
             if (error) {
@@ -1250,7 +1337,9 @@ export const useUserData = () => {
                         trainer_id: profile.trainer_id,
                         full_name: profile.full_name,
                         subscription_status: profile.subscription_status || 'trial',
-                        trial_started_at: profile.trial_started_at || null
+                        trial_started_at: profile.trial_started_at || null,
+                        supplement_preferences: profile.supplement_preferences || null,
+                        created_at: profile.created_at || null
                     }
                 }));
             }
@@ -1347,6 +1436,7 @@ export const useUserData = () => {
         addToFavorites,
         removeFromFavorites,
         refetchProfile,
+        updateSupplementPreferences,
         retry
     };
 };

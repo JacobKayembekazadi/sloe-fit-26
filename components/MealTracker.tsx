@@ -10,7 +10,7 @@ import SupplementRecommendationCard from './SupplementRecommendationCard';
 import DailyNutritionRing from './DailyNutritionRing';
 import TextMealInput from './TextMealInput';
 import QuickAddMeal, { SavedMeal } from './QuickAddMeal';
-import { getRecommendations } from '../services/supplementService';
+import { getSmartRecommendations, type SupplementPreferences } from '../services/supplementService';
 import { MealEntry, FavoriteFood } from '../hooks/useUserData';
 import type { NutritionLog } from '../App';
 import WeeklyNutritionSummary from './WeeklyNutritionSummary';
@@ -43,6 +43,8 @@ interface MealTrackerProps {
   // History mode props
   nutritionLogs?: NutritionLog[];
   goal?: string | null;
+  // Supplement preferences for conditional display
+  supplementPreferences?: SupplementPreferences | null;
 }
 
 import Skeleton from './ui/Skeleton';
@@ -81,7 +83,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   onDeleteMealEntry,
   onAddToFavorites,
   nutritionLogs = [],
-  goal
+  goal,
+  supplementPreferences = null
 }) => {
   const { showToast } = useToast();
   const [tabMode, setTabMode] = useState<TabMode>('log');
@@ -127,8 +130,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       }));
   }, [mealEntries]);
 
-  // Memoize supplement recommendations to avoid re-computation on every render
-  const supplementRecs = useMemo(() => getRecommendations(userGoal), [userGoal]);
+  // Memoize supplement recommendations - only show if user has enabled supplements
+  const supplementRecs = useMemo(
+    () => getSmartRecommendations(userGoal, supplementPreferences),
+    [userGoal, supplementPreferences]
+  );
 
   // Convert favorites to SavedMeal format for QuickAddMeal component
   const favorites: SavedMeal[] = useMemo(() =>
@@ -1139,8 +1145,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         </div>
       )}
 
-      {/* Supplement Recommendations */}
-      {result && (
+      {/* Supplement Recommendations - Only show if user has supplements enabled */}
+      {result && supplementRecs.length > 0 && (
         <div className="pt-6 border-t border-white/10">
           <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
             <span className="w-2 h-8 bg-[var(--color-primary)] rounded-full"></span>

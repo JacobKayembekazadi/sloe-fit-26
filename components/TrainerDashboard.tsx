@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { supabaseGet, supabaseGetSingle, supabaseInsert, supabaseUpdate, supabaseUpsert } from '@/services/supabaseRawFetch';
 import LoaderIcon from './icons/LoaderIcon';
+import { SUPPLEMENT_CATALOG } from '@/services/supplementService';
 
 import Skeleton from './ui/Skeleton';
 
@@ -108,6 +109,11 @@ interface Client {
     avg_calories?: number;
     notes?: string;
     unread_messages?: number;
+    supplement_preferences?: {
+        enabled: boolean;
+        products: string[];
+        openToRecommendations: boolean;
+    } | null;
 }
 
 interface Invite {
@@ -360,7 +366,7 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
             
             // Fetch clients with their stats (using raw fetch)
             const { data: clientData, error: clientError } = await supabaseGet<any[]>(
-                `profiles?trainer_id=eq.${user.id}&select=id,full_name,goal,created_at`
+                `profiles?trainer_id=eq.${user.id}&select=id,full_name,goal,created_at,supplement_preferences`
             );
 
             
@@ -829,6 +835,50 @@ const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onBack }) => {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Client's Supplement Preferences */}
+                                {selectedClient.supplement_preferences && (
+                                    <div className="card">
+                                        <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-[var(--color-primary)]">medication</span>
+                                            Supplement Stack
+                                        </h3>
+                                        {selectedClient.supplement_preferences.enabled ? (
+                                            <>
+                                                {selectedClient.supplement_preferences.products.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {selectedClient.supplement_preferences.products.map(productId => {
+                                                            const supp = SUPPLEMENT_CATALOG.find(s => s.id === productId);
+                                                            return supp ? (
+                                                                <span
+                                                                    key={productId}
+                                                                    className="px-3 py-1.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-full text-sm font-medium flex items-center gap-1"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-sm">{supp.icon}</span>
+                                                                    {supp.name}
+                                                                </span>
+                                                            ) : null;
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-gray-400 text-sm">
+                                                        {selectedClient.supplement_preferences.openToRecommendations
+                                                            ? 'Open to AI recommendations (no specific products selected)'
+                                                            : 'No supplements selected'}
+                                                    </p>
+                                                )}
+                                                {selectedClient.supplement_preferences.openToRecommendations && (
+                                                    <p className="text-xs text-purple-400 mt-2 flex items-center gap-1">
+                                                        <span className="material-symbols-outlined text-xs">auto_awesome</span>
+                                                        Open to AI supplement suggestions
+                                                    </p>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <p className="text-gray-500 text-sm">Client has opted out of supplements</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Activity Heatmap (simplified week view) */}
                                 <div className="card">

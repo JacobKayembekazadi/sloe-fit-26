@@ -10,6 +10,7 @@
  */
 
 import Client from '@shopify/buy-button-js';
+import { reportWarning } from '../utils/sentryHelpers';
 
 // ============================================================================
 // Types
@@ -99,7 +100,52 @@ const SHOPIFY_CONFIG = {
 export const PRODUCT_IDS = {
   CREATINE: import.meta.env.VITE_SHOPIFY_CREATINE_ID || '',
   PRE_WORKOUT: import.meta.env.VITE_SHOPIFY_PRE_WORKOUT_ID || '',
+  WHEY_PROTEIN: import.meta.env.VITE_SHOPIFY_WHEY_PROTEIN_ID || '',
+  FAT_BURNER: import.meta.env.VITE_SHOPIFY_FAT_BURNER_ID || '',
+  ALPHA_MALE: import.meta.env.VITE_SHOPIFY_ALPHA_MALE_ID || '',
 };
+
+/**
+ * Check if a Shopify product ID is valid (non-empty string)
+ */
+export function isValidProductId(productId: string | undefined | null): boolean {
+  return typeof productId === 'string' && productId.trim().length > 0;
+}
+
+/**
+ * Get list of missing product IDs (for debugging)
+ */
+export function getMissingProductIds(): string[] {
+  const missing: string[] = [];
+  for (const [name, id] of Object.entries(PRODUCT_IDS)) {
+    if (!isValidProductId(id)) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+// RALPH LOOP 24: Production-safe logging for missing product IDs
+// Log in dev mode to console, report to Sentry in production
+const missingProductIds = getMissingProductIds();
+if (missingProductIds.length > 0) {
+  const message = `Missing Shopify product IDs: ${missingProductIds.join(', ')}`;
+
+  if (DEBUG_MODE) {
+    console.warn(
+      `[Shopify] ${message}. ` +
+      `Add VITE_SHOPIFY_${missingProductIds[0]}_ID to your .env file.`
+    );
+  } else {
+    // Report to Sentry in production so we know about missing config
+    reportWarning(message, {
+      category: 'payment',
+      operation: 'shopifyConfig',
+      context: { missingIds: missingProductIds },
+      consoleLog: false, // Don't spam production console
+    });
+  }
+}
 
 // ============================================================================
 // Logging

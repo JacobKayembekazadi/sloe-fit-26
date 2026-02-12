@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import LoaderIcon from './icons/LoaderIcon';
 import CheckIcon from './icons/CheckIcon';
+import { getAllSupplements, type SupplementPreferences } from '../services/supplementService';
 
 interface OnboardingProps {
     onComplete: () => void;
@@ -61,9 +62,17 @@ const ACTIVITY_OPTIONS = [
     { id: 'extremely_active', label: 'Extremely Active', desc: 'Intense daily exercise', emoji: '🔥' },
 ];
 
-type Step = 'welcome' | 'goal' | 'stats' | 'activity' | 'experience' | 'equipment' | 'schedule';
+type Step = 'welcome' | 'goal' | 'stats' | 'activity' | 'experience' | 'equipment' | 'schedule' | 'supplements';
 
-const STEPS: Step[] = ['welcome', 'goal', 'stats', 'activity', 'experience', 'equipment', 'schedule'];
+const STEPS: Step[] = ['welcome', 'goal', 'stats', 'activity', 'experience', 'equipment', 'schedule', 'supplements'];
+
+type SupplementMode = 'not_interested' | 'using' | 'open_to_recommendations';
+
+const SUPPLEMENT_MODE_OPTIONS = [
+    { id: 'using', label: 'Yes, I take supplements', description: 'I already use fitness supplements', emoji: '💊' },
+    { id: 'open_to_recommendations', label: 'Open to recommendations', description: 'Show me what might help my goals', emoji: '🤔' },
+    { id: 'not_interested', label: 'No thanks', description: "I'll pass on supplements for now", emoji: '✋' },
+] as const;
 
 interface ProfileData {
     goal: string | null;
@@ -106,6 +115,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         equipment_access: null,
         days_per_week: 4
     });
+
+    // Supplement preferences state
+    const [supplementMode, setSupplementMode] = useState<SupplementMode | null>(null);
+    const [selectedSupplements, setSelectedSupplements] = useState<string[]>([]);
+    const allSupplements = getAllSupplements();
 
     const userName = user?.user_metadata?.full_name?.split(' ')[0] || 'Champion';
 
@@ -176,6 +190,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         try {
             const heightInches = (parseInt(profile.height_ft) || 0) * 12 + (parseInt(profile.height_in) || 0);
 
+            // Build supplement preferences object
+            const supplementPreferences: SupplementPreferences = {
+                enabled: supplementMode !== 'not_interested',
+                products: supplementMode === 'using' ? selectedSupplements : [],
+                openToRecommendations: supplementMode === 'open_to_recommendations'
+            };
+
             const { error: updateError } = await supabaseUpsert(
                 'profiles',
                 {
@@ -189,6 +210,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     training_experience: profile.training_experience,
                     equipment_access: profile.equipment_access,
                     days_per_week: profile.days_per_week,
+                    supplement_preferences: supplementPreferences,
                     onboarding_complete: true
                 },
                 'id'
@@ -266,6 +288,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             case 'equipment':
                 return !!profile.equipment_access;
             case 'schedule':
+                return true;
+            case 'supplements':
+                // Must select a mode, and if "using" mode, must select at least one supplement
+                if (!supplementMode) return false;
+                if (supplementMode === 'using' && selectedSupplements.length === 0) return false;
                 return true;
             default:
                 return false;
@@ -829,12 +856,146 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 </div>
                             </div>
                         )}
+
+                        {/* SUPPLEMENTS STEP */}
+                        {step === 'supplements' && (
+                            <div className="space-y-6">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-3xl font-black text-white">Supplements</h2>
+                                    <p className="text-gray-400">Are you currently taking any fitness supplements?</p>
+                                </div>
+
+                                {error && (
+                                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
+                                        <div className="flex items-start gap-3">
+                                            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <div className="flex-1">
+                                                <p className="text-red-400 text-sm">{error}</p>
+                                                <button
+                                                    onClick={handleComplete}
+                                                    className="text-xs mt-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-full transition-colors"
+                                                >
+                                                    Try Again
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Mode Selection */}
+                                <div className="space-y-3">
+                                    {SUPPLEMENT_MODE_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.id}
+                                            onClick={() => {
+                                                setSupplementMode(option.id);
+                                                if (option.id === 'not_interested') {
+                                                    setSelectedSupplements([]);
+                                                }
+                                            }}
+                                            className={`w-full p-4 rounded-xl border-2 text-left transition-all duration-200 ${
+                                                supplementMode === option.id
+                                                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                                                    : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                                            }`}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <span className="text-2xl">{option.emoji}</span>
+                                                <div className="flex-1">
+                                                    <h4 className="font-bold text-white">{option.label}</h4>
+                                                    <p className="text-sm text-gray-400 mt-0.5">{option.description}</p>
+                                                </div>
+                                                {supplementMode === option.id && (
+                                                    <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Supplement Selection (only if "using" mode) */}
+                                {supplementMode === 'using' && (
+                                    <div className="space-y-3 mt-6">
+                                        <h4 className="text-sm font-bold text-gray-400 uppercase">Select the supplements you use:</h4>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {allSupplements.map((supp) => (
+                                                <button
+                                                    key={supp.id}
+                                                    onClick={() => {
+                                                        setSelectedSupplements(prev =>
+                                                            prev.includes(supp.id)
+                                                                ? prev.filter(id => id !== supp.id)
+                                                                : [...prev, supp.id]
+                                                        );
+                                                    }}
+                                                    className={`w-full p-3 rounded-xl border text-left transition-all ${
+                                                        selectedSupplements.includes(supp.id)
+                                                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                                                            : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="material-symbols-outlined text-xl text-gray-400">
+                                                            {supp.icon}
+                                                        </span>
+                                                        <div className="flex-1">
+                                                            <span className="font-medium text-white">{supp.name}</span>
+                                                            <p className="text-xs text-gray-500">{supp.benefit}</p>
+                                                        </div>
+                                                        {selectedSupplements.includes(supp.id) && (
+                                                            <CheckIcon className="w-5 h-5 text-[var(--color-primary)]" />
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/* Validation message */}
+                                        {selectedSupplements.length === 0 && (
+                                            <p className="text-sm text-yellow-400 flex items-center gap-2 mt-2">
+                                                <span className="material-symbols-outlined text-lg">warning</span>
+                                                Select at least one supplement to continue
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Info card for "open to recommendations" */}
+                                {supplementMode === 'open_to_recommendations' && (
+                                    <div className="card p-4 bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 mt-4">
+                                        <div className="flex items-start gap-3">
+                                            <span className="material-symbols-outlined text-[var(--color-primary)]">tips_and_updates</span>
+                                            <p className="text-sm text-gray-300">
+                                                We'll suggest supplements based on your <strong className="text-white">{profile.goal}</strong> goal.
+                                                {profile.goal === 'CUT' && ' For cutting, fat burners and whey protein can help.'}
+                                                {profile.goal === 'BULK' && ' For bulking, creatine, protein, and Alpha Male can maximize gains.'}
+                                                {profile.goal === 'RECOMP' && ' For recomp, protein and creatine support both goals.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Info card for "not interested" */}
+                                {supplementMode === 'not_interested' && (
+                                    <div className="card p-4 bg-gray-800/50 border border-gray-700 mt-4">
+                                        <div className="flex items-start gap-3">
+                                            <span className="material-symbols-outlined text-gray-400">check_circle</span>
+                                            <p className="text-sm text-gray-400">
+                                                No problem! You can always change this later in Settings. Your workouts and nutrition
+                                                recommendations won't include supplement suggestions.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Fixed bottom nav buttons — ALWAYS visible on every step except welcome */}
-            {step !== 'welcome' && renderFixedNavButtons({ isLast: step === 'schedule' })}
+            {step !== 'welcome' && renderFixedNavButtons({ isLast: step === 'supplements' })}
         </div>
     );
 };

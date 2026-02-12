@@ -1,0 +1,122 @@
+# Cursor Rules - Sloe Fit AI Coach
+
+## MANDATORY: Read Docs First
+
+Before ANY code changes, read these files in order:
+1. CONTINUITY.md - Agent playbook
+2. docs/HANDOFF.md - Last agent's state
+3. docs/LLM_CONTEXT.md - Architecture
+
+DO NOT START CODING UNTIL YOU'VE READ THESE.
+
+---
+
+## Context Window Handoff
+
+When context is running low, STOP and update docs/HANDOFF.md:
+
+```markdown
+## Handoff - [Date] - Cursor
+
+### Summary
+- Task: [what]
+- Files: [list]
+- Status: [status]
+
+### Next Steps
+1. [step]
+```
+
+---
+
+## Code Style
+
+- TypeScript strict mode
+- Functional React components
+- Tailwind CSS v4 (using @tailwindcss/vite)
+- No class components
+- Prefer hooks over HOCs
+
+## File Conventions
+
+- Components: PascalCase (Button.tsx)
+- Utilities: camelCase (formatDate.ts)
+- Types: PascalCase with .types.ts suffix
+- Hooks: use prefix (useAuth.ts)
+
+## Imports
+
+```typescript
+// 1. React/external
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+
+// 2. Internal absolute
+import { Button } from '@/components/ui/Button';
+import { useAuth } from '@/hooks/useAuth';
+
+// 3. Relative
+import { formatDate } from './utils';
+
+// 4. Types
+import type { User } from '@/types';
+```
+
+## Component Pattern
+
+```typescript
+interface Props {
+  title: string;
+  onAction?: () => void;
+}
+
+export function ComponentName({ title, onAction }: Props) {
+  const [state, setState] = useState(false);
+
+  return (
+    <div className="...">
+      {title}
+    </div>
+  );
+}
+```
+
+## Tailwind Classes
+
+- Use design tokens from tailwind.config
+- Mobile-first responsive: base -> sm -> md -> lg
+- Dark mode: dark: prefix
+- Sloe Volt accent: text-sloe-volt, bg-sloe-volt
+
+## Key Directories
+
+```
+src/
+├── components/     # React components
+├── pages/          # Route pages
+├── lib/            # Utilities (supabase, gemini)
+├── hooks/          # Custom hooks
+└── types/          # TypeScript types
+```
+
+## Tech Stack
+
+- React + Vite + TypeScript
+- Tailwind CSS v4
+- Supabase (Auth, DB)
+- Google Gemini API
+- Shopify Buy Button
+
+## Before Committing
+
+1. npm run build (no errors)
+2. Check TypeScript types
+3. Update docs/HANDOFF.md if needed
+
+## Commit Format
+
+```
+type(scope): description
+```
+
+Types: feat, fix, docs, refactor, test, chore

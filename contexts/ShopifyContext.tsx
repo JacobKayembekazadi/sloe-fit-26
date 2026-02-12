@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { createCheckout, addToCart as addToCartService, removeFromCart, updateCartQuantity, getCheckoutUrl, initializeShopifyClient } from '../services/shopifyService';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createCheckout, addToCart as addToCartService, removeFromCart, updateCartQuantity, getCheckoutUrl, initializeShopifyClient, ShopifyProduct } from '../services/shopifyService';
 import { reportError } from '../utils/sentryHelpers';
 
 interface ShopifyContextType {
@@ -10,6 +10,9 @@ interface ShopifyContextType {
     updateQuantity: (lineItemId: string, quantity: number) => Promise<void>;
     getCartURL: () => string;
     lineItemsCount: number;
+    // RALPH LOOP 13: Product caching to prevent N+1 API calls
+    getProduct: (productId: string) => ShopifyProduct | undefined;
+    cacheProduct: (productId: string, product: ShopifyProduct) => void;
 }
 
 const ShopifyContext = createContext<ShopifyContextType | undefined>(undefined);
@@ -29,6 +32,20 @@ interface ShopifyProviderProps {
 export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) => {
     const [checkout, setCheckout] = useState<any | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    // RALPH LOOP 13: Product cache to prevent N+1 Shopify API calls
+    // Using useRef to persist across renders without causing re-renders
+    const productCacheRef = useRef<Map<string, ShopifyProduct>>(new Map());
+
+    // RALPH LOOP 13: Get cached product
+    const getProduct = useCallback((productId: string): ShopifyProduct | undefined => {
+        return productCacheRef.current.get(productId);
+    }, []);
+
+    // RALPH LOOP 13: Cache a product after fetching
+    const cacheProduct = useCallback((productId: string, product: ShopifyProduct): void => {
+        productCacheRef.current.set(productId, product);
+    }, []);
 
     // Initialize Shopify client and checkout on mount
     useEffect(() => {
@@ -70,7 +87,7 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         initCheckout();
     }, []);
 
-    const addToCart = async (variantId: string, quantity: number = 1) => {
+    const addToCart = useCallback(async (variantId: string, quantity: number = 1) => {
         if (!checkout) return;
 
         try {
@@ -88,9 +105,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [checkout]);
 
-    const removeLineItem = async (lineItemId: string) => {
+    const removeLineItem = useCallback(async (lineItemId: string) => {
         if (!checkout) return;
 
         try {
@@ -108,9 +125,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [checkout]);
 
-    const updateQuantity = async (lineItemId: string, quantity: number) => {
+    const updateQuantity = useCallback(async (lineItemId: string, quantity: number) => {
         if (!checkout) return;
 
         try {
@@ -128,12 +145,12 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [checkout]);
 
-    const getCartURL = (): string => {
+    const getCartURL = useCallback((): string => {
         if (!checkout) return '';
         return getCheckoutUrl(checkout);
-    };
+    }, [checkout]);
 
     const lineItemsCount = checkout?.lineItems?.reduce((total: number, item: any) => total + item.quantity, 0) || 0;
 
@@ -145,6 +162,9 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         updateQuantity,
         getCartURL,
         lineItemsCount,
+        // RALPH LOOP 13: Expose product cache methods
+        getProduct,
+        cacheProduct,
     };
 
     return <ShopifyContext.Provider value={value}>{children}</ShopifyContext.Provider>;

@@ -77,11 +77,22 @@ const TIMEOUTS = {
 let requestCounter = 0;
 const requestLogs: RequestLog[] = [];
 
+// RALPH LOOP 28: Sanitize endpoints to mask PII (user IDs) in logs
+function sanitizeEndpoint(endpoint: string): string {
+  // Mask UUID patterns (e.g., id=eq.abc123-def456-...)
+  return endpoint.replace(
+    /id=eq\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    'id=eq.[REDACTED]'
+  );
+}
+
 function logRequest(operation: string, endpoint: string, method: string): RequestLog {
+  // RALPH LOOP 28: Sanitize endpoint in logs to protect PII
+  const sanitizedEndpoint = sanitizeEndpoint(endpoint);
   const log: RequestLog = {
     id: ++requestCounter,
     operation,
-    endpoint,
+    endpoint: sanitizedEndpoint, // Store sanitized version
     method,
     startTime: Date.now(),
     status: 'pending',
@@ -91,7 +102,7 @@ function logRequest(operation: string, endpoint: string, method: string): Reques
     requestLogs.shift();
   }
   if (DEBUG_MODE) {
-    console.log(`[Supabase #${log.id}] Starting: ${operation} ${method} ${endpoint}`);
+    console.log(`[Supabase #${log.id}] Starting: ${operation} ${method} ${sanitizedEndpoint}`);
   }
   return log;
 }

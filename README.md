@@ -1,5 +1,23 @@
 # Sloe Fit AI Coach
 
+---
+
+## Agent Startup Checklist
+
+> **AI Agents**: Complete this before ANY work.
+
+```
+[ ] 1. Read CONTINUITY.md         <- Agent playbook
+[ ] 2. Read docs/HANDOFF.md       <- Last agent's state
+[ ] 3. Read docs/LLM_CONTEXT.md   <- Full architecture
+[ ] 4. git status && git log -5   <- Current state
+[ ] 5. THEN start working
+```
+
+**Before context runs out**: Update `docs/HANDOFF.md` with your progress.
+
+---
+
 The complete transformation intelligence behind King Kay's premium fitness platform. This mobile-first web application combines AI-powered body analysis, nutrition tracking, and mindset coaching into a unified experience.
 
 ## ✨ Key Features

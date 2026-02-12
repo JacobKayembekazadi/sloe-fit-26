@@ -116,7 +116,9 @@ Calculate based on goal (assume 180 lbs for calculation examples, but personaliz
 ---
 
 ## SUPPLEMENT RECOMMENDATIONS
-Integrate sloe fit supplement stack naturally: Creatine Monohydrate (5g daily) and Pre-Workout (30 mins before training). Provide goal-specific benefits for each.
+**IMPORTANT:** Only include supplement recommendations if the user has indicated they use or are open to supplements. If supplement context is NOT provided below, completely skip the supplement section in your output - do not mention supplements at all.
+
+If supplement context IS provided, naturally integrate the user's specific supplements with goal-specific benefits.
 
 ---
 
@@ -239,20 +241,18 @@ Structure response exactly like this:
 
 ---
 
-### 💊 YOUR SUPPLEMENT STACK FOR MAXIMUM RESULTS
+### 💊 YOUR SUPPLEMENT STACK (ONLY IF USER HAS SUPPLEMENTS ENABLED)
 
-Based on your **[CUT/BULK/RECOMP]** goal, here's your non-negotiable stack:
+**Skip this entire section if no supplement context was provided.**
 
-**✅ CREATINE MONOHYDRATE - 5g Daily**
-[Insert goal-specific benefits]
+If supplements are enabled, format as:
 
-**✅ PRE-WORKOUT - 30 Minutes Before Training**
-[Insert goal-specific benefits]
+Based on your **[CUT/BULK/RECOMP]** goal, here's your personalized stack:
 
-**Why These Two Matter:**
-[Brief explanation]
+[List ONLY the supplements the user indicated they use or are recommended based on their preferences]
 
-**Get Your Stack:** [Link to sloe fit Shopify store]
+**Why These Matter for Your Goal:**
+[Brief explanation tailored to their specific supplements and goal]
 
 ---
 

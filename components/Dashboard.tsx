@@ -116,9 +116,84 @@ const Dashboard: React.FC<DashboardProps> = ({
         return () => clearTimeout(timerId);
     }, []);
 
-    // Calculate current day (day of month)
-    const currentDay = new Date().getDate();
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    // RALPH LOOP 22: Refresh day counter when tab becomes visible
+    // Handles case where tab was backgrounded past midnight
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                forceRender();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
+    // Calculate program day (days since user started) instead of calendar day
+    const { dayDisplay, isMilestone } = useMemo(() => {
+        if (!userProfile?.created_at) {
+            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+        }
+
+        // RALPH LOOP 29: Validate created_at format with try/catch
+        let startDate: Date;
+        try {
+            startDate = new Date(userProfile.created_at);
+            // Check if date is valid
+            if (isNaN(startDate.getTime())) {
+                console.warn('[Dashboard] Invalid created_at format:', userProfile.created_at);
+                return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+            }
+        } catch {
+            console.warn('[Dashboard] Failed to parse created_at:', userProfile.created_at);
+            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+        }
+
+        // RALPH LOOP 21: DST-safe day calculation using UTC calendar days
+        // This avoids issues where setHours(0,0,0,0) can shift days during DST transitions
+        const todayUTC = Date.UTC(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            new Date().getDate()
+        );
+        const startUTC = Date.UTC(
+            startDate.getFullYear(),
+            startDate.getMonth(),
+            startDate.getDate()
+        );
+
+        // Calculate difference in calendar days (not affected by DST)
+        const MS_PER_DAY = 1000 * 60 * 60 * 24;
+        const diffDays = Math.floor((todayUTC - startUTC) / MS_PER_DAY) + 1; // +1 so Day 1 is first day
+        const day = Math.max(1, diffDays);
+
+        // Format display for large numbers
+        let display: string;
+        let milestone = false;
+
+        // Check for milestones
+        const MILESTONES = [7, 14, 30, 60, 90, 100, 180, 365];
+        if (MILESTONES.includes(day)) {
+            milestone = true;
+        }
+
+        // Format display based on day count
+        if (day >= 365) {
+            const years = Math.floor(day / 365);
+            const remainingDays = day % 365;
+            if (remainingDays === 0) {
+                display = `Year ${years}`;
+                milestone = true;
+            } else {
+                display = `Year ${years}, Day ${remainingDays}`;
+            }
+        } else if (day > 99) {
+            display = `Day ${day}`;
+        } else {
+            display = `Day ${day}`;
+        }
+
+        return { programDay: day, dayDisplay: display, isMilestone: milestone };
+    }, [userProfile?.created_at]);
 
     // Get today's nutrition from log or use defaults (local date YYYY-MM-DD format to match database)
     const now = new Date();
@@ -149,9 +224,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
                 </div>
-                <div className="text-right">
-                    <span className="text-[var(--color-primary)] font-bold text-xl">Day {currentDay}</span>
-                    <span className="text-white/50 text-xs block">of {daysInMonth}</span>
+                <div className="text-right flex items-center gap-2">
+                    <span className="text-2xl">{isMilestone ? '🏆' : '🔥'}</span>
+                    <span className={`font-bold text-xl ${isMilestone ? 'text-yellow-400' : 'text-[var(--color-primary)]'}`}>
+                        {dayDisplay}
+                    </span>
                 </div>
             </header>
 

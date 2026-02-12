@@ -277,6 +277,7 @@ const AppContent: React.FC = () => {
   const handleRecoveryComplete = useCallback(async (recovery: RecoveryState) => {
     setWorkoutStatus('generating');
 
+    // RALPH LOOP 11: Fallback profile has proper created_at to prevent broken day counter
     const profile: UserProfile = userProfile || {
       goal: goal,
       height_inches: null,
@@ -291,7 +292,9 @@ const AppContent: React.FC = () => {
       trainer_id: null,
       full_name: null,
       subscription_status: 'trial',
-      trial_started_at: null
+      trial_started_at: null,
+      supplement_preferences: null,
+      created_at: new Date().toISOString() // Fallback to now for day counter
     };
 
     try {
@@ -857,6 +860,7 @@ const AppContent: React.FC = () => {
               onAddToFavorites={addToFavorites}
               nutritionLogs={nutritionLogs}
               goal={goal}
+              supplementPreferences={userProfile.supplement_preferences}
             />
           </Suspense>
           </SectionErrorBoundary>

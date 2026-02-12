@@ -6,6 +6,7 @@ import { supabaseGetSingle, supabaseUpdate } from '@/services/supabaseRawFetch';
 import { supabase } from '@/supabaseClient';
 import LoaderIcon from './icons/LoaderIcon';
 import Skeleton from './ui/Skeleton';
+import { getAllSupplements, type SupplementPreferences } from '@/services/supplementService';
 
 // Settings loading skeleton
 const SettingsSkeleton = () => (
@@ -91,7 +92,17 @@ interface ProfileData {
     // FIX 3.1: Subscription status
     subscription_status: 'trial' | 'active' | 'expired' | 'none' | null;
     trial_started_at: string | null;
+    // Supplement preferences
+    supplement_preferences: SupplementPreferences | null;
 }
+
+type SupplementMode = 'not_interested' | 'using' | 'open_to_recommendations';
+
+const SUPPLEMENT_MODE_OPTIONS = [
+    { id: 'using', label: 'Yes, I take supplements', description: 'Select which supplements you use', emoji: '💊' },
+    { id: 'open_to_recommendations', label: 'Open to recommendations', description: 'Let AI suggest supplements for my goals', emoji: '🤔' },
+    { id: 'not_interested', label: 'No thanks', description: "Don't show supplement recommendations", emoji: '✋' },
+] as const;
 
 const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, onTerms }) => {
     const { user, signOut } = useAuth();
@@ -111,11 +122,18 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
         days_per_week: null,
         role: null,
         subscription_status: 'trial',
-        trial_started_at: null
+        trial_started_at: null,
+        supplement_preferences: null
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+
+    // Supplement management state
+    const [supplementMode, setSupplementMode] = useState<SupplementMode | null>(null);
+    const [selectedSupplements, setSelectedSupplements] = useState<string[]>([]);
+    const [savingSupplements, setSavingSupplements] = useState(false);
+    const allSupplements = getAllSupplements();
 
     // GDPR: Account deletion state
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -125,46 +143,70 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
     // GDPR: Data export state
     const [exporting, setExporting] = useState(false);
 
-    useEffect(() => {
-        const fetchProfile = async () => {
-            if (!user) {
-                setLoading(false);
-                return;
-            }
+    // RALPH LOOP 30: Track fetch errors for retry UI
+    const [fetchError, setFetchError] = useState(false);
 
-            try {
-                const { data, error } = await supabaseGetSingle<any>(
-                    `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,role,subscription_status,trial_started_at`
-                );
+    // RALPH LOOP 30: Extract fetchProfile for retry capability
+    const fetchProfile = React.useCallback(async () => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
 
-                if (error) {
-                    showToast('Failed to load profile', 'error');
-                } else if (data) {
-                    setProfile({
-                        full_name: data.full_name || '',
-                        goal: data.goal,
-                        height_inches: data.height_inches,
-                        weight_lbs: data.weight_lbs,
-                        age: data.age,
-                        gender: data.gender || null,
-                        activity_level: data.activity_level || null,
-                        training_experience: data.training_experience,
-                        equipment_access: data.equipment_access,
-                        days_per_week: data.days_per_week,
-                        role: data.role,
-                        subscription_status: data.subscription_status || 'trial',
-                        trial_started_at: data.trial_started_at || null
-                    });
-                }
-            } catch {
+        setLoading(true);
+        setFetchError(false);
+
+        try {
+            const { data, error } = await supabaseGetSingle<any>(
+                `profiles?id=eq.${user.id}&select=full_name,goal,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,role,subscription_status,trial_started_at,supplement_preferences`
+            );
+
+            if (error) {
                 showToast('Failed to load profile', 'error');
-            } finally {
-                setLoading(false);
-            }
-        };
+                setFetchError(true);
+            } else if (data) {
+                setProfile({
+                    full_name: data.full_name || '',
+                    goal: data.goal,
+                    height_inches: data.height_inches,
+                    weight_lbs: data.weight_lbs,
+                    age: data.age,
+                    gender: data.gender || null,
+                    activity_level: data.activity_level || null,
+                    training_experience: data.training_experience,
+                    equipment_access: data.equipment_access,
+                    days_per_week: data.days_per_week,
+                    role: data.role,
+                    subscription_status: data.subscription_status || 'trial',
+                    trial_started_at: data.trial_started_at || null,
+                    supplement_preferences: data.supplement_preferences || null
+                });
 
+                // Initialize supplement state from fetched data
+                const prefs = data.supplement_preferences as SupplementPreferences | null;
+                if (prefs) {
+                    if (!prefs.enabled) {
+                        setSupplementMode('not_interested');
+                    } else if (prefs.openToRecommendations) {
+                        setSupplementMode('open_to_recommendations');
+                    } else {
+                        setSupplementMode('using');
+                    }
+                    setSelectedSupplements(prefs.products || []);
+                }
+                setFetchError(false);
+            }
+        } catch {
+            showToast('Failed to load profile', 'error');
+            setFetchError(true);
+        } finally {
+            setLoading(false);
+        }
+    }, [user, showToast]);
+
+    useEffect(() => {
         fetchProfile();
-    }, [user]);
+    }, [fetchProfile]);
 
     const handleSave = async () => {
         if (!user) return;
@@ -319,6 +361,46 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
 
     if (loading) {
         return <SettingsSkeleton />;
+    }
+
+    // RALPH LOOP 30: Show retry UI when profile fetch fails
+    if (fetchError) {
+        return (
+            <div className="w-full space-y-6 pb-8">
+                <header className="flex items-center gap-4">
+                    <button
+                        onClick={onBack}
+                        aria-label="Go back"
+                        className="p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] rounded-lg"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <div>
+                        <h2 className="text-2xl font-black text-white">SETTINGS</h2>
+                        <p className="text-gray-400 text-sm">Manage your profile</p>
+                    </div>
+                </header>
+
+                <div className="card p-8 text-center">
+                    <span className="material-symbols-outlined text-5xl text-red-400 mb-4" aria-hidden="true">
+                        cloud_off
+                    </span>
+                    <h3 className="text-lg font-bold text-white mb-2">Unable to Load Profile</h3>
+                    <p className="text-gray-400 mb-6">
+                        We couldn't load your settings. Please check your connection and try again.
+                    </p>
+                    <button
+                        onClick={fetchProfile}
+                        className="btn-primary px-6 py-3 min-h-[44px] flex items-center justify-center gap-2 mx-auto"
+                    >
+                        <span className="material-symbols-outlined text-xl" aria-hidden="true">refresh</span>
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -539,6 +621,132 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                         ))}
                     </div>
                 </div>
+            </div>
+
+            {/* Supplement Preferences */}
+            <div className="card space-y-4">
+                <h3 className="text-lg font-bold text-white mb-4">Supplement Preferences</h3>
+                <p className="text-gray-400 text-sm mb-4">
+                    Choose how you want supplement recommendations to appear in the app.
+                </p>
+
+                {/* Mode Selection - RALPH LOOP 15: Added radio semantics, RALPH LOOP 27: Added focus ring */}
+                <div className="space-y-2" role="radiogroup" aria-label="Supplement preference mode">
+                    {SUPPLEMENT_MODE_OPTIONS.map((option) => (
+                        <button
+                            key={option.id}
+                            onClick={() => {
+                                setSupplementMode(option.id);
+                                // Clear selections when switching away from "using"
+                                if (option.id !== 'using') {
+                                    setSelectedSupplements([]);
+                                }
+                            }}
+                            role="radio"
+                            aria-checked={supplementMode === option.id}
+                            disabled={savingSupplements}
+                            className={`w-full p-4 rounded-xl text-left transition-all flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50 ${
+                                supplementMode === option.id
+                                    ? 'bg-[var(--color-primary)] text-black'
+                                    : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                            }`}
+                        >
+                            <span className="text-2xl" aria-hidden="true">{option.emoji}</span>
+                            <div>
+                                <p className="font-bold text-sm">{option.label}</p>
+                                <p className={`text-xs ${supplementMode === option.id ? 'text-black/70' : 'text-gray-500'}`}>
+                                    {option.description}
+                                </p>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Supplement Selection (only when mode is "using") */}
+                {/* RALPH LOOP 15: Added checkbox semantics, RALPH LOOP 23: Disabled during save, RALPH LOOP 26: Tablet responsive grid */}
+                {supplementMode === 'using' && (
+                    <div className="pt-4 border-t border-gray-700">
+                        <label id="supplement-selection-label" className="block text-gray-400 text-sm mb-3">Select your supplements:</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2" role="group" aria-labelledby="supplement-selection-label">
+                            {allSupplements.map((supp) => (
+                                <button
+                                    key={supp.id}
+                                    onClick={() => {
+                                        setSelectedSupplements(prev =>
+                                            prev.includes(supp.id)
+                                                ? prev.filter(id => id !== supp.id)
+                                                : [...prev, supp.id]
+                                        );
+                                    }}
+                                    role="checkbox"
+                                    aria-checked={selectedSupplements.includes(supp.id)}
+                                    aria-label={`${supp.name} - ${supp.dosage}, ${supp.timing}`}
+                                    disabled={savingSupplements}
+                                    className={`p-3 rounded-xl text-left transition-all flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:opacity-50 ${
+                                        selectedSupplements.includes(supp.id)
+                                            ? 'bg-[var(--color-primary)]/20 border-2 border-[var(--color-primary)] text-white'
+                                            : 'bg-gray-800 border-2 border-transparent text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <span className="material-symbols-outlined text-xl" aria-hidden="true">
+                                        {selectedSupplements.includes(supp.id) ? 'check_circle' : supp.icon}
+                                    </span>
+                                    <div className="flex-1">
+                                        <p className="font-bold text-sm">{supp.name}</p>
+                                        <p className="text-xs text-gray-500">{supp.dosage} • {supp.timing}</p>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Save Supplements Button - RALPH LOOP 16: Triggers parent refetch */}
+                <button
+                    onClick={async () => {
+                        if (!supplementMode) return;
+                        setSavingSupplements(true);
+
+                        const newPrefs: SupplementPreferences = {
+                            enabled: supplementMode !== 'not_interested',
+                            products: supplementMode === 'using' ? selectedSupplements : [],
+                            openToRecommendations: supplementMode === 'open_to_recommendations'
+                        };
+
+                        try {
+                            const { error } = await supabaseUpdate(`profiles?id=eq.${user?.id}`, {
+                                supplement_preferences: newPrefs
+                            });
+
+                            if (error) {
+                                showToast('Failed to save supplement preferences', 'error');
+                            } else {
+                                setProfile(prev => ({ ...prev, supplement_preferences: newPrefs }));
+                                showToast('Supplement preferences saved!', 'success');
+                                // RALPH LOOP 16: Trigger parent refetch to sync MealTracker and other components
+                                onProfileSaved?.({ supplement_preferences: newPrefs });
+                            }
+                        } catch {
+                            showToast('Failed to save supplement preferences', 'error');
+                        } finally {
+                            setSavingSupplements(false);
+                        }
+                    }}
+                    disabled={savingSupplements || !supplementMode}
+                    className="w-full py-3 px-4 bg-gray-700 text-white font-bold rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                    {savingSupplements ? (
+                        <>
+                            <LoaderIcon className="w-5 h-5 animate-spin" />
+                            Saving...
+                        </>
+                    ) : (
+                        <>
+                            <span className="material-symbols-outlined text-lg" aria-hidden="true">save</span>
+                            Save Supplement Preferences
+                        </>
+                    )}
+                </button>
             </div>
 
             {/* Save Button */}
