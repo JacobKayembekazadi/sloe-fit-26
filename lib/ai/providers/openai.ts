@@ -19,12 +19,18 @@ import { validateAndCorrectMealAnalysis, parseMacrosFromResponse, stripMacrosBlo
 import {
   BODY_ANALYSIS_PROMPT,
   MEAL_ANALYSIS_PROMPT,
+  MEAL_PHOTO_IDENTIFICATION_PROMPT,
   PROGRESS_ANALYSIS_PROMPT,
   WORKOUT_GENERATION_PROMPT,
   TEXT_MEAL_ANALYSIS_PROMPT,
   WEEKLY_NUTRITION_PROMPT,
   WEEKLY_PLANNING_AGENT_PROMPT,
 } from '../../../prompts';
+import {
+  enrichFoodsWithNutrition,
+  generateMealMarkdown,
+  type IdentifiedFood,
+} from '../usdaIntegration';
 
 // ============================================================================
 // Configuration
@@ -246,35 +252,115 @@ export function createOpenAIProvider(apiKey: string): AIProvider {
     },
 
     async analyzeMealPhoto(imageBase64: string, userGoal: string | null): Promise<PhotoMealAnalysis> {
-      const goalText = userGoal
-        ? `The user's current goal is: ${userGoal}. Tailor your feedback to this goal.`
-        : 'The user has not set a specific goal yet. Provide general nutrition advice.';
+      // ========================================================================
+      // Two-Phase Meal Analysis: AI Identifies → USDA Lookup → Deterministic Math
+      // ========================================================================
+
+      // Legacy fallback function (inline to avoid interface changes)
+      const legacyAnalysis = async (): Promise<PhotoMealAnalysis> => {
+        const goalText = userGoal
+          ? `The user's current goal is: ${userGoal}. Tailor your feedback to this goal.`
+          : 'The user has not set a specific goal yet. Provide general nutrition advice.';
+
+        try {
+          const content = await this.chat(
+            [
+              { role: 'system', content: MEAL_ANALYSIS_PROMPT },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: `Analyze the attached meal photo. ${goalText}` },
+                  { type: 'image', imageUrl: imageBase64 },
+                ],
+              },
+            ],
+            { maxTokens: 1500, timeoutMs: 25000 }
+          );
+
+          if (content) {
+            const { macros, foods } = parseMacrosFromResponse(content);
+            const markdown = stripMacrosBlock(content);
+            return {
+              markdown,
+              macros,
+              foods: foods.length > 0 ? foods : undefined,
+              hasUSDAData: false, // Legacy uses AI estimates
+            };
+          }
+
+          return { markdown: 'Error: No response from model.', macros: null };
+        } catch (error) {
+          const aiError = error as AIError;
+          return { markdown: `Error: ${aiError.message}`, macros: null };
+        }
+      };
 
       try {
-        const content = await this.chat(
+        // Phase 1: AI identifies foods (structured JSON)
+        console.log('[openai] Phase 1: Identifying foods in photo...');
+        const identificationResponse = await this.chat(
           [
-            { role: 'system', content: MEAL_ANALYSIS_PROMPT },
+            { role: 'system', content: MEAL_PHOTO_IDENTIFICATION_PROMPT },
             {
               role: 'user',
               content: [
-                { type: 'text', text: `Analyze the attached meal photo. ${goalText}` },
+                { type: 'text', text: 'Identify all foods in this meal photo.' },
                 { type: 'image', imageUrl: imageBase64 },
               ],
             },
           ],
-          { maxTokens: 1500, timeoutMs: 25000 }
+          { maxTokens: 1000, timeoutMs: 25000, jsonMode: true }
         );
 
-        if (content) {
-          const { macros, foods } = parseMacrosFromResponse(content);
-          const markdown = stripMacrosBlock(content);
-          return { markdown, macros, foods: foods.length > 0 ? foods : undefined };
+        // Try to parse the JSON response
+        let identifiedFoods: IdentifiedFood[] = [];
+        try {
+          const parsed = JSON.parse(identificationResponse);
+          if (parsed.foods && Array.isArray(parsed.foods)) {
+            identifiedFoods = parsed.foods.map((f: {
+              name?: string;
+              portion?: string;
+              portionGrams?: number;
+              confidence?: number;
+            }) => ({
+              name: f.name || 'Unknown food',
+              portion: f.portion || 'medium',
+              portionGrams: f.portionGrams,
+              confidence: f.confidence ?? 0.7,
+            }));
+          }
+        } catch (parseError) {
+          console.warn('[openai] Failed to parse food identification JSON, falling back to legacy:', parseError);
+          return legacyAnalysis();
         }
 
-        return { markdown: 'Error: No response from model.', macros: null };
+        if (identifiedFoods.length === 0) {
+          console.warn('[openai] No foods identified, falling back to legacy analysis');
+          return legacyAnalysis();
+        }
+
+        console.log(`[openai] Phase 1 complete: Identified ${identifiedFoods.length} foods`);
+
+        // Phase 2: USDA lookup for each food
+        console.log('[openai] Phase 2: Looking up nutrition data...');
+        const { foods: foodsWithNutrition, totals, hasUSDAData } = await enrichFoodsWithNutrition(identifiedFoods);
+
+        const usdaCount = foodsWithNutrition.filter(f => f.source === 'usda').length;
+        console.log(`[openai] Phase 2 complete: ${usdaCount}/${foodsWithNutrition.length} foods matched USDA`);
+
+        // Phase 3: Generate markdown summary
+        const markdown = generateMealMarkdown(foodsWithNutrition, totals, userGoal);
+
+        return {
+          markdown,
+          macros: totals,
+          foods: foodsWithNutrition.map(f => f.name),
+          foodsDetailed: foodsWithNutrition,
+          hasUSDAData,
+        };
       } catch (error) {
-        const aiError = error as AIError;
-        return { markdown: `Error: ${aiError.message}`, macros: null };
+        console.error('[openai] Two-phase analysis failed, falling back to legacy:', error);
+        return legacyAnalysis();
       }
     },
 

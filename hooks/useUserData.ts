@@ -848,6 +848,14 @@ export const useUserData = () => {
         mealType?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
         inputMethod?: 'photo' | 'text' | 'quick_add';
         photoUrl?: string;
+        date?: string; // Override date (for midnight edge case)
+        scanData?: {
+            detectedFoods: unknown[];
+            finalFoods: unknown[];
+            hasUSDAData: boolean;
+            userEdited: boolean;
+            portionMultipliers: Record<number, number>;
+        };
     }): Promise<MealEntry | null> => {
         console.log('[saveMealEntry] Called with:', entry);
         console.log('[saveMealEntry] User:', user?.id || 'null');
@@ -856,7 +864,8 @@ export const useUserData = () => {
             return null;
         }
 
-        const today = formatDateForDB();
+        // Use provided date or default to today (for midnight edge case)
+        const today = entry.date || formatDateForDB();
         const now = new Date().toISOString();
 
         // Create optimistic entry
@@ -966,13 +975,34 @@ export const useUserData = () => {
 
             // Update with real ID from database if available
             if (savedData && Array.isArray(savedData) && savedData[0]?.id) {
+                const realId = savedData[0].id;
+
+                // Save scan data if present (for USDA integration analytics)
+                if (entry.scanData && entry.scanData.detectedFoods.length > 0) {
+                    try {
+                        await supabaseInsert('food_scans', {
+                            meal_entry_id: realId,
+                            user_id: user.id,
+                            detected_items: entry.scanData.detectedFoods,
+                            final_items: entry.scanData.finalFoods,
+                            has_usda_data: entry.scanData.hasUSDAData,
+                            user_edited: entry.scanData.userEdited,
+                            portion_multipliers: entry.scanData.portionMultipliers,
+                        });
+                        console.log('[saveMealEntry] Scan data saved for analytics');
+                    } catch (scanErr) {
+                        // Non-critical - log but don't fail the meal save
+                        console.warn('[saveMealEntry] Failed to save scan data:', scanErr);
+                    }
+                }
+
                 setData(prev => ({
                     ...prev,
                     mealEntries: prev.mealEntries.map(m =>
-                        m.id === optimisticEntry.id ? { ...m, id: savedData[0].id } : m
+                        m.id === optimisticEntry.id ? { ...m, id: realId } : m
                     )
                 }));
-                return { ...optimisticEntry, id: savedData[0].id };
+                return { ...optimisticEntry, id: realId };
             }
 
             return optimisticEntry;

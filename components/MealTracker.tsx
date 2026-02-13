@@ -1,5 +1,6 @@
 import React, { useState, useCallback, ChangeEvent, memo, useMemo, useRef, useEffect } from 'react';
 import { analyzeMealPhoto, MealAnalysisResult, TextMealAnalysisResult } from '../services/aiService';
+import type { FoodWithNutrition } from '../lib/ai/types';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
 import CameraIcon from './icons/CameraIcon';
@@ -37,6 +38,14 @@ interface MealTrackerProps {
     inputMethod?: 'photo' | 'text' | 'quick_add';
     photoUrl?: string;
     date?: string;
+    // USDA Integration: Scan data for learning
+    scanData?: {
+      detectedFoods: FoodWithNutrition[];  // Original AI + USDA detection
+      finalFoods: FoodWithNutrition[];     // After user portion adjustments
+      hasUSDAData: boolean;
+      userEdited: boolean;
+      portionMultipliers: Record<number, number>;
+    };
   }) => Promise<MealEntry | null>;
   onDeleteMealEntry?: (entryId: string) => Promise<boolean>;
   onAddToFavorites?: (meal: { name: string; calories: number; protein: number; carbs: number; fats: number }) => Promise<boolean>;
@@ -110,6 +119,12 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [loggedAtDate, setLoggedAtDate] = useState<string>('');
   // M3 FIX: Track suspicious/incomplete macros warning
   const [macroWarning, setMacroWarning] = useState<string | null>(null);
+  // USDA Integration: Detailed foods with nutrition data
+  const [foodsDetailed, setFoodsDetailed] = useState<FoodWithNutrition[]>([]);
+  const [originalFoodsDetailed, setOriginalFoodsDetailed] = useState<FoodWithNutrition[]>([]); // Before user edits
+  const [hasUSDAData, setHasUSDAData] = useState(false);
+  const [portionMultipliers, setPortionMultipliers] = useState<Record<number, number>>({});
+  const [editingFoodIndex, setEditingFoodIndex] = useState<number | null>(null);
 
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
@@ -287,6 +302,18 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         // Store original AI values for reset functionality
         setOriginalMacros(analysisResult.macros);
 
+        // USDA Integration: Store detailed foods if available
+        if (analysisResult.foodsDetailed && analysisResult.foodsDetailed.length > 0) {
+          setFoodsDetailed(analysisResult.foodsDetailed);
+          setOriginalFoodsDetailed(analysisResult.foodsDetailed); // Store original for comparison
+          setHasUSDAData(analysisResult.hasUSDAData ?? false);
+          setPortionMultipliers({}); // Reset multipliers for new analysis
+        } else {
+          setFoodsDetailed([]);
+          setOriginalFoodsDetailed([]);
+          setHasUSDAData(false);
+        }
+
         // M3 FIX: Validate macros for suspicious values
         if (analysisResult.macros) {
           const { calories, protein, carbs, fats } = analysisResult.macros;
@@ -395,6 +422,21 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       }, 10000);
 
       if (onSaveMealEntry) {
+        // Build final foods with applied portion multipliers
+        const finalFoods = foodsDetailed.map((food, index) => {
+          const mult = portionMultipliers[index] ?? 1.0;
+          return {
+            ...food,
+            calories: Math.round(food.calories * mult),
+            protein: Math.round(food.protein * mult),
+            carbs: Math.round(food.carbs * mult),
+            fats: Math.round(food.fats * mult),
+            portion: mult !== 1.0 ? `${food.portion} × ${mult.toFixed(1)}` : food.portion,
+          };
+        });
+
+        const userEdited = Object.keys(portionMultipliers).length > 0 || hasEdits();
+
         const result = await onSaveMealEntry({
           description: mealDescription || 'Logged Meal',
           calories: macros.calories,
@@ -403,6 +445,14 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           fats: macros.fats,
           inputMethod: inputMode === 'photo' ? 'photo' : 'text',
           date: loggedAtDate || undefined,
+          // USDA Integration: Pass scan data for learning/analytics
+          scanData: originalFoodsDetailed.length > 0 ? {
+            detectedFoods: originalFoodsDetailed,
+            finalFoods,
+            hasUSDAData,
+            userEdited,
+            portionMultipliers,
+          } : undefined,
         });
         clearTimeout(warningTimer);
         if (!result) {
@@ -428,7 +478,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       setIsLogging(false);
       isLoggingRef.current = false;
     }
-  }, [macros, onLogMeal, onSaveMealEntry, mealDescription, inputMode, showToast]);
+  }, [macros, onLogMeal, onSaveMealEntry, mealDescription, inputMode, showToast, loggedAtDate, foodsDetailed, originalFoodsDetailed, portionMultipliers, hasUSDAData, originalMacros, originalDescription]);
 
   const resetForNextMeal = () => {
     setFile(null);
@@ -446,6 +496,12 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setOriginalDescription('');
     setLoggedAtDate('');
     setMacroWarning(null); // M3 FIX: Clear warning on reset
+    // USDA Integration: Clear detailed foods
+    setFoodsDetailed([]);
+    setOriginalFoodsDetailed([]);
+    setHasUSDAData(false);
+    setPortionMultipliers({});
+    setEditingFoodIndex(null);
   };
 
   const resetToAIValues = () => {
@@ -859,6 +915,141 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           ) : (
             <div className="card">
               <ResultDisplay result={result} />
+            </div>
+          )}
+
+          {/* USDA Integration: Foods List with Portion Editing */}
+          {foodsDetailed.length > 0 && !isLogged && (
+            <div className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-400 uppercase flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base">restaurant_menu</span>
+                  Detected Foods
+                </h3>
+                {hasUSDAData && (
+                  <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                    USDA Verified
+                  </span>
+                )}
+              </div>
+
+              {!hasUSDAData && (
+                <p className="text-xs text-yellow-500/80 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Estimates based on typical portions. Tap to adjust.
+                </p>
+              )}
+
+              <div className="space-y-2">
+                {foodsDetailed.map((food, index) => {
+                  const mult = portionMultipliers[index] ?? 1.0;
+                  const adjustedCals = Math.round(food.calories * mult);
+                  const adjustedProtein = Math.round(food.protein * mult);
+                  const isEditing = editingFoodIndex === index;
+
+                  return (
+                    <div key={index} className="bg-gray-800/50 rounded-lg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-white font-medium truncate">{food.name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              food.source === 'usda'
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {food.source === 'usda' ? 'USDA' : 'est.'}
+                            </span>
+                          </div>
+                          <p className="text-gray-500 text-xs mt-0.5">
+                            {mult !== 1.0 ? `${food.portion} × ${mult.toFixed(1)}` : food.portion}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <span className="text-[var(--color-primary)] font-bold text-sm">{adjustedCals}</span>
+                            <span className="text-gray-500 text-xs"> cal</span>
+                            <p className="text-blue-400 text-xs">{adjustedProtein}g protein</p>
+                          </div>
+                          <button
+                            onClick={() => setEditingFoodIndex(isEditing ? null : index)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              isEditing
+                                ? 'bg-[var(--color-primary)] text-black'
+                                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                            }`}
+                            aria-label={`Edit portion for ${food.name}`}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Portion Slider (inline, expands when editing) */}
+                      {isEditing && (
+                        <div className="mt-3 pt-3 border-t border-gray-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-gray-400">Portion Size</span>
+                            <span className="text-xs text-white font-medium">{(mult * 100).toFixed(0)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.25"
+                            max="3"
+                            step="0.25"
+                            value={mult}
+                            onChange={(e) => {
+                              const newMult = parseFloat(e.target.value);
+                              setPortionMultipliers(prev => ({ ...prev, [index]: newMult }));
+                              // Update macros in real-time
+                              if (foodsDetailed.length > 0) {
+                                const newTotals = foodsDetailed.reduce(
+                                  (acc, f, i) => {
+                                    const m = i === index ? newMult : (portionMultipliers[i] ?? 1.0);
+                                    return {
+                                      calories: acc.calories + Math.round(f.calories * m),
+                                      protein: acc.protein + Math.round(f.protein * m),
+                                      carbs: acc.carbs + Math.round(f.carbs * m),
+                                      fats: acc.fats + Math.round(f.fats * m),
+                                    };
+                                  },
+                                  { calories: 0, protein: 0, carbs: 0, fats: 0 }
+                                );
+                                setMacros(newTotals);
+                              }
+                            }}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"
+                          />
+                          <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                            <span>¼</span>
+                            <span>½</span>
+                            <span>1×</span>
+                            <span>2×</span>
+                            <span>3×</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {Object.keys(portionMultipliers).length > 0 && (
+                <button
+                  onClick={() => {
+                    setPortionMultipliers({});
+                    setMacros(originalMacros);
+                    setEditingFoodIndex(null);
+                  }}
+                  className="w-full py-2 text-xs text-gray-400 hover:text-white bg-gray-800 rounded-lg transition-colors"
+                >
+                  Reset All Portions
+                </button>
+              )}
             </div>
           )}
 

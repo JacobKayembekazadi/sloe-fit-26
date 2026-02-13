@@ -7,6 +7,67 @@
 
 ## Latest Handoff
 
+### 2026-02-13 - Claude Code (Opus 4.5) - Session 10
+
+**Session Summary**
+- Task: Implement deterministic USDA nutrition lookups for meal photo analysis
+- Architecture: Two-phase approach (Vision AI identifies → USDA lookup → deterministic math)
+- Principle: "Vision models identify and describe. Deterministic code calculates. Never ask an LLM to estimate calories."
+- Status: Complete
+
+**Files Created**
+- `lib/ai/usdaIntegration.ts` — USDA lookup module with `enrichFoodsWithNutrition()`, portion parsing, fallback estimates for 40+ common foods
+
+**Files Modified**
+- `prompts.ts` — Added `MEAL_PHOTO_IDENTIFICATION_PROMPT` for structured JSON food identification
+- `lib/ai/types.ts` — Added `FoodWithNutrition` interface, extended `PhotoMealAnalysis` with `foodsDetailed` and `hasUSDAData`
+- `lib/ai/providers/google.ts` — Refactored `analyzeMealPhoto()` for two-phase approach (AI identification → USDA lookup)
+- `lib/ai/providers/openai.ts` — Same two-phase refactor as Google provider
+- `services/aiService.ts` — Added `FoodWithNutrition` import and extended `MealAnalysisResult` type
+- `components/MealTracker.tsx` — Added portion editing UI with USDA/estimate badges and real-time macro recalculation via sliders
+
+**Architecture Flow**
+```
+Photo → Gemini/OpenAI Vision → Structured JSON → USDA Lookup → Deterministic Math → Precise Macros
+         (identifies foods)     { foods: [...] }   (8M+ foods)   (protein×4 + carbs×4 + fats×9)
+```
+
+**Key Features**
+1. Two-phase meal analysis: AI only identifies foods (no calorie estimation)
+2. USDA FoodData Central lookup for precise nutrition (via existing `nutritionService.ts`)
+3. Fallback to AI estimates when USDA lookup fails (with `(est.)` badge)
+4. Portion parsing: converts "6oz", "1 cup", "medium" to grams
+5. Per-food portion sliders (0.25× to 3×) with real-time macro recalculation
+6. USDA vs estimate badges for transparency
+7. Backward compatible: old API responses still work
+8. **Scan data capture**: Stores original detection + user corrections for learning
+
+**Scan Data Structure (passed to `onSaveMealEntry.scanData`)**
+```typescript
+{
+  detectedFoods: FoodWithNutrition[];  // Original AI + USDA detection
+  finalFoods: FoodWithNutrition[];     // After user portion adjustments
+  hasUSDAData: boolean;
+  userEdited: boolean;
+  portionMultipliers: Record<number, number>;
+}
+```
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes (7 modified files, 1 new file)
+- Build passing: yes
+
+**Next Steps**
+1. Test photo analysis end-to-end in browser
+2. Verify USDA lookup works for common foods (chicken breast, rice, broccoli)
+3. Test fallback behavior when USDA API is down or food not found
+4. **Backend: Store scan data** — Update `useUserData.saveMealEntry()` to persist `scanData` to a `food_scans` table or JSONB column
+5. Consider caching USDA results in localStorage for faster repeat lookups
+6. Add batch/multi-food USDA lookup optimization (currently sequential)
+
+---
+
 ### 2026-02-13 - Claude Code (Opus 4.6) - Session 9
 
 **Session Summary**

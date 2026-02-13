@@ -64,6 +64,24 @@ export interface Food {
   fats: number;
 }
 
+/**
+ * Food item with nutrition data from USDA lookup or AI estimation.
+ * Used in two-phase meal analysis (AI identifies → USDA lookup).
+ */
+export interface FoodWithNutrition {
+  name: string;
+  portion: string;
+  portionGrams?: number;
+  confidence: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  source: 'usda' | 'estimate';  // Where macros came from
+  fdcId?: number;               // USDA FDC ID if matched
+  usdaDescription?: string;     // USDA's official food name
+}
+
 export interface MacroTotals {
   calories: number;
   protein: number;
@@ -82,7 +100,9 @@ export interface TextMealAnalysis {
 export interface PhotoMealAnalysis {
   markdown: string;
   macros: MacroTotals | null;
-  foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
+  foods?: string[];                    // Array of identified food names (backward compat)
+  foodsDetailed?: FoodWithNutrition[]; // Detailed foods with nutrition from USDA/estimates
+  hasUSDAData?: boolean;               // True if any food matched USDA database
 }
 
 export interface MealAnalysisInput {

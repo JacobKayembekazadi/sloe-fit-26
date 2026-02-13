@@ -12,6 +12,7 @@ import { RecoveryState } from '../components/RecoveryCheckIn';
 import { UserProfile } from '../hooks/useUserData';
 import { getAuthToken } from './supabaseRawFetch';
 import { sanitizeForAI } from '../utils/validation';
+import type { FoodWithNutrition } from '../lib/ai/types';
 
 // ============================================================================
 // Types (matching the API response types)
@@ -45,7 +46,9 @@ export interface MealAnalysisResult {
     carbs: number;
     fats: number;
   } | null;
-  foods?: string[]; // Array of identified food names (parsed from JSON, not markdown)
+  foods?: string[]; // Array of identified food names (backward compat)
+  foodsDetailed?: FoodWithNutrition[]; // Detailed foods with USDA/estimate nutrition
+  hasUSDAData?: boolean; // True if any food matched USDA database
 }
 
 export interface BodyAnalysisResult {
