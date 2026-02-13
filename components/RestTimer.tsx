@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 interface RestTimerProps {
     initialTime: number; // seconds
     onComplete: () => void;
-    onSkip: () => void;
+    onSkip: (timeRemaining: number) => void;
     exerciseName?: string;
     lastSetWeight?: string;
     lastSetReps?: string;
@@ -151,7 +151,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
                     {exerciseName || 'Rest Period'}
                 </span>
                 <button
-                    onClick={onSkip}
+                    onClick={() => onSkip(timeLeft)}
                     className="size-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
                     aria-label="Close rest timer"
                 >
@@ -206,7 +206,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
                         </button>
                     </div>
                     <button
-                        onClick={onSkip}
+                        onClick={() => onSkip(timeLeft)}
                         className="text-sm font-bold text-[var(--color-primary)] px-4 py-2 rounded-lg hover:bg-[var(--color-primary)]/10 transition-colors"
                     >
                         Skip
@@ -229,7 +229,7 @@ const RestTimer: React.FC<RestTimerProps> = ({
 
                 {/* Tap to Continue */}
                 <button
-                    onClick={onSkip}
+                    onClick={() => onSkip(timeLeft)}
                     className="w-full py-4 rounded-xl border border-white/10 text-sm text-slate-400 font-medium hover:bg-white/5 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                     Tap to continue

@@ -1,4 +1,6 @@
 import React, { memo } from 'react';
+import PostWorkoutCoaching from './PostWorkoutCoaching';
+import type { CoachInsight } from '../hooks/useCoachingAgent';
 
 interface WorkoutSummaryProps {
     duration: string;
@@ -9,6 +11,7 @@ interface WorkoutSummaryProps {
     onRate?: (rating: number) => void;
     onViewHistory?: () => void;
     isSaving?: boolean;
+    coachingInsight?: CoachInsight | null;
 }
 
 const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
@@ -19,7 +22,8 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
     onClose,
     onRate,
     onViewHistory,
-    isSaving = false
+    isSaving = false,
+    coachingInsight
 }) => {
     return (
         <div className="relative flex h-auto min-h-screen w-full max-w-md sm:max-w-lg mx-auto flex-col overflow-x-hidden pb-10 bg-background-dark font-display text-white transition-colors duration-300">
@@ -103,14 +107,13 @@ const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
             </div>
 
             {/* AI Coaching Insight */}
-            <div className="px-4 sm:px-6 py-6 sm:py-8">
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-dashed border-white/10">
-                    <span className="material-symbols-outlined text-[var(--color-primary)]">psychology</span>
-                    <p className="text-xs text-slate-400 leading-relaxed italic">
-                        "Great work! Your AI Coach is analyzing this session to optimize your next workout."
-                    </p>
-                </div>
-            </div>
+            <PostWorkoutCoaching
+                insight={coachingInsight || null}
+                onProductClick={() => {
+                    const url = coachingInsight?.product?.productUrl;
+                    if (url) window.open(url, '_blank');
+                }}
+            />
 
             {/* Footer Buttons */}
             <div className="mt-auto px-3 sm:px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col gap-2 sm:gap-3">

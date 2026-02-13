@@ -7,6 +7,93 @@
 
 ## Latest Handoff
 
+### 2026-02-13 - Claude Code (Opus 4.6) - Session 9
+
+**Session Summary**
+- Task: Ralph Loop deep audit fixes for PIADR Coaching Agent
+- Ran 14-layer architectural audit + blind spots analysis (47 issues found)
+- Fixed 12 critical, high, and blind spot issues
+- Status: Complete
+
+**Issues Fixed (Ralph Loop)**
+
+| # | Issue | Severity | Fix |
+|---|-------|----------|-----|
+| 1 | postWorkoutInsight persists across sessions | CRITICAL | Clear in resetWorkoutState |
+| 2 | Stale closure in processPatterns (isDuplicate reads stale state) | CRITICAL | Moved dedup check inside setInsights functional updater |
+| 3 | Dismissed insights accumulate forever in localStorage | HIGH | Prune dismissed > 24h on load, cap at 20 |
+| 4 | No error boundary on coaching cards | HIGH | Wrapped Coach Insights section in SectionErrorBoundary |
+| 5 | localStorage not namespaced by userId (multi-user contamination) | HIGH | Scoped keys by userId, reinit on userId change |
+| 6 | Product CTA opens generic sloe-fit.com URL | HIGH | Deep-links to actual product page via productUrl + PRODUCT_HANDLES map |
+| 7 | Stale events never pruned (unbounded growth) | HIGH | Discard events older than 30 days on load |
+| 8 | localStorage quota exhaustion | HIGH | Two-tier retry: evict half on first fail, silent on second |
+| 9 | meal_logged + rest_skipped event types never captured | BLIND SPOT | Removed dead types from CoachEvent union |
+| 10 | Every workout ends with product pitch (erodes trust) | BLIND SPOT | Product CTA only for leg day + high volume (>10k lbs) sessions |
+| 11 | No positive reinforcement patterns | BLIND SPOT | Added good_session pattern (volume PR detection, +15% threshold) |
+| 12 | Stale closure duplicate insights | BLIND SPOT | processPatterns now uses functional setInsights updater |
+
+**Files Modified**
+- `App.tsx` — resetWorkoutState clears postWorkoutInsight; useCoachingAgent receives user?.id
+- `hooks/useCoachingAgent.ts` — Major rewrite: userId namespacing, functional updater for processPatterns, dismissed insight pruning, event staleness filter, localStorage quota retry, selective product recommendations
+- `services/coachingEngine.ts` — Cleaned CoachEvent type (removed dead types), added detectGoodSession pattern, updated fallback messages
+- `data/productRecommendations.ts` — Added PRODUCT_HANDLES map, productUrl in ProductRecommendation, STORE_DOMAIN config
+- `components/Dashboard.tsx` — SectionErrorBoundary around Coach Insights, product CTA uses productUrl
+- `components/WorkoutSummary.tsx` — Product CTA uses coachingInsight.product.productUrl
+- `components/CoachInsightCard.tsx` — Added good_session icon mapping
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes (7 modified files)
+- Build passing: yes
+
+**Next Steps**
+1. Test coaching flow end-to-end in browser
+2. Phase 4: Wire getAutoAdjustments() into workout generation context for rest time auto-adjustment
+3. Add toast notifications for auto-adjustments ("Cutting rest time to 60s.")
+4. Consider adding AI-generated messages via POST /api/ai/coach (currently using static fallback messages)
+5. Test product CTAs with real Shopify product IDs and handles
+6. Consider adding meal_logged event capture when MealTracker saves a meal
+
+---
+
+### 2026-02-13 - Claude Code (Opus 4.6) - Session 8
+
+**Session Summary**
+- Task: Background PIADR Coaching Agent (PBI-044)
+- Implemented full coaching intelligence: pattern detection, event capture, insight UI, AI prompts, and product recommendations
+- Status: Complete
+
+**Files Created**
+- `services/coachingEngine.ts` — Pure pattern detection engine (9 patterns: rest_skipper, low_sleep, training_streak, overtraining, volume_progression, stale_workout, milestone + auto-adjustments)
+- `data/productRecommendations.ts` — Maps coaching contexts to Shopify product keys
+- `hooks/useCoachingAgent.ts` — React hook wrapping the engine (localStorage persistence, deduplication, max 2 active insights)
+- `prompts/coachingPrompts.ts` — PIADR-structured AI prompts with King Kay Mix voice rules
+- `api/ai/coach.ts` — Vercel edge API route for AI coaching messages (uses withFallback, apiGate)
+- `components/CoachInsightCard.tsx` — Dashboard insight card (design_spec styling, product CTA)
+- `components/PostWorkoutCoaching.tsx` — Post-workout coaching message component
+
+**Files Modified**
+- `components/RestTimer.tsx` — onSkip now passes timeRemaining (was void)
+- `components/WorkoutSession.tsx` — Tracks restSkipCount and totalRestCount, passes to onComplete
+- `App.tsx` — Wired useCoachingAgent hook, captureEvent in handleWorkoutComplete and handleRecoveryComplete, passes coaching data to Dashboard and WorkoutSummary
+- `components/Dashboard.tsx` — Accepts coachInsights prop, renders CoachInsightCard above Quick Actions
+- `components/WorkoutSummary.tsx` — Replaced placeholder AI insight with PostWorkoutCoaching component
+
+**Architecture Decisions**
+- coachingEngine.ts is **pure TypeScript** — no React, no DOM, no localStorage. Portable to React Native.
+- Hook wraps engine with browser APIs (localStorage)
+- Deduplication: same pattern type won't show twice in 24 hours
+- Max 2 active insights at a time (highest priority wins)
+- Falls back to static messages from SOUL.md templates when AI is unavailable
+- Product CTAs link to Shopify store
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes (7 new files, 5 modified files)
+- Build passing: yes
+
+---
+
 ### 2026-02-13 - Claude Code (Opus 4.5) - Session 7
 
 **Session Summary**

@@ -11,6 +11,9 @@ import SupplementRecommendationCard from './SupplementRecommendationCard';
 import AddToHomeScreenButton from './AddToHomeScreenButton';
 import WeeklyPlanCard from './WeeklyPlanCard';
 import { getRecommendations } from '../services/supplementService';
+import CoachInsightCard from './CoachInsightCard';
+import SectionErrorBoundary from './SectionErrorBoundary';
+import type { CoachInsight } from '../hooks/useCoachingAgent';
 import type { NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
 import type { WeeklyPlan, DayPlan, GeneratedWorkout } from '../services/aiService';
@@ -37,6 +40,8 @@ interface DashboardProps {
     onGeneratePlan?: () => void;
     onViewWeeklyPlan?: () => void;
     onStartPlanWorkout?: (workout: GeneratedWorkout) => void;
+    coachInsights?: CoachInsight[];
+    onDismissInsight?: (id: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -56,7 +61,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     isGeneratingPlan,
     onGeneratePlan,
     onViewWeeklyPlan,
-    onStartPlanWorkout
+    onStartPlanWorkout,
+    coachInsights,
+    onDismissInsight
 }) => {
     const { user } = useAuth();
     const [pendingWorkoutsCount, setPendingWorkoutsCount] = useState(0);
@@ -467,6 +474,25 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                 </button>
+            )}
+
+            {/* Coach Insights */}
+            {coachInsights && coachInsights.length > 0 && onDismissInsight && (
+                <SectionErrorBoundary sectionName="Coach Insights">
+                <div className="space-y-3">
+                    {coachInsights.slice(0, 2).map(insight => (
+                        <CoachInsightCard
+                            key={insight.id}
+                            insight={insight}
+                            onDismiss={onDismissInsight}
+                            onProductClick={() => {
+                                const url = insight.product?.productUrl;
+                                if (url) window.open(url, '_blank');
+                            }}
+                        />
+                    ))}
+                </div>
+                </SectionErrorBoundary>
             )}
 
             {/* Quick Actions Grid */}

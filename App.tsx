@@ -25,6 +25,7 @@ import type { UserProfile } from './hooks/useUserData';
 import { safeJSONParse } from './utils/safeStorage';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { queueWorkout, syncQueuedWorkouts, hasQueuedWorkouts, onOnlineWorkoutSync } from './services/workoutOfflineQueue';
+import { useCoachingAgent } from './hooks/useCoachingAgent';
 
 // Lazy load heavy components (with retry for stale chunk recovery after deploys)
 const Dashboard = lazyWithRetry(() => import('./components/Dashboard'), 'Dashboard');
@@ -230,13 +231,39 @@ const AppContent: React.FC = () => {
     };
   }, [nutritionLogs]);
 
-  const handleWorkoutComplete = useCallback((exercises: ExerciseLog[], title: string) => {
+  const handleWorkoutComplete = useCallback((exercises: ExerciseLog[], title: string, meta?: { restSkips: number; totalRests: number }) => {
     setCompletedLog(exercises);
     setWorkoutTitle(title);
     setEndTime(Date.now());
     setActiveDraft(null);
     setWorkoutStatus('completed');
-  }, []);
+
+    // Capture coaching event
+    const totalReps = exercises.reduce((sum, ex) => {
+      const repsArr = ex.reps.split(',').map(r => parseInt(r.trim()) || 0);
+      return sum + repsArr.reduce((a, b) => a + b, 0);
+    }, 0);
+    const volume = calculateTotalVolume(exercises);
+    const muscles = exercises.flatMap(ex => ex.targetMuscles || []);
+
+    captureEvent({
+      type: 'workout_completed',
+      data: {
+        title,
+        exerciseCount: exercises.length,
+        totalReps,
+        volume,
+        muscles,
+        restSkips: meta?.restSkips || 0,
+        totalRests: meta?.totalRests || 0,
+        exercises: exercises.map(e => ({ name: e.name, sets: e.sets, reps: e.reps })),
+      },
+    });
+
+    // Generate post-workout insight
+    const insight = generatePostWorkoutInsight({ totalReps, volume, muscles, title });
+    setPostWorkoutInsight(insight);
+  }, [captureEvent, generatePostWorkoutInsight]);
 
   // Note: handleWorkoutCancel is defined after resetWorkoutState to use it
   // FIX 5.4: Also reset timing state to prevent negative duration on next workout
@@ -278,6 +305,17 @@ const AppContent: React.FC = () => {
 
   const handleRecoveryComplete = useCallback(async (recovery: RecoveryState) => {
     setWorkoutStatus('generating');
+
+    // Capture recovery check-in for coaching agent
+    captureEvent({
+      type: 'recovery_checkin',
+      data: {
+        energy: recovery.energyLevel,
+        sleep: recovery.sleepHours,
+        soreness: recovery.sorenessAreas,
+        lastWorkoutRating: recovery.lastWorkoutRating,
+      },
+    });
 
     // RALPH LOOP 11: Fallback profile has proper created_at to prevent broken day counter
     const profile: UserProfile = userProfile || {
@@ -323,7 +361,7 @@ const AppContent: React.FC = () => {
     }
 
     setWorkoutStatus('preview');
-  }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast, user?.id]);
+  }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast, user?.id, captureEvent]);
 
   // M4 FIX: Retry AI workout generation from preview screen
   const handleRetryAIWorkout = useCallback(async () => {
@@ -385,6 +423,30 @@ const AppContent: React.FC = () => {
     markDayCompleted
   } = useWeeklyPlan();
 
+  // ============================================================================
+  // Coaching Agent
+  // ============================================================================
+  const programDay = useMemo(() => {
+    if (!userProfile?.created_at) return 1;
+    try {
+      const start = new Date(userProfile.created_at);
+      if (isNaN(start.getTime())) return 1;
+      const todayUTC = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+      const startUTC = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      return Math.max(1, Math.floor((todayUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1);
+    } catch { return 1; }
+  }, [userProfile?.created_at]);
+
+  const {
+    insights: coachInsights,
+    captureEvent,
+    dismissInsight,
+    getAdjustments,
+    generatePostWorkoutInsight,
+  } = useCoachingAgent(programDay, user?.id);
+
+  const [postWorkoutInsight, setPostWorkoutInsight] = useState<ReturnType<typeof generatePostWorkoutInsight>>(null);
+
   const [showWeeklyPlan, setShowWeeklyPlan] = useState(false);
   const [showQuickRecovery, setShowQuickRecovery] = useState(false);
   const [pendingPlanWorkout, setPendingPlanWorkout] = useState<GeneratedWorkout | null>(null);
@@ -399,6 +461,7 @@ const AppContent: React.FC = () => {
     setWorkoutFromPlanDayIndex(null);
     setActiveDraft(null);
     setCompletedLog([]);
+    setPostWorkoutInsight(null);
   }, []);
 
   // Step 1: User clicks "Start" on plan workout -> show quick recovery check
@@ -835,6 +898,8 @@ const AppContent: React.FC = () => {
               onGeneratePlan={generateNewPlan}
               onViewWeeklyPlan={handleViewWeeklyPlan}
               onStartPlanWorkout={handleStartFromPlan}
+              coachInsights={coachInsights}
+              onDismissInsight={dismissInsight}
             />
           </Suspense>
           </SectionErrorBoundary>
@@ -1020,6 +1085,7 @@ const AppContent: React.FC = () => {
                 if (saved) showHistoryView();
               }}
               isSaving={isSaving}
+              coachingInsight={postWorkoutInsight}
             />
           </Suspense>
         </div>

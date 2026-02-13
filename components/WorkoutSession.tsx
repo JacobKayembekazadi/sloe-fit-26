@@ -42,7 +42,7 @@ export interface WorkoutDraft {
 interface WorkoutSessionProps {
   initialExercises: ExerciseLog[];
   workoutTitle: string;
-  onComplete: (exercises: ExerciseLog[], title: string) => void;
+  onComplete: (exercises: ExerciseLog[], title: string, meta?: { restSkips: number; totalRests: number }) => void;
   onCancel: () => void;
   recoveryAdjusted?: boolean;
   recoveryNotes?: string;
@@ -105,10 +105,19 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
 
   // Rest Timer State
   const [restTimerOpen, setRestTimerOpen] = useState(false);
+  const [restSkipCount, setRestSkipCount] = useState(0);
+  const [totalRestCount, setTotalRestCount] = useState(0);
 
   // Memoized callbacks for RestTimer to prevent re-renders triggering setState during render
-  const handleRestComplete = useCallback(() => setRestTimerOpen(false), []);
-  const handleRestSkip = useCallback(() => setRestTimerOpen(false), []);
+  const handleRestComplete = useCallback(() => {
+    setTotalRestCount(prev => prev + 1);
+    setRestTimerOpen(false);
+  }, []);
+  const handleRestSkip = useCallback((_timeRemaining: number) => {
+    setRestSkipCount(prev => prev + 1);
+    setTotalRestCount(prev => prev + 1);
+    setRestTimerOpen(false);
+  }, []);
 
   // Elapsed time tracker
   useEffect(() => {
@@ -301,7 +310,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     });
 
     // Call onComplete first (triggers Supabase save). Draft stays as safety net.
-    onComplete(finalLogs, workoutTitle);
+    onComplete(finalLogs, workoutTitle, { restSkips: restSkipCount, totalRests: totalRestCount });
     // Clear draft only after onComplete returns — save has been initiated.
     localStorage.removeItem(DRAFT_STORAGE_KEY);
   };
