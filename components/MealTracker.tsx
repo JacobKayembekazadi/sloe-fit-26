@@ -314,7 +314,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     } catch (err) {
       setError('Failed to analyze photo. Please check your connection and try again.');
       setAnalyzeRetry(() => handlePhotoAnalyze);
-      showToast('Photo analysis failed', 'error');
+      showToast("Couldn't read photo. Try a clearer shot.", 'error');
     }
     setIsLoading(false);
   }, [file, userGoal]);
@@ -347,7 +347,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         });
         // Check if save failed (returns null when not logged in)
         if (!result) {
-          showToast('Please log in to save meals', 'error');
+          showToast('Log in to save meals.', 'error');
           return;
         }
       } else {
@@ -358,15 +358,15 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           fats: meal.fats
         });
       }
-      showToast(`Added ${meal.name} - ${meal.calories} cal`, 'success');
+      showToast(`${meal.name} logged.`, 'success');
     } catch (err: any) {
       const msg = err?.message?.toLowerCase?.() ?? '';
       if (msg.includes('auth') || msg.includes('log in') || msg.includes('401')) {
-        showToast('Please log in to save meals', 'error');
+        showToast('Log in to save meals.', 'error');
       } else if (msg.includes('network') || msg.includes('fetch')) {
-        showToast('Network error — meal saved offline and will sync when reconnected', 'error');
+        showToast('Offline. Saved locally, will sync later.', 'info');
       } else {
-        showToast('Failed to save meal. Please try again.', 'error');
+        showToast("Didn't save. Try again.", 'error');
       }
     }
   };
@@ -376,7 +376,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 
     // FIX 25: Validate that at least one macro is > 0 (prevents logging empty manual entries)
     if (macros.calories === 0 && macros.protein === 0 && macros.carbs === 0 && macros.fats === 0) {
-      showToast('Enter at least one macro value before logging', 'error');
+      showToast('Enter at least one value first.', 'error');
       return;
     }
 
@@ -391,7 +391,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       let timedOut = false;
       const warningTimer = setTimeout(() => {
         timedOut = true;
-        showToast('Still saving... please wait', 'info');
+        showToast('Still saving...', 'info');
       }, 10000);
 
       if (onSaveMealEntry) {
@@ -414,15 +414,15 @@ const MealTracker: React.FC<MealTrackerProps> = ({
       }
 
       setIsLogged(true);
-      showToast(`Logged ${macros.calories} calories`, 'success');
+      showToast('Meal tracked. Keep it going.', 'success');
     } catch (err: any) {
       const msg = err?.message?.toLowerCase?.() ?? '';
       if (msg.includes('auth') || msg.includes('log in') || msg.includes('401')) {
-        showToast('Please log in to save meals', 'error');
+        showToast('Log in to save meals.', 'error');
       } else if (msg.includes('network') || msg.includes('fetch')) {
-        showToast('Network error — meal saved offline and will sync when reconnected', 'error');
+        showToast('Offline. Saved locally, will sync later.', 'info');
       } else {
-        showToast('Failed to save meal. Please try again.', 'error');
+        showToast("Didn't save. Try again.", 'error');
       }
     } finally {
       setIsLogging(false);
@@ -568,9 +568,9 @@ const MealTracker: React.FC<MealTrackerProps> = ({
           />
           {mealsByDate.length === 0 ? (
             <div className="card p-8 text-center text-gray-500">
-              <span className="text-4xl mb-4 block">🍽️</span>
-              <p>No meals logged yet.</p>
-              <p className="text-sm mt-1">Start tracking your nutrition!</p>
+              <span className="text-4xl mb-4 block">👀</span>
+              <p className="text-white font-medium">Empty plate.</p>
+              <p className="text-sm mt-1">Log your first meal to start tracking.</p>
             </div>
           ) : (
             mealsByDate.map(({ date, displayDate, meals, totalCalories, totalProtein }) => (
@@ -1087,7 +1087,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                         carbs: selectedMeal.carbs,
                         fats: selectedMeal.fats
                       });
-                      showToast('Added to favorites', 'success');
+                      showToast('Favorited.', 'success');
                     }
                   }}
                   className="flex-1 py-2 px-4 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
@@ -1118,11 +1118,11 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                     onClick={async () => {
                       const success = await onDeleteMealEntry(selectedMeal.id);
                       if (success) {
-                        showToast('Meal deleted', 'success');
+                        showToast('Deleted.', 'success');
                         setSelectedMeal(null);
                         setShowDeleteConfirm(false);
                       } else {
-                        showToast('Failed to delete meal', 'error');
+                        showToast("Couldn't delete. Try again.", 'error');
                         setShowDeleteConfirm(false);
                       }
                     }}

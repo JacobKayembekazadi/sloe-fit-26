@@ -102,7 +102,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
     } catch (err) {
       setError('Failed to load photos');
       setRetryAction(() => () => fetchPhotos(append));
-      showToast('Failed to load photos', 'error');
+      showToast("Couldn't load photos.", 'error');
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -178,7 +178,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       }
     } catch (err) {
             setError('Could not access camera. Please use file upload instead.');
-      showToast('Camera access denied', 'error');
+      showToast('Camera access denied.', 'error');
     }
   };
 
@@ -252,7 +252,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       setWeight('');
       setNotes('');
       await fetchPhotos();
-      showToast('Photo saved successfully', 'success');
+      showToast('Photo saved 📸', 'success');
       onPhotoSaved?.();
 
     } catch (err) {
@@ -265,7 +265,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       const errorMsg = err instanceof Error ? err.message : 'Failed to upload photo';
       setError(errorMsg);
       setRetryAction(() => handleUpload);
-      showToast(errorMsg, 'error');
+      showToast("Upload failed. Try again.", 'error');
     } finally {
       setUploading(false);
     }
@@ -296,7 +296,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
     } catch (err) {
             setError('Failed to delete photo');
-      showToast('Failed to delete photo', 'error');
+      showToast("Couldn't delete. Try again.", 'error');
     }
   };
 
@@ -355,14 +355,14 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
       if (gen !== analysisGenRef.current) return;
       if (result.markdown.startsWith('Error:')) {
         setAnalysisError(result.markdown.replace(/^Error:\s*/, ''));
-        showToast('Progress analysis failed', 'error');
+        showToast("Comparison failed. Try again.", 'error');
       } else {
         setAnalysisResult(result.markdown);
       }
     } catch {
       if (gen !== analysisGenRef.current) return;
       setAnalysisError('Analysis failed. Please check your connection and try again.');
-      showToast('Failed to analyze progress', 'error');
+      showToast("Analysis failed. Try again.", 'error');
     } finally {
       if (gen === analysisGenRef.current) {
         setAnalysisLoading(false);
@@ -567,7 +567,9 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
             </div>
           ) : photos.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-400 mb-4">No progress photos yet</p>
+              <span className="text-4xl mb-4 block">📸</span>
+              <p className="text-white font-medium mb-2">Track your transformation.</p>
+              <p className="text-gray-400 mb-4 text-sm">Progress photos show what the scale can't.</p>
               <button
                 onClick={() => setViewMode('capture')}
                 className="text-[var(--color-primary)] font-medium hover:underline"

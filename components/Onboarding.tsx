@@ -232,7 +232,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             } else {
                 setError(err.message || 'Failed to save your profile. Please try again.');
             }
-            showToast('Failed to complete setup', 'error');
+            showToast("Setup failed. Try again.", 'error');
             isSavingRef.current = false;
             setSaving(false);
         }

@@ -162,7 +162,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             );
 
             if (error) {
-                showToast('Failed to load profile', 'error');
+                showToast("Couldn't load profile. Try again.", 'error');
                 setFetchError(true);
             } else if (data) {
                 setProfile({
@@ -197,7 +197,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                 setFetchError(false);
             }
         } catch {
-            showToast('Failed to load profile', 'error');
+            showToast("Couldn't load profile. Try again.", 'error');
             setFetchError(true);
         } finally {
             setLoading(false);
@@ -227,10 +227,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             });
 
             if (error) {
-                showToast('Failed to save settings', 'error');
+                showToast("Didn't save. Try again.", 'error');
             } else {
                 setSaved(true);
-                showToast('Settings saved!', 'success');
+                showToast('Saved.', 'success');
                 setTimeout(() => setSaved(false), 2000);
                 // FIX 3.4 + FIX 26: Pass saved values for optimistic update (avoids stale replica)
                 onProfileSaved?.({
@@ -247,7 +247,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                 });
             }
         } catch {
-            showToast('Failed to save settings', 'error');
+            showToast("Didn't save. Try again.", 'error');
         } finally {
             setSaving(false);
         }
@@ -260,7 +260,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
     };
 
     const handleBecomeTrainer = async () => {
-        showToast('Trainer upgrades require admin approval. Contact support@sloefit.com', 'info');
+        showToast('Trainer access needs admin approval.', 'info');
     };
 
     // GDPR: Handle data export
@@ -273,7 +273,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             const token = session.data.session?.access_token;
 
             if (!token) {
-                showToast('Please sign in again to export data', 'error');
+                showToast('Sign in again to export.', 'error');
                 return;
             }
 
@@ -299,9 +299,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            showToast('Data exported successfully', 'success');
+            showToast('Data exported.', 'success');
         } catch {
-            showToast('Failed to export data. Please try again.', 'error');
+            showToast("Export failed. Try again.", 'error');
         } finally {
             setExporting(false);
         }
@@ -319,7 +319,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             const token = session.data.session?.access_token;
 
             if (!token) {
-                showToast('Please sign in again to delete account', 'error');
+                showToast('Sign in again to delete.', 'error');
                 return;
             }
 
@@ -342,9 +342,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
             // Sign out
             await signOut();
 
-            showToast('Account deleted successfully', 'success');
+            showToast('Account deleted.', 'success');
         } catch (err) {
-            showToast(err instanceof Error ? err.message : 'Failed to delete account', 'error');
+            showToast(err instanceof Error ? err.message : "Couldn't delete account.", 'error');
         } finally {
             setDeleting(false);
             setShowDeleteModal(false);
@@ -719,15 +719,15 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                             });
 
                             if (error) {
-                                showToast('Failed to save supplement preferences', 'error');
+                                showToast("Supplements didn't save. Try again.", 'error');
                             } else {
                                 setProfile(prev => ({ ...prev, supplement_preferences: newPrefs }));
-                                showToast('Supplement preferences saved!', 'success');
+                                showToast('Supplements updated.', 'success');
                                 // RALPH LOOP 16: Trigger parent refetch to sync MealTracker and other components
                                 onProfileSaved?.({ supplement_preferences: newPrefs });
                             }
                         } catch {
-                            showToast('Failed to save supplement preferences', 'error');
+                            showToast("Supplements didn't save. Try again.", 'error');
                         } finally {
                             setSavingSupplements(false);
                         }

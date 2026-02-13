@@ -39,7 +39,7 @@ const WeeklyPlanCard: React.FC<WeeklyPlanCardProps> = ({
         </div>
 
         <p className="text-sm text-gray-400 mb-4">
-          Let AI analyze your history and create a personalized training week with progressive overload built in.
+          AI maps out your week with progressive overload built in.
         </p>
 
         <button

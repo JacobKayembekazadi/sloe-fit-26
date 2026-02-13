@@ -308,7 +308,7 @@ const AppContent: React.FC = () => {
       } else {
         setWorkoutLog(fallbackWorkout.exercises);
         setWorkoutTitle(fallbackWorkout.title);
-        showToast('Using fallback workout — AI unavailable', 'info');
+        showToast("AI's resting. Using backup workout.", 'info');
       }
     } catch (err) {
       reportError(err, {
@@ -319,7 +319,7 @@ const AppContent: React.FC = () => {
       });
       setWorkoutLog(fallbackWorkout.exercises);
       setWorkoutTitle(fallbackWorkout.title);
-      showToast('Using fallback workout - AI unavailable', 'info');
+      showToast("AI's resting. Using backup workout.", 'info');
     }
 
     setWorkoutStatus('preview');
@@ -340,12 +340,12 @@ const AppContent: React.FC = () => {
         setAiWorkout(workout);
         setWorkoutLog(aiWorkoutToExerciseLog(workout));
         setWorkoutTitle(workout.title);
-        showToast('AI workout generated!', 'success');
+        showToast('Workout ready. Let\'s go.', 'success');
       } else {
-        showToast('AI still unavailable. Try again later.', 'error');
+        showToast("AI's still down. Try again later.", 'error');
       }
     } catch {
-      showToast('AI still unavailable. Try again later.', 'error');
+      showToast("AI's still down. Try again later.", 'error');
     } finally {
       setIsRetryingWorkout(false);
     }
@@ -464,12 +464,12 @@ const AppContent: React.FC = () => {
           const planSaved = await markDayCompleted(workoutFromPlanDayIndex);
           setWorkoutFromPlanDayIndex(null);
           if (!planSaved) {
-            showToast('Workout saved! (Plan sync may have failed)', 'info');
+            showToast('Workout logged. Plan sync pending.', 'info');
           } else {
-            showToast('Workout Saved!', 'success');
+            showToast('Workout logged 💪', 'success');
           }
         } else {
-          showToast('Workout Saved!', 'success');
+          showToast('Workout logged 💪', 'success');
         }
         setWorkoutStatus('idle');
         setIsSaving(false);
@@ -484,12 +484,12 @@ const AppContent: React.FC = () => {
         }, user?.id);
         setIsSaving(false);
         if (queued) {
-          showToast('Workout saved offline — will sync when connected', 'info');
+          showToast('Saved offline. Will sync later.', 'info');
           localStorage.removeItem(DRAFT_STORAGE_KEY);
           setWorkoutStatus('idle');
           return true;
         } else {
-          showToast('Failed to save workout — storage full. Please retry.', 'error');
+          showToast('Storage full. Free up space and retry.', 'error');
           return false;
         }
       }
@@ -509,12 +509,12 @@ const AppContent: React.FC = () => {
       }, user?.id);
       setIsSaving(false);
       if (queued) {
-        showToast('Workout saved offline — will sync when connected', 'info');
+        showToast('Saved offline. Will sync later.', 'info');
         localStorage.removeItem(DRAFT_STORAGE_KEY);
         setWorkoutStatus('idle');
         return true;
       } else {
-        showToast('Failed to save workout — storage full. Please retry.', 'error');
+        showToast('Storage full. Free up space and retry.', 'error');
         return false;
       }
     }
@@ -526,7 +526,7 @@ const AppContent: React.FC = () => {
       if (!hasQueuedWorkouts()) return;
       const synced = await syncQueuedWorkouts(addWorkout, user?.id);
       if (synced > 0) {
-        showToast(`Synced ${synced} offline workout${synced > 1 ? 's' : ''}!`, 'success');
+        showToast(`Synced ${synced} workout${synced > 1 ? 's' : ''}.`, 'success');
       }
     });
     return cleanup;
@@ -1012,7 +1012,7 @@ const AppContent: React.FC = () => {
               duration={getDurationString()}
               volume={calculateVolume(completedLog)}
               exercisesCount={completedLog.length}
-              onShare={() => showToast('Shared to feed!', 'success')}
+              onShare={() => showToast('Shared.', 'success')}
               onClose={() => handleRateWorkout(3)}
               onRate={handleRateWorkout}
               onViewHistory={async () => {
@@ -1033,7 +1033,7 @@ const AppContent: React.FC = () => {
             onStartWorkout={handleStartCustomWorkout}
             onTemplateSaved={() => {
               refreshTemplates();
-              showToast('Template saved!', 'success');
+              showToast('Template saved.', 'success');
             }}
           />
         </Suspense>

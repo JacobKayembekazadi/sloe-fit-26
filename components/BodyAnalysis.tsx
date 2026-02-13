@@ -159,7 +159,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     }
     setIsLoading(false);
     setLoadingPhase('Scanning physique...');
-    showToast('Analysis cancelled', 'info');
+    showToast('Cancelled.', 'info');
   }, [showToast]);
 
   const handleAnalyze = useCallback(async () => {
@@ -183,7 +183,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         setIsLoading(false);
         setError('Analysis timed out. Please try again with a smaller image or better connection.');
         setAnalyzeRetry(() => handleAnalyze);
-        showToast('Analysis timed out', 'error');
+        showToast('Timed out. Try a smaller photo.', 'error');
       }
     }, ANALYSIS_TIMEOUT_MS);
 
@@ -204,13 +204,13 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
         setError(analysisResult.markdown);
         setAnalyzeRetry(() => handleAnalyze);
-        showToast('Body analysis failed', 'error');
+        showToast("Analysis failed. Try again.", 'error');
       } else {
         setResult(analysisResult.markdown);
         setIsRestored(false);
         setRestoredTimestamp(null);
         onAnalysisComplete(analysisResult.markdown);
-        showToast('Analysis complete', 'success');
+        showToast('Analysis done.', 'success');
 
         // Persist to localStorage (compress preview to avoid quota issues)
         try {
@@ -250,7 +250,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       }
       setError('Body analysis failed. Please check your connection and try again.');
       setAnalyzeRetry(() => handleAnalyze);
-      showToast('Body analysis failed', 'error');
+      showToast("Analysis failed. Try again.", 'error');
     } finally {
       // H4 FIX: Clear timeout and only update loading if not cancelled
       if (timeoutRef.current) {
@@ -339,8 +339,8 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
                 <div className="p-4 bg-gray-800 rounded-full mb-4 group-hover:bg-[var(--color-primary)] group-hover:text-black transition-colors">
                   <CameraIcon className="w-8 h-8" />
                 </div>
-                <span className="font-bold uppercase tracking-wide">Upload Photo</span>
-                <p className="text-xs mt-2 text-center px-4">Tap to select front facing photo</p>
+                <span className="font-bold uppercase tracking-wide">See Your Starting Point</span>
+                <p className="text-xs mt-2 text-center px-4">Upload a front-facing photo for AI analysis</p>
               </div>
             )}
           </label>

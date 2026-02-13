@@ -129,9 +129,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     }, []);
 
     // Calculate program day (days since user started) instead of calendar day
-    const { dayDisplay, isMilestone } = useMemo(() => {
+    const { dayDisplay, isMilestone, milestoneMessage } = useMemo(() => {
         if (!userProfile?.created_at) {
-            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true, milestoneMessage: null };
         }
 
         // RALPH LOOP 29: Validate created_at format with try/catch
@@ -141,11 +141,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             // Check if date is valid
             if (isNaN(startDate.getTime())) {
                 console.warn('[Dashboard] Invalid created_at format:', userProfile.created_at);
-                return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+                return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true, milestoneMessage: null };
             }
         } catch {
             console.warn('[Dashboard] Failed to parse created_at:', userProfile.created_at);
-            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true };
+            return { programDay: 1, dayDisplay: 'Day 1', isMilestone: true, milestoneMessage: null };
         }
 
         // RALPH LOOP 21: DST-safe day calculation using UTC calendar days
@@ -169,11 +169,24 @@ const Dashboard: React.FC<DashboardProps> = ({
         // Format display for large numbers
         let display: string;
         let milestone = false;
+        let message: string | null = null;
 
-        // Check for milestones
-        const MILESTONES = [7, 14, 30, 60, 90, 100, 180, 365];
-        if (MILESTONES.includes(day)) {
+        // Check for milestones with celebration messages (SOUL.md: King Kay Mix voice)
+        const MILESTONE_MESSAGES: Record<number, string> = {
+            7: 'Week 1 down. Building the habit.',
+            14: 'Two weeks in. Momentum building.',
+            21: 'Three weeks. Habit territory.',
+            30: "30 days. You're not dabbling anymore.",
+            60: 'Two months. This is becoming you.',
+            90: '90 days. Quarter of a year. Solid.',
+            100: 'Triple digits. This is who you are now.',
+            180: 'Half a year. Transformed.',
+            365: 'One year. Legend status.',
+        };
+
+        if (MILESTONE_MESSAGES[day]) {
             milestone = true;
+            message = MILESTONE_MESSAGES[day];
         }
 
         // Format display based on day count
@@ -192,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             display = `Day ${day}`;
         }
 
-        return { programDay: day, dayDisplay: display, isMilestone: milestone };
+        return { programDay: day, dayDisplay: display, isMilestone: milestone, milestoneMessage: message };
     }, [userProfile?.created_at]);
 
     // Get today's nutrition from log or use defaults (local date YYYY-MM-DD format to match database)
@@ -224,11 +237,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
                 </div>
-                <div className="text-right flex items-center gap-2">
-                    <span className="text-2xl">{isMilestone ? '🏆' : '🔥'}</span>
-                    <span className={`font-bold text-xl ${isMilestone ? 'text-yellow-400' : 'text-[var(--color-primary)]'}`}>
-                        {dayDisplay}
-                    </span>
+                <div className="text-right">
+                    <div className="flex items-center gap-2 justify-end">
+                        <span className="text-2xl">{isMilestone ? '🏆' : '🔥'}</span>
+                        <span className={`font-bold text-xl ${isMilestone ? 'text-yellow-400' : 'text-[var(--color-primary)]'}`}>
+                            {dayDisplay}
+                        </span>
+                    </div>
+                    {milestoneMessage && (
+                        <p className="text-xs text-yellow-400/80 mt-1 font-medium">{milestoneMessage}</p>
+                    )}
                 </div>
             </header>
 

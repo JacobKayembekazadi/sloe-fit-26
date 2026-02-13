@@ -70,9 +70,9 @@ const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
           <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6">
             <Calendar className="w-10 h-10 text-[#D4FF00]" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">No Plan Yet</h2>
+          <h2 className="text-xl font-bold text-white mb-2">Map out your week.</h2>
           <p className="text-gray-400 mb-8 max-w-xs">
-            Generate a personalized 7-day training plan based on your history and goals.
+            AI builds your 7-day plan based on your progress and goals.
           </p>
           <button
             onClick={onGenerate}

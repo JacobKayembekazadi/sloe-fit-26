@@ -128,7 +128,7 @@ const LoginScreen: React.FC = () => {
     // H2 FIX: Resend confirmation email function
     const handleResendConfirmation = async () => {
         if (!email || !isValidEmail(email)) {
-            showToast('Please enter a valid email address', 'error');
+            showToast('Enter a valid email.', 'error');
             return;
         }
 
@@ -141,10 +141,10 @@ const LoginScreen: React.FC = () => {
 
             if (error) throw error;
 
-            showToast('Confirmation email sent! Check your inbox.', 'success');
+            showToast('Email sent. Check inbox.', 'success');
             setShowResendConfirmation(false);
         } catch (err: any) {
-            showToast(err.message || 'Failed to resend email', 'error');
+            showToast(err.message || "Couldn't send email.", 'error');
         } finally {
             setResendingEmail(false);
         }
