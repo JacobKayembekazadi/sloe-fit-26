@@ -155,6 +155,54 @@ function checkPromptInjection(input: string): string[] {
 }
 
 /**
+ * C2 FIX: Sanitize user input before passing to AI prompts
+ * Removes/escapes potential prompt injection patterns
+ */
+export function sanitizeForAI(input: string, maxLength: number = 2000): string {
+  if (!input || typeof input !== 'string') return '';
+
+  let sanitized = input.trim();
+
+  // Truncate to max length
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.slice(0, maxLength);
+  }
+
+  // Remove/escape prompt injection patterns
+  // Replace "system:" with "[filtered]"
+  sanitized = sanitized.replace(/system\s*:/gi, '[filtered]:');
+  sanitized = sanitized.replace(/assistant\s*:/gi, '[filtered]:');
+  sanitized = sanitized.replace(/user\s*:/gi, '[filtered]:');
+  sanitized = sanitized.replace(/human\s*:/gi, '[filtered]:');
+
+  // Remove instruction markers
+  sanitized = sanitized.replace(/\[INST\]/gi, '');
+  sanitized = sanitized.replace(/\[\/INST\]/gi, '');
+  sanitized = sanitized.replace(/<<SYS>>/gi, '');
+  sanitized = sanitized.replace(/<<\/SYS>>/gi, '');
+  sanitized = sanitized.replace(/<\|im_start\|>/gi, '');
+  sanitized = sanitized.replace(/<\|im_end\|>/gi, '');
+
+  // Remove "ignore previous instructions" style attacks
+  sanitized = sanitized.replace(/ignore\s+(previous|above|prior)\s+(instructions?|prompts?)/gi, '[filtered]');
+  sanitized = sanitized.replace(/disregard\s+(previous|above|prior)/gi, '[filtered]');
+  sanitized = sanitized.replace(/forget\s+(everything|all|your)/gi, '[filtered]');
+  sanitized = sanitized.replace(/you\s+are\s+now/gi, '[filtered]');
+  sanitized = sanitized.replace(/new\s+instructions?:/gi, '[filtered]:');
+
+  // Remove markdown heading-style role markers
+  sanitized = sanitized.replace(/###\s*(Instruction|Human|Assistant|System)/gi, '### [filtered]');
+
+  // Normalize excessive newlines (potential delimiter injection)
+  sanitized = sanitized.replace(/\n{3,}/g, '\n\n');
+
+  // Normalize whitespace
+  sanitized = normalizeWhitespace(sanitized);
+
+  return sanitized;
+}
+
+/**
  * Normalize whitespace in text
  */
 function normalizeWhitespace(input: string): string {

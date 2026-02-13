@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { reportError, createScopedReporter } from '../utils/sentryHelpers';
 import { CompletedWorkout, NutritionLog } from '../App';
 import type { SupplementPreferences } from '../services/supplementService';
+import { validateSupplementPreferences } from '../services/supplementService';
 import {
     queueMeal,
     getQueuedMeals,
@@ -304,7 +305,7 @@ export const useUserData = () => {
                     full_name: p.full_name,
                     subscription_status: p.subscription_status || 'trial',
                     trial_started_at: p.trial_started_at || null,
-                    supplement_preferences: p.supplement_preferences || null,
+                    supplement_preferences: validateSupplementPreferences(p.supplement_preferences),
                     created_at: p.created_at || null
                 };
                 goal = p.goal;

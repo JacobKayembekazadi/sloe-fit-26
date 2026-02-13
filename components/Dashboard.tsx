@@ -266,7 +266,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <svg className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <div>
+                        <div className="flex-1">
                             <p className="text-xs text-blue-300 font-medium">Free Trial Active</p>
                             <p className="text-xs text-gray-400 mt-0.5">
                                 {(() => {
@@ -274,11 +274,42 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     const daysSinceStart = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
                                     const daysRemaining = Math.max(0, Math.ceil(7 - daysSinceStart));
                                     return daysRemaining > 0
-                                        ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining. Upgrade for unlimited AI features.`
-                                        : 'Trial expired. Upgrade to continue using AI features.';
+                                        ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`
+                                        : 'Trial expired';
                                 })()}
                             </p>
                         </div>
+                        <a
+                            href="https://sloefit.com/subscribe"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-full hover:bg-blue-500/30 transition-colors whitespace-nowrap"
+                        >
+                            Upgrade
+                        </a>
+                    </div>
+                )}
+
+                {/* C8 FIX: Prominent upgrade banner for expired trials */}
+                {userProfile?.subscription_status === 'expired' && (
+                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+                        <div className="flex items-start gap-3">
+                            <span className="material-symbols-outlined text-red-400 text-xl">warning</span>
+                            <div className="flex-1">
+                                <p className="text-sm text-red-400 font-medium">Trial Expired</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    Upgrade to continue using AI workouts and nutrition tracking.
+                                </p>
+                            </div>
+                        </div>
+                        <a
+                            href="https://sloefit.com/subscribe"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 block w-full py-2 px-4 bg-[var(--color-primary)] text-black text-sm font-bold rounded-lg text-center hover:opacity-90 transition-opacity"
+                        >
+                            Upgrade Now
+                        </a>
                     </div>
                 )}
             </div>

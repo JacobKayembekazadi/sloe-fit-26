@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { BODY_ANALYSIS_PROMPT, MEAL_ANALYSIS_PROMPT, PROGRESS_ANALYSIS_PROMPT, WORKOUT_GENERATION_PROMPT, TEXT_MEAL_ANALYSIS_PROMPT, WEEKLY_NUTRITION_PROMPT } from '../prompts';
 import { RecoveryState } from '../components/RecoveryCheckIn';
 import { UserProfile } from '../hooks/useUserData';
+import { sanitizeForAI } from '../utils/validation';
 
 // ============================================================================
 // Configuration
@@ -667,6 +668,9 @@ export const analyzeMealPhoto = async (image: File, userGoal: string | null): Pr
 
 export const analyzeProgress = async (images: File[], metrics: string): Promise<string> => {
   try {
+    // C2 FIX: Sanitize metrics input to prevent prompt injection
+    const sanitizedMetrics = sanitizeForAI(metrics, 2000);
+
     const imageUrls = await Promise.all(images.map(fileToDataUrl));
 
     const imageContent = imageUrls.map(url => ({
@@ -682,7 +686,7 @@ export const analyzeProgress = async (images: File[], metrics: string): Promise<
           {
             role: 'user',
             content: [
-              { type: 'text', text: `Analyze the attached progress photos and metrics:\n${metrics}` },
+              { type: 'text', text: `Analyze the attached progress photos and metrics:\n${sanitizedMetrics}` },
               ...imageContent
             ]
           }
@@ -756,18 +760,21 @@ Generate an appropriate workout based on the above data.
 
 export const analyzeTextMeal = async (description: string, userGoal: string | null): Promise<TextMealAnalysisResult | null> => {
   try {
+    // C2 FIX: Sanitize user input to prevent prompt injection
+    const sanitizedDescription = sanitizeForAI(description, 1000);
+
     // Build context-aware prompt
     const goalContext = userGoal
       ? `User's goal: ${userGoal}. Adjust portion estimates accordingly (conservative for CUT, generous for BULK).`
       : 'No specific goal set. Use standard portion estimates.';
 
     // Clean and normalize the description
-    const cleanedDescription = description.trim().toLowerCase();
+    const cleanedDescription = sanitizedDescription.trim().toLowerCase();
 
     // Detect if this is a simple or complex meal for better prompting
     const isSimpleMeal = cleanedDescription.split(/[,&+]|and|with/).length <= 3;
 
-    const prompt = `Analyze this meal: "${description}"
+    const prompt = `Analyze this meal: "${sanitizedDescription}"
 
 ${goalContext}
 

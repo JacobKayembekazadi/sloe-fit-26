@@ -139,6 +139,33 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     return () => { isMountedRef.current = false; };
   }, []);
 
+  // M1 FIX: Track the week start at mount to detect week boundary crossing
+  const lastKnownWeekStartRef = useRef<string>(getWeekStart());
+  // M1 FIX: Force refresh counter to trigger reload when week changes
+  const [weekRefreshTrigger, setWeekRefreshTrigger] = useState(0);
+
+  // M1 FIX: Listen for visibility changes to detect week boundary crossing
+  useEffect(() => {
+    const checkWeekBoundary = () => {
+      const currentWeekStart = getWeekStart();
+      if (currentWeekStart !== lastKnownWeekStartRef.current) {
+        console.info('[useWeeklyPlan] Week boundary crossed, refreshing plan');
+        lastKnownWeekStartRef.current = currentWeekStart;
+        setWeekRefreshTrigger(prev => prev + 1);
+      }
+    };
+
+    // Check on visibility change (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkWeekBoundary();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   // Load existing plan and recovery data from Supabase on mount
   useEffect(() => {
     if (!user) return;
@@ -254,7 +281,8 @@ export function useWeeklyPlan(): UseWeeklyPlanResult {
     return () => {
       isCancelled = true;
     };
-  }, [user]);
+  // M1 FIX: Re-run when weekRefreshTrigger changes (week boundary crossed)
+  }, [user, weekRefreshTrigger]);
 
   // Transform workout history for AI input
   const workoutHistory = useMemo((): WorkoutHistoryItem[] => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GoalSelector, { FitnessGoal } from './GoalSelector';
 import PhysiqueEstimator from './PhysiqueEstimator';
 import HurdleIdentifier, { Hurdle } from './HurdleIdentifier';
@@ -16,14 +16,76 @@ export interface OnboardingData {
     hurdle: Hurdle;
 }
 
+// H3 FIX: localStorage key for quiz progress persistence
+const QUIZ_PROGRESS_KEY = 'sloe_fit_quiz_progress';
+
+interface QuizProgress {
+    step: number;
+    data: OnboardingData;
+    timestamp: number;
+}
+
+// H3 FIX: Load saved quiz progress from localStorage
+const loadQuizProgress = (): QuizProgress | null => {
+    try {
+        const saved = localStorage.getItem(QUIZ_PROGRESS_KEY);
+        if (!saved) return null;
+
+        const progress: QuizProgress = JSON.parse(saved);
+
+        // Expire after 24 hours to prevent stale data
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+        if (Date.now() - progress.timestamp > ONE_DAY) {
+            localStorage.removeItem(QUIZ_PROGRESS_KEY);
+            return null;
+        }
+
+        return progress;
+    } catch {
+        localStorage.removeItem(QUIZ_PROGRESS_KEY);
+        return null;
+    }
+};
+
+// H3 FIX: Save quiz progress to localStorage
+const saveQuizProgress = (step: number, data: OnboardingData): void => {
+    try {
+        const progress: QuizProgress = {
+            step,
+            data,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(QUIZ_PROGRESS_KEY, JSON.stringify(progress));
+    } catch {
+        // Silently fail if storage is full
+    }
+};
+
+// H3 FIX: Clear quiz progress on completion
+const clearQuizProgress = (): void => {
+    try {
+        localStorage.removeItem(QUIZ_PROGRESS_KEY);
+    } catch {
+        // Ignore
+    }
+};
+
 const OnboardingQuiz: React.FC<OnboardingQuizProps> = ({ onComplete, onBack }) => {
-    const [step, setStep] = useState<number>(1);
-    const [data, setData] = useState<OnboardingData>({
+    // H3 FIX: Load saved progress on mount
+    const savedProgress = useRef(loadQuizProgress());
+
+    const [step, setStep] = useState<number>(savedProgress.current?.step || 1);
+    const [data, setData] = useState<OnboardingData>(savedProgress.current?.data || {
         goal: 'CUT', // Default
         weight: 180,
         bodyFat: 20,
         hurdle: 'CONSISTENCY'
     });
+
+    // H3 FIX: Save progress whenever step or data changes
+    useEffect(() => {
+        saveQuizProgress(step, data);
+    }, [step, data]);
 
     const totalSteps = 4;
 
@@ -31,7 +93,8 @@ const OnboardingQuiz: React.FC<OnboardingQuizProps> = ({ onComplete, onBack }) =
         if (step < totalSteps) {
             setStep(step + 1);
         } else {
-            // Complete
+            // H3 FIX: Clear saved progress on completion
+            clearQuizProgress();
             onComplete(data);
         }
     };

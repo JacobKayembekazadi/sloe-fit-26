@@ -866,10 +866,42 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                         </span>
                     </div>
                 )}
-                {(profile.subscription_status === 'trial' || profile.subscription_status === 'expired') && (
-                    <p className="text-xs text-gray-500">
-                        Contact support@sloefit.com to upgrade your account.
-                    </p>
+                {/* C8 FIX: Add payment entry point for trial/expired users */}
+                {profile.subscription_status === 'expired' && (
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 space-y-3">
+                        <div className="flex items-start gap-3">
+                            <span className="material-symbols-outlined text-red-400">warning</span>
+                            <div>
+                                <p className="text-red-400 font-medium">Your trial has expired</p>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    Upgrade to continue using AI-powered workouts and meal tracking.
+                                </p>
+                            </div>
+                        </div>
+                        <a
+                            href="https://sloefit.com/subscribe"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full py-3 px-4 bg-[var(--color-primary)] text-black font-bold rounded-xl text-center hover:opacity-90 transition-opacity"
+                        >
+                            Upgrade Now
+                        </a>
+                    </div>
+                )}
+                {profile.subscription_status === 'trial' && (
+                    <div className="space-y-3">
+                        <a
+                            href="https://sloefit.com/subscribe"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full py-3 px-4 bg-gray-700 text-white font-bold rounded-xl text-center hover:bg-gray-600 transition-colors"
+                        >
+                            Upgrade for Full Access
+                        </a>
+                        <p className="text-xs text-gray-500 text-center">
+                            Questions? Contact support@sloefit.com
+                        </p>
+                    </div>
                 )}
             </div>
 

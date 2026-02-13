@@ -18,6 +18,10 @@ interface WorkoutPreviewProps {
     exercises: PreviewExercise[];
     onStart: () => void;
     onBack: () => void;
+    // M4 FIX: Optional props for fallback workout retry
+    isFallback?: boolean;
+    onRetryAI?: () => void;
+    isRetrying?: boolean;
 }
 
 const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
@@ -27,7 +31,11 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
     description,
     exercises,
     onStart,
-    onBack
+    onBack,
+    // M4 FIX: Fallback retry props
+    isFallback = false,
+    onRetryAI,
+    isRetrying = false,
 }) => {
     const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -160,6 +168,35 @@ const WorkoutPreview: React.FC<WorkoutPreviewProps> = ({
             {/* Sticky Bottom CTA */}
             <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-background-dark via-background-dark/95 to-transparent pt-8 sm:pt-10 z-[70]">
                 <div className="flex flex-col gap-3 sm:gap-4 max-w-md mx-auto">
+                    {/* M4 FIX: Fallback warning with retry button */}
+                    {isFallback && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-yellow-400 text-lg">warning</span>
+                                <span className="text-yellow-300 text-sm">Using template workout</span>
+                            </div>
+                            {onRetryAI && (
+                                <button
+                                    onClick={onRetryAI}
+                                    disabled={isRetrying}
+                                    className="px-3 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    {isRetrying ? (
+                                        <>
+                                            <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                                            Retrying...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="material-symbols-outlined text-sm">refresh</span>
+                                            Retry AI
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     <button
                         onClick={onStart}
                         className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 sm:h-16 bg-[var(--color-primary)] text-black gap-2 sm:gap-3 text-base sm:text-lg font-black leading-normal tracking-wide shadow-[0_8px_30px_rgba(212,255,0,0.3)] hover:shadow-[0_8px_40px_rgba(212,255,0,0.4)] active:scale-[0.98] transition-all"

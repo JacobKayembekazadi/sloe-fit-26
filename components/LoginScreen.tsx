@@ -19,6 +19,9 @@ const LoginScreen: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+    // H2 FIX: Track if we need to show resend confirmation button
+    const [showResendConfirmation, setShowResendConfirmation] = useState(false);
+    const [resendingEmail, setResendingEmail] = useState(false);
 
     // Validate email format
     const isValidEmail = (email: string): boolean => {
@@ -104,15 +107,46 @@ const LoginScreen: React.FC = () => {
             let message = err.message || 'Authentication failed';
             if (message.includes('Email not confirmed')) {
                 message = 'Please check your email and click the confirmation link before signing in.';
+                // H2 FIX: Show resend button when email not confirmed
+                setShowResendConfirmation(true);
             } else if (message.includes('Invalid login credentials')) {
                 message = 'Invalid email or password.';
+                setShowResendConfirmation(false);
             } else if (message.includes('User already registered')) {
                 message = 'An account with this email already exists.';
+                setShowResendConfirmation(false);
+            } else {
+                setShowResendConfirmation(false);
             }
             setError(message);
             showToast(message, 'error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // H2 FIX: Resend confirmation email function
+    const handleResendConfirmation = async () => {
+        if (!email || !isValidEmail(email)) {
+            showToast('Please enter a valid email address', 'error');
+            return;
+        }
+
+        setResendingEmail(true);
+        try {
+            const { error } = await supabase.auth.resend({
+                type: 'signup',
+                email: email,
+            });
+
+            if (error) throw error;
+
+            showToast('Confirmation email sent! Check your inbox.', 'success');
+            setShowResendConfirmation(false);
+        } catch (err: any) {
+            showToast(err.message || 'Failed to resend email', 'error');
+        } finally {
+            setResendingEmail(false);
         }
     };
 
@@ -172,8 +206,19 @@ const LoginScreen: React.FC = () => {
                     )}
 
                     {error && (
-                        <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm text-center">
-                            {error}
+                        <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm text-center space-y-2">
+                            <p>{error}</p>
+                            {/* H2 FIX: Resend confirmation email button */}
+                            {showResendConfirmation && (
+                                <button
+                                    type="button"
+                                    onClick={handleResendConfirmation}
+                                    disabled={resendingEmail}
+                                    className="text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] underline text-sm disabled:opacity-50"
+                                >
+                                    {resendingEmail ? 'Sending...' : 'Resend confirmation email'}
+                                </button>
+                            )}
                         </div>
                     )}
 

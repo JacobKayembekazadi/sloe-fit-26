@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import CheckIcon from '../components/icons/CheckIcon';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -38,8 +38,11 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         setToasts(prev => prev.filter(t => t.id !== id));
     };
 
+    // M6 FIX: Memoize context value to prevent unnecessary re-renders
+    const contextValue = useMemo(() => ({ showToast }), [showToast]);
+
     return (
-        <ToastContext.Provider value={{ showToast }}>
+        <ToastContext.Provider value={contextValue}>
             {children}
 
             {/* Toast Container */}

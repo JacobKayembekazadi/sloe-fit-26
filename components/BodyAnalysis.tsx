@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, ChangeEvent, memo } from 'react';
+import React, { useState, useCallback, useEffect, ChangeEvent, memo, useRef } from 'react';
 import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
@@ -9,6 +9,9 @@ import ProductCard from './ProductCard';
 import ProgressPhotos from './ProgressPhotos';
 import { PRODUCT_IDS } from '../services/shopifyService';
 import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
+
+// H4 FIX: Timeout for body analysis (60 seconds)
+const ANALYSIS_TIMEOUT_MS = 60000;
 
 interface BodyAnalysisProps {
   onAnalysisComplete: (result: string) => void;
@@ -65,6 +68,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
   // Progressive loading phase for AI analysis
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
+  // H4 FIX: Track if user cancelled or timed out
+  const analysisCancelledRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isLoading) {
@@ -144,18 +150,57 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     };
   }, [preview]);
 
+  // H4 FIX: Cancel ongoing analysis
+  const handleCancelAnalysis = useCallback(() => {
+    analysisCancelledRef.current = true;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsLoading(false);
+    setLoadingPhase('Scanning physique...');
+    showToast('Analysis cancelled', 'info');
+  }, [showToast]);
+
   const handleAnalyze = useCallback(async () => {
     if (!file) {
       setError("Please upload a photo first.");
       return;
     }
+
+    // H4 FIX: Reset cancellation flag
+    analysisCancelledRef.current = false;
+
     setIsLoading(true);
     setError(null);
     setResult(null);
     setAnalyzeRetry(null);
 
+    // H4 FIX: Set timeout for analysis
+    timeoutRef.current = setTimeout(() => {
+      if (!analysisCancelledRef.current) {
+        analysisCancelledRef.current = true;
+        setIsLoading(false);
+        setError('Analysis timed out. Please try again with a smaller image or better connection.');
+        setAnalyzeRetry(() => handleAnalyze);
+        showToast('Analysis timed out', 'error');
+      }
+    }, ANALYSIS_TIMEOUT_MS);
+
     try {
       const analysisResult = await analyzeBodyPhoto(file);
+
+      // H4 FIX: Check if cancelled before processing result
+      if (analysisCancelledRef.current) {
+        return;
+      }
+
+      // Clear timeout on success
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
         setError(analysisResult.markdown);
         setAnalyzeRetry(() => handleAnalyze);
@@ -199,11 +244,22 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         }
       }
     } catch {
+      // H4 FIX: Don't show error if cancelled
+      if (analysisCancelledRef.current) {
+        return;
+      }
       setError('Body analysis failed. Please check your connection and try again.');
       setAnalyzeRetry(() => handleAnalyze);
       showToast('Body analysis failed', 'error');
     } finally {
-      setIsLoading(false);
+      // H4 FIX: Clear timeout and only update loading if not cancelled
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (!analysisCancelledRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [file, preview, onAnalysisComplete, showToast]);
 
@@ -313,6 +369,13 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             </div>
             <p className="text-xl font-black text-white uppercase tracking-wide">{loadingPhase}</p>
             <p className="text-gray-400 mt-2 text-sm">AI is examining your physique in detail</p>
+            {/* H4 FIX: Cancel button for long-running analysis */}
+            <button
+              onClick={handleCancelAnalysis}
+              className="mt-4 px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
           </div>
           <div className="card">
             <AnalysisResultSkeleton />

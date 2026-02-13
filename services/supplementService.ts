@@ -241,3 +241,47 @@ The user is taking the following supplements. Reference these naturally in your 
 ${supplementList}
 `;
 }
+
+/**
+ * M9 FIX: Validate and clean orphaned supplement IDs from user preferences
+ * Returns cleaned preferences with only valid supplement IDs
+ */
+export function validateSupplementPreferences(
+  preferences: SupplementPreferences | null
+): SupplementPreferences | null {
+  if (!preferences) return null;
+
+  const validIds = new Set(SUPPLEMENT_CATALOG.map(s => s.id));
+  const cleanedProducts = preferences.products.filter(id => validIds.has(id));
+
+  // If all products were orphaned, return null or disabled preferences
+  if (preferences.products.length > 0 && cleanedProducts.length === 0) {
+    return {
+      ...preferences,
+      products: [],
+    };
+  }
+
+  // If no changes needed, return original
+  if (cleanedProducts.length === preferences.products.length) {
+    return preferences;
+  }
+
+  // Return cleaned preferences
+  return {
+    ...preferences,
+    products: cleanedProducts,
+  };
+}
+
+/**
+ * M9 FIX: Check if preferences have orphaned IDs
+ */
+export function hasOrphanedSupplementIds(
+  preferences: SupplementPreferences | null
+): boolean {
+  if (!preferences || preferences.products.length === 0) return false;
+
+  const validIds = new Set(SUPPLEMENT_CATALOG.map(s => s.id));
+  return preferences.products.some(id => !validIds.has(id));
+}

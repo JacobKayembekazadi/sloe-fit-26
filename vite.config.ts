@@ -31,7 +31,9 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        // C3 FIX: Changed from 'autoUpdate' to 'prompt' to prevent data loss during active workouts
+        // Users will be prompted to update instead of auto-updating mid-session
+        registerType: 'prompt',
         includeAssets: ['favicon.ico', 'robots.txt'],
         manifest: {
           name: 'Sloe Fit AI Coach',

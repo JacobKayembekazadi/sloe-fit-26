@@ -108,6 +108,8 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   const [originalDescription, setOriginalDescription] = useState<string>('');
   // Capture date when meal analysis starts (not save time) to handle midnight edge case
   const [loggedAtDate, setLoggedAtDate] = useState<string>('');
+  // M3 FIX: Track suspicious/incomplete macros warning
+  const [macroWarning, setMacroWarning] = useState<string | null>(null);
 
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
@@ -269,6 +271,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setMacros(null);
     setIsLogged(false);
     setAnalyzeRetry(null);
+    setMacroWarning(null); // M3 FIX: Clear warning on new analysis
     // Capture date now for midnight edge case
     const now = new Date();
     setLoggedAtDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
@@ -283,6 +286,23 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         setMacros(analysisResult.macros);
         // Store original AI values for reset functionality
         setOriginalMacros(analysisResult.macros);
+
+        // M3 FIX: Validate macros for suspicious values
+        if (analysisResult.macros) {
+          const { calories, protein, carbs, fats } = analysisResult.macros;
+          if (calories === 0) {
+            setMacroWarning('AI returned 0 calories. Please review and edit the values manually.');
+          } else if (protein === 0 && carbs === 0 && fats === 0) {
+            setMacroWarning('Macros look incomplete. Please review and edit if needed.');
+          } else if (protein === 0 && calories > 100) {
+            setMacroWarning('0g protein detected. Please verify if this is correct.');
+          } else {
+            setMacroWarning(null);
+          }
+        } else {
+          setMacroWarning('No macro data returned. Please enter values manually.');
+        }
+
         // Extract description from photo analysis - use parsed foods array from JSON
         // This avoids the "**" bug from regex matching markdown bold markers
         const description = analysisResult.foods && analysisResult.foods.length > 0
@@ -425,6 +445,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
     setOriginalMacros(null);
     setOriginalDescription('');
     setLoggedAtDate('');
+    setMacroWarning(null); // M3 FIX: Clear warning on reset
   };
 
   const resetToAIValues = () => {
@@ -860,6 +881,16 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* M3 FIX: Warning for suspicious/incomplete macros */}
+              {macroWarning && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex items-start gap-2">
+                  <svg className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="text-yellow-300 text-sm">{macroWarning}</span>
+                </div>
+              )}
 
               {/* Meal Description */}
               <div>

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { createCheckout, addToCart as addToCartService, removeFromCart, updateCartQuantity, getCheckoutUrl, initializeShopifyClient, ShopifyProduct } from '../services/shopifyService';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, ReactNode } from 'react';
+import { createCheckout, fetchCheckout, addToCart as addToCartService, removeFromCart, updateCartQuantity, getCheckoutUrl, initializeShopifyClient, ShopifyProduct } from '../services/shopifyService';
 import { reportError } from '../utils/sentryHelpers';
 
 interface ShopifyContextType {
@@ -60,15 +60,32 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
             try {
                 initializeShopifyClient();
 
-                // Check if we have a saved checkout ID in localStorage
+                // C9 FIX: Check if we have a saved checkout ID and reuse it
                 const savedCheckoutId = localStorage.getItem('shopify_checkout_id');
 
                 if (savedCheckoutId) {
-                    // TODO: Fetch existing checkout
-                    // For now, create a new one
+                    // Try to fetch the existing checkout
+                    const existingCheckout = await fetchCheckout(savedCheckoutId);
+
+                    if (existingCheckout.data) {
+                        // Check if checkout is still valid (not completed)
+                        const isCompleted = existingCheckout.data.completedAt != null;
+
+                        if (!isCompleted) {
+                            // Reuse existing checkout
+                            setCheckout(existingCheckout.data);
+                            setIsLoading(false);
+                            return;
+                        }
+                        // Checkout was completed, need a new one
+                        localStorage.removeItem('shopify_checkout_id');
+                    } else {
+                        // Fetch failed, clear invalid ID
+                        localStorage.removeItem('shopify_checkout_id');
+                    }
                 }
 
-                // Create new checkout
+                // Create new checkout (no saved ID or saved one was invalid/completed)
                 const response = await createCheckout();
                 if (response.data) {
                     setCheckout(response.data);
@@ -154,7 +171,8 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
 
     const lineItemsCount = checkout?.lineItems?.reduce((total: number, item: any) => total + item.quantity, 0) || 0;
 
-    const value: ShopifyContextType = {
+    // M6 FIX: Memoize context value to prevent unnecessary re-renders
+    const value: ShopifyContextType = useMemo(() => ({
         checkout,
         isLoading,
         addToCart,
@@ -165,7 +183,7 @@ export const ShopifyProvider: React.FC<ShopifyProviderProps> = ({ children }) =>
         // RALPH LOOP 13: Expose product cache methods
         getProduct,
         cacheProduct,
-    };
+    }), [checkout, isLoading, addToCart, removeLineItem, updateQuantity, getCartURL, lineItemsCount, getProduct, cacheProduct]);
 
     return <ShopifyContext.Provider value={value}>{children}</ShopifyContext.Provider>;
 };

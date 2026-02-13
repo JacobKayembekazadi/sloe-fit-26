@@ -159,6 +159,8 @@ const AppContent: React.FC = () => {
   const [recoveryDraft, setRecoveryDraft] = useState<WorkoutDraft | null>(null);
   const [activeDraft, setActiveDraft] = useState<WorkoutDraft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // M4 FIX: Track AI workout retry state
+  const [isRetryingWorkout, setIsRetryingWorkout] = useState(false);
 
   // Workout log/title for preview and session
   const workoutsThisWeek = useMemo(() => {
@@ -322,6 +324,32 @@ const AppContent: React.FC = () => {
 
     setWorkoutStatus('preview');
   }, [userProfile, goal, recentWorkouts, fallbackWorkout, showToast, user?.id]);
+
+  // M4 FIX: Retry AI workout generation from preview screen
+  const handleRetryAIWorkout = useCallback(async () => {
+    if (!userProfile) return;
+
+    setIsRetryingWorkout(true);
+
+    const profile: UserProfile = userProfile;
+    const recovery: RecoveryState = { energyLevel: 3, sleepHours: 7, lastWorkoutRating: 3, sorenessAreas: [] };
+
+    try {
+      const workout = await generateWorkout({ profile, recovery, recentWorkouts });
+      if (workout) {
+        setAiWorkout(workout);
+        setWorkoutLog(aiWorkoutToExerciseLog(workout));
+        setWorkoutTitle(workout.title);
+        showToast('AI workout generated!', 'success');
+      } else {
+        showToast('AI still unavailable. Try again later.', 'error');
+      }
+    } catch {
+      showToast('AI still unavailable. Try again later.', 'error');
+    } finally {
+      setIsRetryingWorkout(false);
+    }
+  }, [userProfile, recentWorkouts, showToast]);
 
   const handleStartFromPreview = useCallback(() => {
     setStartTime(Date.now());
@@ -948,6 +976,10 @@ const AppContent: React.FC = () => {
               }))}
               onStart={handleStartFromPreview}
               onBack={() => setWorkoutStatus('idle')}
+              // M4 FIX: Pass fallback retry props
+              isFallback={aiWorkout === null}
+              onRetryAI={handleRetryAIWorkout}
+              isRetrying={isRetryingWorkout}
             />
           </Suspense>
         </div>

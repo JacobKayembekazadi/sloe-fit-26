@@ -11,6 +11,7 @@
 import { RecoveryState } from '../components/RecoveryCheckIn';
 import { UserProfile } from '../hooks/useUserData';
 import { getAuthToken } from './supabaseRawFetch';
+import { sanitizeForAI } from '../utils/validation';
 
 // ============================================================================
 // Types (matching the API response types)
@@ -288,6 +289,58 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
 };
 
 // ============================================================================
+// H12 FIX: Client-Side Rate Limiting
+// ============================================================================
+
+interface RateLimitEntry {
+  timestamps: number[];
+}
+
+// Rate limits per operation type (calls per minute)
+const RATE_LIMITS: Record<string, { maxCalls: number; windowMs: number }> = {
+  // Image analysis operations (more expensive)
+  analyzeMealPhoto: { maxCalls: 10, windowMs: 60000 },
+  analyzeBodyPhoto: { maxCalls: 5, windowMs: 60000 },
+  analyzeProgress: { maxCalls: 5, windowMs: 60000 },
+  // Text-based operations (cheaper)
+  analyzeTextMeal: { maxCalls: 15, windowMs: 60000 },
+  generateWorkout: { maxCalls: 10, windowMs: 60000 },
+  generateWeeklyPlan: { maxCalls: 3, windowMs: 60000 },
+  // Default for other operations
+  default: { maxCalls: 20, windowMs: 60000 },
+};
+
+const rateLimitState: Map<string, RateLimitEntry> = new Map();
+
+function checkRateLimit(operation: string): { allowed: boolean; retryAfterMs?: number } {
+  const limits = RATE_LIMITS[operation] || RATE_LIMITS.default;
+  const now = Date.now();
+  const windowStart = now - limits.windowMs;
+
+  // Get or create entry for this operation
+  let entry = rateLimitState.get(operation);
+  if (!entry) {
+    entry = { timestamps: [] };
+    rateLimitState.set(operation, entry);
+  }
+
+  // Clean up old timestamps outside the window
+  entry.timestamps = entry.timestamps.filter(ts => ts > windowStart);
+
+  // Check if we're at the limit
+  if (entry.timestamps.length >= limits.maxCalls) {
+    // Calculate when the oldest call will expire
+    const oldestTimestamp = entry.timestamps[0];
+    const retryAfterMs = oldestTimestamp + limits.windowMs - now;
+    return { allowed: false, retryAfterMs: Math.max(retryAfterMs, 1000) };
+  }
+
+  // Add this call to the timestamps
+  entry.timestamps.push(now);
+  return { allowed: true };
+}
+
+// ============================================================================
 // Client-Side Retry Configuration
 // ============================================================================
 
@@ -306,6 +359,23 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function callAPI<T>(endpoint: string, body: unknown, operation: string): Promise<AIResponse<T>> {
+  // H12 FIX: Check client-side rate limit before making request
+  const rateLimitCheck = checkRateLimit(operation);
+  if (!rateLimitCheck.allowed) {
+    const retryAfterSec = Math.ceil((rateLimitCheck.retryAfterMs || 1000) / 1000);
+    if (DEBUG_MODE) {
+      console.warn(`[AI] Rate limited: ${operation}. Retry after ${retryAfterSec}s`);
+    }
+    return {
+      success: false,
+      error: {
+        type: 'rate_limit',
+        message: `Too many requests. Please wait ${retryAfterSec} seconds and try again.`,
+        retryable: true,
+      },
+    };
+  }
+
   const log = logRequest(operation);
 
   // Adaptive timeout: 45s for image payloads (30s server + network buffer), 30s for text-only
@@ -517,10 +587,12 @@ export const analyzeMealPhoto = async (image: File, userGoal: string | null): Pr
 
 /**
  * Analyze progress photos and metrics
+ * C2 FIX: Sanitize metrics before sending to API
  */
 export const analyzeProgress = async (images: File[], metrics: string): Promise<ProgressAnalysisResult> => {
+  const sanitizedMetrics = sanitizeForAI(metrics, 2000);
   const imageUrls = await Promise.all(images.map(compressImageForAnalysis));
-  const result = await callAPI<ProgressAnalysisResult>('/analyze-progress', { images: imageUrls, metrics }, 'analyzeProgress');
+  const result = await callAPI<ProgressAnalysisResult>('/analyze-progress', { images: imageUrls, metrics: sanitizedMetrics }, 'analyzeProgress');
 
   if (result.success && result.data) {
     return result.data;
@@ -543,9 +615,11 @@ export const generateWorkout = async (input: WorkoutGenerationInput): Promise<Ge
 
 /**
  * Analyze a text description of a meal
+ * C2 FIX: Sanitize description before sending to API to prevent prompt injection
  */
 export const analyzeTextMeal = async (description: string, userGoal: string | null): Promise<TextMealAnalysisResult | null> => {
-  const result = await callAPI<TextMealAnalysisResult>('/analyze-meal', { description, userGoal }, 'analyzeTextMeal');
+  const sanitizedDescription = sanitizeForAI(description, 1000);
+  const result = await callAPI<TextMealAnalysisResult>('/analyze-meal', { description: sanitizedDescription, userGoal }, 'analyzeTextMeal');
 
   if (result.success && result.data) {
     return result.data;

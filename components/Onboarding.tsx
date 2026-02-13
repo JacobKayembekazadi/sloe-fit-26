@@ -919,6 +919,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 {supplementMode === 'using' && (
                                     <div className="space-y-3 mt-6">
                                         <h4 className="text-sm font-bold text-gray-400 uppercase">Select the supplements you use:</h4>
+                                        {/* C7 FIX: Show fallback if catalog is empty */}
+                                        {allSupplements.length === 0 ? (
+                                            <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-xl p-4 text-center">
+                                                <p className="text-yellow-400 text-sm">
+                                                    Unable to load supplement list. Please try again later or select "Open to recommendations".
+                                                </p>
+                                            </div>
+                                        ) : (
                                         <div className="grid grid-cols-1 gap-2">
                                             {allSupplements.map((supp) => (
                                                 <button
@@ -951,8 +959,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                                 </button>
                                             ))}
                                         </div>
+                                        )}
                                         {/* Validation message */}
-                                        {selectedSupplements.length === 0 && (
+                                        {allSupplements.length > 0 && selectedSupplements.length === 0 && (
                                             <p className="text-sm text-yellow-400 flex items-center gap-2 mt-2">
                                                 <span className="material-symbols-outlined text-lg">warning</span>
                                                 Select at least one supplement to continue
