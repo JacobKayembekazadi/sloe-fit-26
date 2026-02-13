@@ -28,6 +28,7 @@ export default async function handler(req: Request): Promise<Response> {
     const { imageBase64 } = body;
 
     if (!imageBase64 || typeof imageBase64 !== 'string') {
+      console.error('[analyze-body] Missing or invalid imageBase64 field');
       return new Response(
         JSON.stringify({
           success: false,
@@ -37,12 +38,35 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
+    // Validate that imageBase64 is actually a data URL
+    if (!imageBase64.startsWith('data:image/')) {
+      console.error('[analyze-body] Invalid image format - expected data URL, got:', imageBase64.substring(0, 50));
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: { type: 'invalid_request', message: 'Invalid image format. Expected data URL.', retryable: false },
+        } as AIResponse<BodyAnalysisResult>),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const tooLarge = validateImageSize(imageBase64);
-    if (tooLarge) return tooLarge;
+    if (tooLarge) {
+      console.error('[analyze-body] Image too large:', imageBase64.length, 'chars');
+      return tooLarge;
+    }
+
+    console.log('[analyze-body] Processing image, size:', Math.round(imageBase64.length / 1024), 'KB');
 
     const { data: result, provider: usedProvider } = await withFallback(
       p => p.analyzeBodyPhoto(imageBase64),
-      r => r.markdown.startsWith('Error:')
+      r => {
+        const isError = r.markdown.startsWith('Error:');
+        if (isError) {
+          console.error('[analyze-body] Provider returned error:', r.markdown.substring(0, 200));
+        }
+        return isError;
+      }
     );
 
     return new Response(JSON.stringify({
@@ -55,7 +79,13 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    const aiError = error as { message?: string; retryable?: boolean };
+    const aiError = error as { message?: string; retryable?: boolean; type?: string };
+
+    console.error('[analyze-body] Exception:', {
+      type: aiError.type || getErrorType(error),
+      message: aiError.message || 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
 
     const response: AIResponse<BodyAnalysisResult> = {
       success: false,

@@ -202,9 +202,21 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       }
 
       if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
+        // Extract the actual error message for better user feedback
+        const errorMsg = analysisResult.markdown.replace(/^(An error occurred|Error):\s*/i, '');
+        console.error('[BodyAnalysis] Analysis returned error:', errorMsg);
         setError(analysisResult.markdown);
         setAnalyzeRetry(() => handleAnalyze);
-        showToast("Analysis failed. Try again.", 'error');
+        // Show more specific toast based on error type
+        if (errorMsg.includes('content') || errorMsg.includes('filter') || errorMsg.includes('moderation')) {
+          showToast("Image rejected by AI. Try a different photo.", 'error');
+        } else if (errorMsg.includes('rate') || errorMsg.includes('limit')) {
+          showToast("Too many requests. Wait a moment.", 'error');
+        } else if (errorMsg.includes('auth') || errorMsg.includes('key')) {
+          showToast("Service unavailable. Try again later.", 'error');
+        } else {
+          showToast("Analysis failed. Try again.", 'error');
+        }
       } else {
         setResult(analysisResult.markdown);
         setIsRestored(false);
@@ -243,12 +255,14 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           // Thumbnail creation failed — save without it
         }
       }
-    } catch {
+    } catch (err) {
       // H4 FIX: Don't show error if cancelled
       if (analysisCancelledRef.current) {
         return;
       }
-      setError('Body analysis failed. Please check your connection and try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[BodyAnalysis] Exception during analysis:', errorMessage);
+      setError(`Body analysis failed: ${errorMessage}. Please check your connection and try again.`);
       setAnalyzeRetry(() => handleAnalyze);
       showToast("Analysis failed. Try again.", 'error');
     } finally {

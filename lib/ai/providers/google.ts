@@ -246,7 +246,30 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
       const data = await response.json();
 
+      // Check for content moderation block (no candidates or blocked reason)
+      if (data.promptFeedback?.blockReason) {
+        console.error('[google] Content blocked:', data.promptFeedback.blockReason);
+        throw {
+          type: 'content_filter',
+          message: `Content blocked: ${data.promptFeedback.blockReason}`,
+          retryable: false,
+          provider: 'google',
+        };
+      }
+
       if (data.candidates && data.candidates[0]?.content?.parts) {
+        // Check if finish reason indicates content filtering
+        const finishReason = data.candidates[0].finishReason;
+        if (finishReason === 'SAFETY' || finishReason === 'BLOCKED') {
+          console.error('[google] Response blocked due to safety filters');
+          throw {
+            type: 'content_filter',
+            message: 'Image content blocked by safety filters. Try a different photo.',
+            retryable: false,
+            provider: 'google',
+          };
+        }
+
         const parts = data.candidates[0].content.parts;
         return parts
           .filter((p: { text?: string }) => p.text)
@@ -254,7 +277,14 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           .join('');
       }
 
-      return '';
+      // No candidates at all - likely a content moderation issue
+      console.error('[google] No candidates in response:', JSON.stringify(data).substring(0, 500));
+      throw {
+        type: 'content_filter',
+        message: 'No response generated. The image may have been blocked by content filters.',
+        retryable: false,
+        provider: 'google',
+      };
     }, { timeoutMs: effectiveTimeout });
   }
 

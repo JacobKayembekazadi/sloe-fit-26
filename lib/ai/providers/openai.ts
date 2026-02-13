@@ -184,7 +184,30 @@ export function createOpenAIProvider(apiKey: string): AIProvider {
           ...(jsonMode && { response_format: { type: 'json_object' } }),
         });
 
-        return response.choices[0]?.message?.content || '';
+        // Check for content filter finish reason
+        const finishReason = response.choices[0]?.finish_reason;
+        if (finishReason === 'content_filter') {
+          console.error('[openai] Response blocked by content filter');
+          throw {
+            type: 'content_filter',
+            message: 'Image content blocked by safety filters. Try a different photo.',
+            retryable: false,
+            provider: 'openai',
+          };
+        }
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          console.error('[openai] Empty response, finish_reason:', finishReason);
+          throw {
+            type: 'unknown',
+            message: 'No response generated. Please try again.',
+            retryable: true,
+            provider: 'openai',
+          };
+        }
+
+        return content;
       }, { timeoutMs });
     },
 
