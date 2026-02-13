@@ -261,6 +261,14 @@ Dashboard.tsx (main app)
 - `20260202_fix_trainer_signup.sql` - Trainer role fix
 - `20260202_progress_photos.sql` - Photo storage schema
 - `20260202_trainer_client_management.sql` - Full BYOC schema
+- `20260208_subscription_status.sql` - Trial/subscription status fields
+- `20260213_payment_providers.sql` - Stripe/Lemon Squeezy integration
+
+### Payment System
+- **Providers**: Stripe (primary), Lemon Squeezy (alternative)
+- **Plans**: Monthly ($9.99), Annual ($79.99), Trainer ($29.99)
+- **Fields**: `subscription_status`, `subscription_provider`, `stripe_customer_id`, etc.
+- **API Routes**: `/api/payments/stripe-checkout`, `/api/payments/stripe-webhook`
 
 ---
 
@@ -285,11 +293,15 @@ VITE_SHOPIFY_STOREFRONT_ACCESS_TOKEN=... # Shopify API token
 - [x] Weekly nutrition insights with AI
 - [x] Progress photo upload & comparison
 - [x] Light/dark mode theming
-- [x] PWA with install prompt
+- [x] PWA with install prompt + SW error recovery
 - [x] Trainer Dashboard (BYOC Phase A)
 - [x] Client-Trainer messaging
 - [x] Trainer invite links
 - [x] Assigned workouts system
+- [x] Smart Supplement System (5 products, AI recommendations)
+- [x] Day Counter with milestones
+- [x] Payment Integration (Stripe + Lemon Squeezy)
+- [x] Subscription gating with PaywallModal
 
 ### Known Issues 🐛
 1. **WorkoutSession Navigation:** Active/Logger views feel disconnected; users struggle to navigate between exercises

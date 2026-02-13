@@ -7,6 +7,88 @@
 
 ## Latest Handoff
 
+### 2026-02-13 - Claude Code (Opus 4.5) - Session 7
+
+**Session Summary**
+- Task: App personality and brand voice implementation
+- Created SOUL.md defining "King Kay Mix" voice
+- Updated 40+ toast messages with direct coaching style
+- Added personality to empty states across app
+- Added milestone celebrations to day counter
+
+**Files Created**
+- `SOUL.md` - Brand voice bible (King Kay Mix, moderate emojis)
+
+**Files Modified**
+- `App.tsx` - Toast messages updated (workout, sync, templates)
+- `components/BodyAnalysis.tsx` - Toast messages, empty state text
+- `components/Dashboard.tsx` - Milestone messages for day counter (7, 14, 30, 60, 90, 100, 180, 365)
+- `components/LoginScreen.tsx` - Toast messages
+- `components/MealTracker.tsx` - Toast messages, empty state with personality
+- `components/Onboarding.tsx` - Toast messages
+- `components/ProgressPhotos.tsx` - Toast messages, empty state with CTA
+- `components/Settings.tsx` - Toast messages
+- `components/WeeklyPlanCard.tsx` - Empty state text
+- `components/WeeklyPlanView.tsx` - Empty state text
+
+**Status**: Complete
+
+**Voice Guidelines (from SOUL.md)**
+- Toasts: Short and punchy (<40 chars), earned emojis only
+- Empty states: Emoji anchor, context, CTA
+- Milestones: Celebrate real achievements (Week 1, Day 30, Day 100, Year 1)
+- Errors: Clear, actionable, no corporate speak
+
+**Code State**
+- Branch: main
+- Uncommitted changes: no
+- Build passing: yes
+
+**Next Steps**
+1. Test personality in browser (all toast variants)
+2. Verify milestone messages display correctly
+3. Consider additional personality injection points
+
+---
+
+### 2026-02-13 - Claude Code (Opus 4.5) - Session 6
+
+**Session Summary**
+- Task: Payment integration (Stripe + Lemon Squeezy)
+- Created full subscription infrastructure for monetization
+
+**Files Created**
+- `supabase/migrations/20260213_payment_providers.sql` - Adds Stripe/LS columns to profiles
+- `api/payments/stripe-checkout.ts` - Creates Stripe checkout sessions
+- `api/payments/stripe-webhook.ts` - Handles Stripe subscription events
+- `api/payments/stripe-portal.ts` - Opens Stripe customer billing portal
+- `api/payments/lemonsqueezy-checkout.ts` - Creates Lemon Squeezy checkout
+- `api/payments/lemonsqueezy-webhook.ts` - Handles LS subscription events
+- `services/paymentService.ts` - Payment utilities, pricing config, status checks
+- `hooks/useSubscription.ts` - Subscription gating hook for features
+- `components/PaywallModal.tsx` - Premium upgrade modal with plan selection
+- `docs/SystemArchitecture.tsx` - 14-layer architecture visualization
+
+**Files Modified**
+- `.env.example` - Added Stripe + Lemon Squeezy env vars
+- `components/UpdatePrompt.tsx` - Fixed ServiceWorker InvalidStateError on Chrome Mobile
+- `hooks/useUserData.ts` - Added validateSupplementPreferences on load
+
+**Status**: Complete
+
+**Payment Setup Required**
+1. Run migration: `20260213_payment_providers.sql`
+2. Create Stripe products (Monthly $9.99, Annual $79.99, Trainer $29.99)
+3. Create Stripe webhook → `https://yourapp/api/payments/stripe-webhook`
+4. Add env vars to Vercel (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_*)
+5. Add SUPABASE_SERVICE_ROLE_KEY for webhook auth
+
+**Code State**
+- Branch: main
+- Build passing: yes
+
+---
+
 ### 2026-02-12 - Claude Code (Opus 4.5) - Session 5
 
 **Session Summary**
