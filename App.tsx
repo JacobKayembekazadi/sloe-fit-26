@@ -150,6 +150,30 @@ const AppContent: React.FC = () => {
   const { showToast } = useToast();
 
   // ============================================================================
+  // Coaching Agent (must be before handleWorkoutComplete which uses captureEvent)
+  // ============================================================================
+  const programDay = useMemo(() => {
+    if (!userProfile?.created_at) return 1;
+    try {
+      const start = new Date(userProfile.created_at);
+      if (isNaN(start.getTime())) return 1;
+      const todayUTC = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+      const startUTC = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      return Math.max(1, Math.floor((todayUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1);
+    } catch { return 1; }
+  }, [userProfile?.created_at]);
+
+  const {
+    insights: coachInsights,
+    captureEvent,
+    dismissInsight,
+    getAdjustments,
+    generatePostWorkoutInsight,
+  } = useCoachingAgent(programDay, user?.id);
+
+  const [postWorkoutInsight, setPostWorkoutInsight] = useState<ReturnType<typeof generatePostWorkoutInsight>>(null);
+
+  // ============================================================================
   // Workout State Machine (lifted from Dashboard)
   // ============================================================================
   const [workoutStatus, setWorkoutStatus] = useState<WorkoutStatus>('idle');
@@ -422,30 +446,6 @@ const AppContent: React.FC = () => {
     refreshPlan,
     markDayCompleted
   } = useWeeklyPlan();
-
-  // ============================================================================
-  // Coaching Agent
-  // ============================================================================
-  const programDay = useMemo(() => {
-    if (!userProfile?.created_at) return 1;
-    try {
-      const start = new Date(userProfile.created_at);
-      if (isNaN(start.getTime())) return 1;
-      const todayUTC = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-      const startUTC = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-      return Math.max(1, Math.floor((todayUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1);
-    } catch { return 1; }
-  }, [userProfile?.created_at]);
-
-  const {
-    insights: coachInsights,
-    captureEvent,
-    dismissInsight,
-    getAdjustments,
-    generatePostWorkoutInsight,
-  } = useCoachingAgent(programDay, user?.id);
-
-  const [postWorkoutInsight, setPostWorkoutInsight] = useState<ReturnType<typeof generatePostWorkoutInsight>>(null);
 
   const [showWeeklyPlan, setShowWeeklyPlan] = useState(false);
   const [showQuickRecovery, setShowQuickRecovery] = useState(false);
