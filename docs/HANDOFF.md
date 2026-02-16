@@ -7,6 +7,196 @@
 
 ## Latest Handoff
 
+### 2026-02-14 - Claude Code (Opus 4.6) - Session 14
+
+**Session Summary**
+- Task: Full production readiness audit — codebase analysis across API, frontend, testing, and CI/CD
+- Scored codebase at **52% production-ready**
+- Identified 5 production blockers, 8 high-priority issues, and operational gaps
+- Status: Complete (audit only — no code changes)
+
+**Key Findings**
+- **Overall Score**: 52% — feature-complete but operationally fragile
+- **5 Production Blockers**: Stripe SDK missing from package.json, CORS `*` on payment routes, no CI/CD, Sentry unused, no webhook idempotency
+- **8 High-Priority**: Hardcoded fallback URL, auth silent failures, no rate limit on account delete, email unvalidated, localStorage.clear() data loss, blob URL leaks, AbortSignal unused, Dashboard timer leak
+- **What's Strong**: DB migrations (A), security headers, offline queue, subscription gating, PWA config, code splitting, brand voice
+
+**Detailed Report**: See `docs/PRODUCTION_READINESS.md`
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes (from Sessions 11-13)
+- No code changes in this session
+
+**Next Steps**
+1. Fix 5 production blockers (see Priority 1 in PRODUCTION_READINESS.md)
+2. Fix 8 high-priority issues (Priority 2)
+3. Add CI/CD + testing before launch (Priority 3)
+
+---
+
+### 2026-02-13 - Claude Code (Opus 4.6) - Session 13
+
+**Session Summary**
+- Task: Deep systems-thinking Ralph Loop audit — find and fix blind spots from Sessions 11-12
+- Found and fixed 5 critical/high issues via 14-layer architecture analysis
+- Status: Complete
+
+**Issues Fixed**
+
+| # | Issue | Severity | File(s) |
+|---|-------|----------|---------|
+| 29 | fetchAllData SELECT missing subscription fields — ALL users locked out on initial load | CRITICAL | useUserData.ts |
+| 30 | getSubscriptionStatus never checks subscription_ends_at expiry — webhook failures leave users active forever | HIGH | paymentService.ts |
+| 31 | 7+ AI features ungated: Body Analysis, Meal Photo, Text Meal, Progress Comparison, Weekly Plan | HIGH | BodyAnalysis.tsx, MealTracker.tsx, TextMealInput.tsx, ProgressPhotos.tsx, App.tsx |
+| 32 | Dashboard/Settings upgrade links go to external sloefit.com/subscribe instead of PaywallModal | HIGH | Dashboard.tsx, Settings.tsx |
+| 33 | Offline sync removes meal from queue before food_scans insert (data loss) + ?payment=cancelled not cleaned | MEDIUM | useUserData.ts, App.tsx |
+
+**Details**
+1. **fetchAllData SELECT fix**: Added `subscription_status,trial_started_at,subscription_ends_at,subscription_provider,subscription_plan,stripe_customer_id` to the initial profile SELECT query. Also added `subscription_ends_at` to UserProfile interface, profile building logic, DEFAULT_PROFILE, refetchProfile SELECT/mapping, and App.tsx fallback profile. Changed DEFAULT_PROFILE `trial_started_at` from `null` to `new Date().toISOString()` so network errors don't lock users out.
+2. **Expiry safety net**: `getSubscriptionStatus` now checks `subscription_ends_at` against current time with a 3-day grace period. If `status === 'active'` but `ends_at + 3 days` has passed, treats as `expired`. Catches webhook failures.
+3. **SubscriptionContext**: Created `contexts/SubscriptionContext.tsx` and wrapped AppContent's return JSX with `SubscriptionContext.Provider`. Components can now call `useSubscriptionContext()` to access `requireSubscription` without prop drilling. Gated: BodyAnalysis `handleAnalyze`, MealTracker `handlePhotoAnalyze`, TextMealInput `handleAnalyze`, ProgressPhotos `handleAnalyzeProgress`, and `generateNewPlan` (via `gatedGenerateNewPlan` wrapper).
+4. **Upgrade links**: Replaced all 4 `<a href="https://sloefit.com/subscribe">` links (2 in Dashboard, 2 in Settings) with `<button onClick={() => requireSubscription('Full Access')}>` buttons that trigger PaywallModal.
+5. **Offline sync ordering**: Moved `removeFromQueue(meal.id)` to AFTER the `food_scans` insert completes. Added `?payment=cancelled` URL param cleanup with user-friendly toast message.
+
+**Architecture Changes**
+- New file: `contexts/SubscriptionContext.tsx` — lightweight context exposing `{subscription, requireSubscription}`
+- App.tsx wraps main return with `<SubscriptionContext.Provider value={subscriptionContextValue}>`
+
+**Build Status**: Passes cleanly (32.89s)
+
+---
+
+### 2026-02-13 - Claude Code (Opus 4.6) - Session 12
+
+**Session Summary**
+- Task: Second Ralph Loop — fix remaining issues from deep systems audit
+- Fixed 6 critical/high issues found by second Ralph loop analysis
+- Status: Complete
+
+**Issues Fixed**
+
+| # | Issue | Severity | File(s) |
+|---|-------|----------|---------|
+| 23 | 4 workout paths bypass subscription gating | CRITICAL | App.tsx |
+| 24 | Stripe `past_due` incorrectly maps to `expired` | CRITICAL | stripe-webhook.ts |
+| 25 | Dashboard day counter doesn't update at midnight (memo stale) | CRITICAL | Dashboard.tsx |
+| 26 | New users get no `trial_started_at`, immediately hit paywall | CRITICAL | useUserData.ts |
+| 27 | Offline queue sync drops scanData (food_scans never saved) | HIGH | useUserData.ts |
+| 28 | No profile refetch after checkout return (webhook race) | HIGH | App.tsx, stripe-checkout.ts, lemonsqueezy-checkout.ts |
+
+**Details**
+1. **Subscription gates**: Added `requireSubscription()` to `handleStartFromPlan`, `handleStartTemplate`, `handleStartCustomWorkout`, `handleResumeDraft` — previously only `startNewWorkout` was gated
+2. **Stripe status**: `past_due` now maps to `active` (grace period) instead of `expired`; uses explicit STATUS_MAP object
+3. **Day counter**: Added `todayKey = new Date().toDateString()` to useMemo deps so midnight forceRender recalculates
+4. **Trial init**: New profile creation now sets `subscription_status: 'trial'` and `trial_started_at: nowISO`
+5. **Scan sync**: Offline queue sync now saves `meal.payload.scanData` to `food_scans` table (mirrors online save path)
+6. **Checkout return**: Detects `?payment=success` URL param, refetches profile immediately + 3s delayed retry; fixed success_url to use `APP_URL` env var (server-side) with `VITE_APP_URL` fallback; changed redirect to root `/` instead of `/settings`
+
+**Files Modified**
+- `App.tsx` — 4 subscription gates + payment success detection + profile refetch
+- `hooks/useUserData.ts` — trial_started_at init + scanData sync in offline queue
+- `components/Dashboard.tsx` — todayKey memo dependency for midnight updates
+- `api/payments/stripe-webhook.ts` — STATUS_MAP for past_due grace period
+- `api/payments/stripe-checkout.ts` — APP_URL env var + root redirect
+- `api/payments/lemonsqueezy-checkout.ts` — APP_URL env var + root redirect
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes
+- Build passing: yes (zero new type errors)
+
+**Remaining Issues (Lower Priority)**
+1. Webhook event deduplication (idempotency keys)
+2. Meal + scan data insert not truly atomic (needs Supabase RPC)
+3. Portion reset button doesn't validate `originalMacros` before using
+4. Timestamp/timezone mismatch between captureEvent (local epoch) and detectTrainingStreak (UTC keys) — mitigated by UTC conversion in engine
+
+**Next Steps**
+1. Commit all changes
+2. Set `APP_URL` env var on Vercel (server-side, non-VITE prefix)
+3. Test full subscription lifecycle: signup → trial → expired → paywall → checkout → webhook → active
+4. Test offline meal + USDA scan → sync → verify food_scans table populated
+5. Test all 5 workout entry points blocked by paywall when trial expired
+
+---
+
+### 2026-02-13 - Claude Code (Opus 4.6) - Session 11
+
+**Session Summary**
+- Task: 14-layer systems architecture audit + Ralph loop deep analysis + full fix
+- Ran 4 parallel deep-dive agents (core/hooks, meal/USDA, payment/dashboard, SQL schema)
+- Found 68 issues across 14 architecture layers
+- Fixed 22 issues (8 critical, 7 high, 7 medium)
+- Status: Complete
+
+**Issues Fixed**
+
+| # | Issue | Severity | File(s) |
+|---|-------|----------|---------|
+| 1 | PaywallModal never rendered, subscription gating never enforced | CRITICAL | App.tsx |
+| 2 | useSubscription hook never used, all premium features free | CRITICAL | App.tsx |
+| 3 | Scan data lost when offline (not in queue) | CRITICAL | useUserData.ts, offlineQueue.ts |
+| 4 | LemonSqueezy webhook userId never reassigned after lookup | CRITICAL | lemonsqueezy-webhook.ts |
+| 5 | LemonSqueezy `on_trial` mapped to `active` instead of `trial` | CRITICAL | lemonsqueezy-webhook.ts |
+| 6 | LemonSqueezy `ends_at` vs `renews_at` priority reversed | CRITICAL | lemonsqueezy-webhook.ts |
+| 7 | Stripe `trialing` mapped to `active` instead of `trial` | CRITICAL | stripe-webhook.ts |
+| 8 | scanData missing from all 3 offline queue paths | CRITICAL | useUserData.ts |
+| 9 | Portion multiplier stale state (closure reads old map) | HIGH | MealTracker.tsx |
+| 10 | Trial expiry calculated 3 different ways (ceil vs floor vs direct) | HIGH | paymentService.ts, Dashboard.tsx |
+| 11 | Trial calculation not UTC-safe (timezone drift) | HIGH | paymentService.ts |
+| 12 | Coaching localStorage collision (undefined userId → unnamespaced key) | HIGH | useCoachingAgent.ts |
+| 13 | Dashboard midnight timer memory leak (recursive setTimeout) | HIGH | Dashboard.tsx |
+| 14 | Invalid Date not caught in trial banner | HIGH | Dashboard.tsx |
+| 15 | Coaching engine streak allows gaps (off-by-one) | MEDIUM | coachingEngine.ts |
+| 16 | Coaching engine no timezone handling (toDateString local) | MEDIUM | coachingEngine.ts |
+| 17 | Overtraining detection uses stale soreness (no recency check) | MEDIUM | coachingEngine.ts |
+| 18 | Volume detection no NaN/Infinity validation | MEDIUM | coachingEngine.ts |
+| 19 | Sleep data no range validation (0-24) | MEDIUM | coachingEngine.ts |
+| 20 | food_scans missing analytical indexes | MEDIUM | 20260214 migration |
+| 21 | food_scans missing trainer RLS policy | MEDIUM | 20260214 migration |
+| 22 | Missing indexes: subscription_status, nutrition_logs, trainer_messages | MEDIUM | 20260214 migration |
+
+**Files Modified**
+- `App.tsx` — Added useSubscription hook, PaywallModal rendering, premium feature gating
+- `hooks/useUserData.ts` — Added scanData to all 3 offline queue paths
+- `hooks/useCoachingAgent.ts` — Fixed localStorage namespace collision (no writes without userId)
+- `services/coachingEngine.ts` — Fixed streak, overtraining, volume, sleep validation
+- `services/paymentService.ts` — Unified UTC-based trial calculation, isTrialExpired reuses getTrialDaysRemaining
+- `services/offlineQueue.ts` — Added scanData to QueuedMeal.payload type
+- `components/MealTracker.tsx` — Fixed portion multiplier stale closure via functional updater
+- `components/Dashboard.tsx` — Fixed midnight timer leak, used shared trial calculation
+- `api/payments/stripe-webhook.ts` — Fixed trialing → trial status mapping
+- `api/payments/lemonsqueezy-webhook.ts` — Fixed userId reassignment, on_trial mapping, ends_at priority
+
+**Files Created**
+- `supabase/migrations/20260214_indexes_and_trainer_rls.sql` — Missing indexes + trainer RLS
+
+**Code State**
+- Branch: main
+- Uncommitted changes: yes (10 modified files, 1 new file)
+- Build passing: yes (zero new type errors)
+
+**Remaining Issues (Not Fixed — Lower Priority)**
+1. Meal + scan data insert not truly atomic (would need Supabase transaction/RPC)
+2. No webhook event deduplication (idempotency keys)
+3. USDA lookups no retry logic
+4. Stale workout name normalization insufficient
+5. Product recommendation URLs not validated at runtime
+6. Meal duplicate protection only via useRef (lost on page refresh)
+7. Multi-device coaching event divergence (localStorage only)
+8. USDA API rate limit shared across all users
+
+**Next Steps**
+1. Run migration: `20260214_indexes_and_trainer_rls.sql`
+2. Test subscription gating end-to-end (trial → expired → paywall → checkout)
+3. Test offline meal logging with USDA scan data
+4. Test coaching agent with multiple user sign-in/sign-out cycles
+5. Consider Supabase RPC for atomic meal+scan insert
+6. Add webhook idempotency via event_id storage
+
+---
+
 ### 2026-02-13 - Claude Code (Opus 4.5) - Session 10
 
 **Session Summary**

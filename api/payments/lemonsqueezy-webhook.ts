@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { requireEnv, getSupabaseUrl } from '../../lib/env';
 
 const supabase = createClient(
-    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    getSupabaseUrl(),
+    requireEnv('SUPABASE_SERVICE_ROLE_KEY')
 );
 
 // Disable body parsing for signature verification
@@ -36,11 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const webhookSecret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-        console.error('LEMONSQUEEZY_WEBHOOK_SECRET not configured');
-        return res.status(500).json({ error: 'Webhook not configured' });
-    }
+    const webhookSecret = requireEnv('LEMONSQUEEZY_WEBHOOK_SECRET');
 
     try {
         const rawBody = await getRawBody(req);
@@ -52,10 +49,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const event = JSON.parse(rawBody);
+        const eventId = event.meta?.event_id || event.data?.id;
         const eventName = event.meta?.event_name;
         const customData = event.meta?.custom_data || {};
 
-        console.log(`[LemonSqueezy Webhook] Event: ${eventName}`);
+        console.log(`[LemonSqueezy Webhook] Event: ${eventName}, ID: ${eventId}`);
+
+        // Idempotency check
+        if (eventId) {
+            const { data: existingEvent } = await supabase
+                .from('processed_webhooks')
+                .select('id')
+                .eq('event_id', `ls_${eventId}`)
+                .single();
+
+            if (existingEvent) {
+                console.log(`[LemonSqueezy Webhook] Event ${eventId} already processed`);
+                return res.status(200).json({ received: true });
+            }
+        }
 
         switch (eventName) {
             case 'subscription_created':
@@ -90,6 +102,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 console.log(`[LemonSqueezy] Unhandled event: ${eventName}`);
         }
 
+        // Record successful processing
+        if (eventId) {
+            await supabase.from('processed_webhooks').insert({
+                event_id: `ls_${eventId}`,
+                event_type: eventName,
+                processed_at: new Date().toISOString()
+            });
+        }
+
         return res.status(200).json({ received: true });
     } catch (error) {
         console.error('[LemonSqueezy Webhook] Handler error:', error);
@@ -104,15 +125,16 @@ async function handleSubscriptionUpdate(
     const data = event.data as { id?: string; attributes?: Record<string, unknown> };
     const attributes = data?.attributes || {};
 
-    const userId = customData.supabase_user_id;
+    let userId = customData.supabase_user_id;
     const plan = customData.plan || 'monthly';
     const subscriptionId = String(data?.id || '');
     const customerId = String(attributes.customer_id || '');
     const status = attributes.status as string;
-    const endsAt = attributes.renews_at as string || attributes.ends_at as string;
+    // ends_at is the correct field; renews_at is the fallback for active subscriptions
+    const endsAt = attributes.ends_at as string || attributes.renews_at as string;
 
     if (!userId) {
-        console.error('[LemonSqueezy] No user ID in custom data');
+        console.error('[LemonSqueezy] No user ID in custom data, looking up by customer ID');
         // Try to find user by customer ID
         const { data: profile } = await supabase
             .from('profiles')
@@ -121,12 +143,14 @@ async function handleSubscriptionUpdate(
             .single();
 
         if (!profile) {
-            console.error('[LemonSqueezy] User not found');
+            console.error('[LemonSqueezy] User not found for customer:', customerId);
             return;
         }
+        userId = profile.id;
     }
 
-    const subscriptionStatus = ['active', 'on_trial'].includes(status) ? 'active' : 'expired';
+    // Map LS statuses: 'active' → 'active', 'on_trial' → 'trial', everything else → 'expired'
+    const subscriptionStatus = status === 'active' ? 'active' : status === 'on_trial' ? 'trial' : 'expired';
 
     const updateData: Record<string, unknown> = {
         subscription_status: subscriptionStatus,

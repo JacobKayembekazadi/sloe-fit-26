@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireEnv, getAppUrl } from '../../lib/env';
+import { checkPaymentRateLimit } from '../../lib/paymentRateLimit';
 
 // Lemon Squeezy Variant IDs from Dashboard
 const VARIANT_IDS = {
@@ -10,8 +12,19 @@ const VARIANT_IDS = {
 const STORE_ID = process.env.LEMONSQUEEZY_STORE_ID || '';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // CORS headers - restrict to allowed origins
+    const allowedOrigins = [
+        'https://app.sloefit.com',
+        'https://sloefit.com',
+        'http://localhost:5173',
+        'http://localhost:3000'
+    ];
+
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -22,6 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    if (await checkPaymentRateLimit(req, res)) return;
 
     try {
         const { userId, email, plan, successUrl, cancelUrl } = req.body;
@@ -39,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const response = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${process.env.LEMONSQUEEZY_API_KEY}`,
+                'Authorization': `Bearer ${requireEnv('LEMONSQUEEZY_API_KEY')}`,
                 'Content-Type': 'application/vnd.api+json',
                 'Accept': 'application/vnd.api+json',
             },
@@ -61,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         },
                         product_options: {
                             enabled_variants: [parseInt(variantId)],
-                            redirect_url: successUrl || `${process.env.VITE_APP_URL || 'https://sloe-fit-26.vercel.app'}/settings?payment=success`,
+                            redirect_url: successUrl || `${getAppUrl()}/?payment=success`,
                         },
                     },
                     relationships: {

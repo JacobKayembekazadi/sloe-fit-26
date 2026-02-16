@@ -1,14 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { requireEnv, getSupabaseUrl } from '../../lib/env';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(requireEnv('STRIPE_SECRET_KEY'), {
     apiVersion: '2024-12-18.acacia',
 });
 
 const supabase = createClient(
-    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    getSupabaseUrl(),
+    requireEnv('SUPABASE_SERVICE_ROLE_KEY')
 );
 
 // Disable body parsing - we need raw body for signature verification
@@ -32,11 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-        console.error('STRIPE_WEBHOOK_SECRET not configured');
-        return res.status(500).json({ error: 'Webhook not configured' });
-    }
+    const webhookSecret = requireEnv('STRIPE_WEBHOOK_SECRET');
 
     let event: Stripe.Event;
 
@@ -50,7 +47,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid signature' });
     }
 
-    console.log(`[Stripe Webhook] Event: ${event.type}`);
+    console.log(`[Stripe Webhook] Event: ${event.type}, ID: ${event.id}`);
+
+    // Idempotency check
+    const { data: existingEvent } = await supabase
+        .from('processed_webhooks')
+        .select('id')
+        .eq('event_id', event.id)
+        .single();
+
+    if (existingEvent) {
+        console.log(`[Stripe Webhook] Event ${event.id} already processed`);
+        return res.status(200).json({ received: true });
+    }
 
     try {
         switch (event.type) {
@@ -82,6 +91,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             default:
                 console.log(`[Stripe Webhook] Unhandled event: ${event.type}`);
         }
+
+        // Record successful processing
+        await supabase.from('processed_webhooks').insert({
+            event_id: event.id,
+            event_type: event.type,
+            processed_at: new Date().toISOString()
+        });
 
         return res.status(200).json({ received: true });
     } catch (error) {
@@ -147,7 +163,15 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
         return;
     }
 
-    const subscriptionStatus = status === 'active' || status === 'trialing' ? 'active' : 'expired';
+    // Map Stripe statuses to app statuses:
+    // 'active' → 'active', 'trialing' → 'trial', 'past_due' → 'active' (grace period),
+    // everything else (canceled, incomplete, incomplete_expired, paused, unpaid) → 'expired'
+    const STATUS_MAP: Record<string, string> = {
+        active: 'active',
+        trialing: 'trial',
+        past_due: 'active', // Grace period — payment retry in progress
+    };
+    const subscriptionStatus = STATUS_MAP[status] || 'expired';
     const endsAt = new Date(subscription.current_period_end * 1000).toISOString();
 
     const { error } = await supabase

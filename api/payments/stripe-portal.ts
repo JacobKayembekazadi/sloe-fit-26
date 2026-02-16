@@ -1,13 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
+import { requireEnv, getAppUrl } from '../../lib/env';
+import { checkPaymentRateLimit } from '../../lib/paymentRateLimit';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(requireEnv('STRIPE_SECRET_KEY'), {
     apiVersion: '2024-12-18.acacia',
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // CORS headers - restrict to allowed origins
+    const allowedOrigins = [
+        'https://app.sloefit.com',
+        'https://sloefit.com',
+        'http://localhost:5173',
+        'http://localhost:3000'
+    ];
+
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -19,6 +32,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    if (await checkPaymentRateLimit(req, res)) return;
+
     try {
         const { customerId, returnUrl } = req.body;
 
@@ -28,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const session = await stripe.billingPortal.sessions.create({
             customer: customerId,
-            return_url: returnUrl || `${process.env.VITE_APP_URL || 'https://sloe-fit-26.vercel.app'}/settings`,
+            return_url: returnUrl || `${getAppUrl()}/settings`,
         });
 
         return res.status(200).json({ url: session.url });
