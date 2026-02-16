@@ -451,49 +451,43 @@ export function createGoogleProvider(apiKey: string): AIProvider {
     },
 
     async analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult> {
-      try {
-        const responseText = await callGeminiAPI(
-          [
-            { role: 'system', content: BODY_ANALYSIS_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: 'Analyze the attached body photo.' },
-                { type: 'image', imageUrl: imageBase64 },
-              ],
-            },
-          ],
-          { maxTokens: 1500, isVisionTask: true }
-        );
-        return { markdown: responseText || 'Error: No response from model.' };
-      } catch (error) {
-        const aiError = error as AIError;
-        return { markdown: `Error: ${aiError.message}` };
-      }
+      // Let errors propagate so withFallback can try the next provider
+      const responseText = await callGeminiAPI(
+        [
+          { role: 'system', content: BODY_ANALYSIS_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze the attached body photo.' },
+              { type: 'image', imageUrl: imageBase64 },
+            ],
+          },
+        ],
+        { maxTokens: 1500, isVisionTask: true }
+      );
+      if (!responseText) throw new Error('No response from model');
+      return { markdown: responseText };
     },
 
     async analyzeProgress(images: string[], metrics: string): Promise<ProgressAnalysisResult> {
-      try {
-        const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
+      // Let errors propagate so withFallback can try the next provider
+      const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        const responseText = await callGeminiAPI(
-          [
-            { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: `Analyze the attached progress photos and metrics:\n${metrics}` },
-                ...imageParts,
-              ],
-            },
-          ],
-          { maxTokens: 2000, isVisionTask: true }
-        );
-        return { markdown: responseText || 'Error: No response from model.' };
-      } catch (error) {
-        const aiError = error as AIError;
-        return { markdown: `Error: ${aiError.message}` };
-      }
+      const responseText = await callGeminiAPI(
+        [
+          { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `Analyze the attached progress photos and metrics:\n${metrics}` },
+              ...imageParts,
+            ],
+          },
+        ],
+        { maxTokens: 2000, isVisionTask: true }
+      );
+      if (!responseText) throw new Error('No response from model');
+      return { markdown: responseText };
     },
 
     async generateWorkout(input: WorkoutGenerationInput): Promise<GeneratedWorkout | null> {

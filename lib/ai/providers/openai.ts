@@ -367,51 +367,41 @@ export function createOpenAIProvider(apiKey: string): AIProvider {
     },
 
     async analyzeBodyPhoto(imageBase64: string): Promise<BodyAnalysisResult> {
-      try {
-        const markdown = await this.chat(
-          [
-            { role: 'system', content: BODY_ANALYSIS_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: 'Analyze the attached body photo.' },
-                { type: 'image', imageUrl: imageBase64 },
-              ],
-            },
-          ],
-          { maxTokens: 1500, timeoutMs: 25000 }
-        );
-        // OpenAI doesn't support annotated images, return text only
-        return { markdown };
-      } catch (error) {
-        const aiError = error as AIError;
-        return { markdown: `Error: ${aiError.message}` };
-      }
+      // Let errors propagate so withFallback can try the next provider
+      const markdown = await this.chat(
+        [
+          { role: 'system', content: BODY_ANALYSIS_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze the attached body photo.' },
+              { type: 'image', imageUrl: imageBase64 },
+            ],
+          },
+        ],
+        { maxTokens: 1500, timeoutMs: 25000 }
+      );
+      return { markdown };
     },
 
     async analyzeProgress(images: string[], metrics: string): Promise<ProgressAnalysisResult> {
-      try {
-        const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
+      // Let errors propagate so withFallback can try the next provider
+      const imageParts = images.map(img => ({ type: 'image' as const, imageUrl: img }));
 
-        const markdown = await this.chat(
-          [
-            { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: `Analyze the attached progress photos and metrics:\n${metrics}` },
-                ...imageParts,
-              ],
-            },
-          ],
-          { maxTokens: 2000, timeoutMs: 60000 }
-        );
-        // OpenAI doesn't support annotated images, return text only
-        return { markdown };
-      } catch (error) {
-        const aiError = error as AIError;
-        return { markdown: `Error: ${aiError.message}` };
-      }
+      const markdown = await this.chat(
+        [
+          { role: 'system', content: PROGRESS_ANALYSIS_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `Analyze the attached progress photos and metrics:\n${metrics}` },
+              ...imageParts,
+            ],
+          },
+        ],
+        { maxTokens: 2000, timeoutMs: 60000 }
+      );
+      return { markdown };
     },
 
     async generateWorkout(input: WorkoutGenerationInput): Promise<GeneratedWorkout | null> {
