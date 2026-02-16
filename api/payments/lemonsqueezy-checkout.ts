@@ -16,8 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const allowedOrigins = [
         'https://app.sloefit.com',
         'https://sloefit.com',
+        'https://sloe-fit-26.vercel.app',
         'http://localhost:5173',
-        'http://localhost:3000'
+        'http://localhost:3000',
     ];
 
     const origin = req.headers.origin;

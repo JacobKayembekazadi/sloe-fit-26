@@ -13,8 +13,20 @@ const PRICE_IDS = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // CORS headers - restrict to allowed origins
+    const allowedOrigins = [
+        'https://app.sloefit.com',
+        'https://sloefit.com',
+        'https://sloe-fit-26.vercel.app',
+        'http://localhost:5173',
+        'http://localhost:3000',
+    ];
+
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
