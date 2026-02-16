@@ -260,8 +260,8 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       if (analysisCancelledRef.current) {
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[BodyAnalysis] Exception during analysis:', errorMessage);
+      const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : 'Unknown error');
+      console.error('[BodyAnalysis] Exception during analysis:', errorMessage, err);
       setError(`Body analysis failed: ${errorMessage}. Please check your connection and try again.`);
       setAnalyzeRetry(() => handleAnalyze);
       showToast("Analysis failed. Try again.", 'error');

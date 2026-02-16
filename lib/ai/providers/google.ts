@@ -50,9 +50,10 @@ interface ExtendedChatOptions extends ChatOptions {
 
 // Safety settings for body/fitness photo analysis — Gemini's defaults
 // block shirtless/fitness photos as "sexually explicit" which breaks
-// body composition analysis. BLOCK_ONLY_HIGH allows fitness content.
+// body composition analysis. BLOCK_NONE for sexually explicit (fitness
+// photos are the exact trigger), BLOCK_ONLY_HIGH for everything else.
 const RELAXED_SAFETY_SETTINGS = [
-  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -267,7 +268,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
       // Check for content moderation block (no candidates or blocked reason)
       if (data.promptFeedback?.blockReason) {
-        console.error('[google] Content blocked:', data.promptFeedback.blockReason);
+        console.error('[google] Content blocked:', data.promptFeedback.blockReason, 'safetyRatings:', JSON.stringify(data.promptFeedback?.safetyRatings));
         throw {
           type: 'content_filter',
           message: `Content blocked: ${data.promptFeedback.blockReason}`,
@@ -280,7 +281,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         // Check if finish reason indicates content filtering
         const finishReason = data.candidates[0].finishReason;
         if (finishReason === 'SAFETY' || finishReason === 'BLOCKED') {
-          console.error('[google] Response blocked due to safety filters');
+          console.error('[google] Response blocked due to safety filters. finishReason:', finishReason, 'safetyRatings:', JSON.stringify(data.candidates[0].safetyRatings));
           throw {
             type: 'content_filter',
             message: 'Image content blocked by safety filters. Try a different photo.',
