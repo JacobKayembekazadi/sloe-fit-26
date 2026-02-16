@@ -6,13 +6,17 @@
  * real, verified nutrition information.
  */
 
-// API Configuration
-const USDA_API_KEY = import.meta.env.VITE_USDA_API_KEY || '';
+// API Configuration - support both Vite (client) and Node (server) environments
+const USDA_API_KEY = (typeof process !== 'undefined' && process.env?.USDA_API_KEY)
+  || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USDA_API_KEY)
+  || '';
 const USDA_BASE_URL = 'https://api.nal.usda.gov/fdc/v1';
 
 // Warn if API key is missing (in development)
-if (!USDA_API_KEY && import.meta.env.DEV) {
-  console.warn('[nutritionService] VITE_USDA_API_KEY not configured. USDA lookups will be skipped.');
+const isDev = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+  || (typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+if (!USDA_API_KEY && isDev) {
+  console.warn('[nutritionService] USDA_API_KEY not configured. USDA lookups will be skipped.');
 }
 
 // Cache configuration
