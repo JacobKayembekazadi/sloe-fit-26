@@ -86,8 +86,10 @@ export function getProviderFromEnv(): AIProvider {
  * The configured AI_PROVIDER comes first, then any others that have keys.
  */
 function getAvailableProviders(): { type: AIProviderType; provider: AIProvider }[] {
-  const primary = (process.env.AI_PROVIDER || 'openai') as AIProviderType;
-  const order: AIProviderType[] = [primary, 'openai', 'google', 'anthropic'];
+  // If GEMINI_3_ENABLED is set, prefer Google as primary provider
+  const geminiEnabled = process.env.GEMINI_3_ENABLED === 'true';
+  const primary = (process.env.AI_PROVIDER || (geminiEnabled ? 'google' : 'openai')) as AIProviderType;
+  const order: AIProviderType[] = [primary, 'google', 'openai', 'anthropic'];
   const seen = new Set<AIProviderType>();
   const result: { type: AIProviderType; provider: AIProvider }[] = [];
 

@@ -1,9 +1,12 @@
 /**
  * AI Configuration for Sloe Fit
+ *
+ * Reads GEMINI_3_MODEL env var so the model can be changed via Vercel dashboard
+ * without redeploying. Falls back to gemini-2.5-flash.
  */
 
 export const AI_CONFIG = {
-  model: 'gemini-2.5-flash',
+  model: process.env.GEMINI_3_MODEL || 'gemini-2.5-flash',
   visionTimeoutMs: 30000,
   textTimeoutMs: 30000,
 };
@@ -12,7 +15,7 @@ export const AI_CONFIG = {
  * Get the appropriate model for a task
  */
 export function getModelForTask(): string {
-  return AI_CONFIG.model;
+  return process.env.GEMINI_3_MODEL || AI_CONFIG.model;
 }
 
 /**

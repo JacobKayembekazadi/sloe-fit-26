@@ -308,31 +308,33 @@ export function createGoogleProvider(apiKey: string): AIProvider {
 
       const prompt = `Analyze this meal: "${description}"\n\n${goalContext}`;
 
-      try {
-        const content = await this.chat(
-          [
-            { role: 'system', content: TEXT_MEAL_ANALYSIS_PROMPT },
-            { role: 'user', content: prompt },
-          ],
-          { temperature: 0.3, maxTokens: 2000 }
-        );
+      // Let API/network errors propagate so withFallback can try the next provider
+      const content = await this.chat(
+        [
+          { role: 'system', content: TEXT_MEAL_ANALYSIS_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        { temperature: 0.3, maxTokens: 2000 }
+      );
 
-        if (content) {
-          // Parse the JSON block from the markdown+JSON response
-          const jsonMatch = content.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
-          if (jsonMatch && jsonMatch[1]) {
+      if (content) {
+        const jsonMatch = content.match(/---MACROS_JSON---\s*(\{[\s\S]*?\})\s*---END_MACROS---/);
+        if (jsonMatch && jsonMatch[1]) {
+          try {
             const parsed = JSON.parse(jsonMatch[1]);
             const validated = validateAndCorrectMealAnalysis(parsed);
             if (validated) {
               validated.markdown = stripMacrosBlock(content);
               return validated;
             }
+          } catch (parseError) {
+            console.error('[google] Failed to parse text meal JSON:', parseError);
           }
+        } else {
+          console.error('[google] No ---MACROS_JSON--- block found in response');
         }
-        return null;
-      } catch {
-        return null;
       }
+      return null;
     },
 
     async analyzeMealPhoto(imageBase64: string, userGoal: string | null): Promise<PhotoMealAnalysis> {
