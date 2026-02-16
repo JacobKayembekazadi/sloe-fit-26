@@ -25,6 +25,7 @@ export type ErrorCategory =
   | 'network'        // General network errors
   | 'ui'             // UI/rendering errors
   | 'offline_sync'   // Offline queue sync errors
+  | 'pwa'            // Service worker / PWA errors
   | 'unknown';       // Uncategorized
 
 interface ReportErrorOptions {

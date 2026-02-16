@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireEnv, getSupabaseUrl } from '../../lib/env';
 
 const stripe = new Stripe(requireEnv('STRIPE_SECRET_KEY'), {
-    apiVersion: '2024-12-18.acacia',
+    apiVersion: '2026-01-28.clover',
 });
 
 const supabase = createClient(
@@ -123,7 +123,10 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     let endsAt: string | null = null;
     if (subscriptionId) {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        endsAt = new Date(subscription.current_period_end * 1000).toISOString();
+        const periodEnd = subscription.items?.data?.[0]?.current_period_end;
+        if (periodEnd) {
+            endsAt = new Date(periodEnd * 1000).toISOString();
+        }
     }
 
     // Update user profile
@@ -172,7 +175,8 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
         past_due: 'active', // Grace period — payment retry in progress
     };
     const subscriptionStatus = STATUS_MAP[status] || 'expired';
-    const endsAt = new Date(subscription.current_period_end * 1000).toISOString();
+    const periodEnd = subscription.items?.data?.[0]?.current_period_end;
+    const endsAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
 
     const { error } = await supabase
         .from('profiles')

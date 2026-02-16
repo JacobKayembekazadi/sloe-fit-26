@@ -69,7 +69,7 @@ const UpdatePrompt: React.FC = () => {
                 category: 'pwa',
                 operation: 'sw_registration',
                 severity: 'error',
-                extra: {
+                context: {
                     userAgent: navigator.userAgent,
                     isStandalone: window.matchMedia('(display-mode: standalone)').matches,
                 },

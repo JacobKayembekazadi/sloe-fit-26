@@ -65,14 +65,10 @@ export default async function handler(req: Request): Promise<Response> {
 
     const { data: result, provider: usedProvider } = await withFallback(
       async (provider) => {
-        const response = await provider.chat({
-          messages: [{ role: 'user', content: prompt }],
-          maxTokens: 200,
-          temperature: 0.7,
-        });
-
-        // Parse JSON from response
-        const text = response.content;
+        const text = await provider.chat(
+          [{ role: 'user', content: prompt }],
+          { maxTokens: 200, temperature: 0.7 },
+        );
         try {
           // Extract JSON from response (handle markdown code blocks)
           const jsonMatch = text.match(/\{[\s\S]*\}/);

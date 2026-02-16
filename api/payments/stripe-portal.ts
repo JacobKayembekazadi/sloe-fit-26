@@ -4,7 +4,7 @@ import { requireEnv, getAppUrl } from '../../lib/env';
 import { checkPaymentRateLimit } from '../../lib/paymentRateLimit';
 
 const stripe = new Stripe(requireEnv('STRIPE_SECRET_KEY'), {
-    apiVersion: '2024-12-18.acacia',
+    apiVersion: '2026-01-28.clover',
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
