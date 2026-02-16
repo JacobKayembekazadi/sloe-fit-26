@@ -45,7 +45,18 @@ const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 // Extended options for vision tasks
 interface ExtendedChatOptions extends ChatOptions {
   isVisionTask?: boolean;
+  relaxSafety?: boolean;
 }
+
+// Safety settings for body/fitness photo analysis — Gemini's defaults
+// block shirtless/fitness photos as "sexually explicit" which breaks
+// body composition analysis. BLOCK_ONLY_HIGH allows fitness content.
+const RELAXED_SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+];
 
 // ============================================================================
 // Error Handling
@@ -215,6 +226,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       timeoutMs,
       jsonMode = false,
       isVisionTask = false,
+      relaxSafety = false,
     } = options;
 
     const model = getModelForTask();
@@ -231,6 +243,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
           maxOutputTokens: maxTokens,
           ...(jsonMode && { responseMimeType: 'application/json' }),
         },
+        ...(relaxSafety && { safetySettings: RELAXED_SAFETY_SETTINGS }),
       };
 
       if (systemInstruction) {
@@ -463,7 +476,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
             ],
           },
         ],
-        { maxTokens: 1500, isVisionTask: true }
+        { maxTokens: 1500, isVisionTask: true, relaxSafety: true }
       );
       if (!responseText) throw new Error('No response from model');
       return { markdown: responseText };
@@ -484,7 +497,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
             ],
           },
         ],
-        { maxTokens: 2000, isVisionTask: true }
+        { maxTokens: 2000, isVisionTask: true, relaxSafety: true }
       );
       if (!responseText) throw new Error('No response from model');
       return { markdown: responseText };
