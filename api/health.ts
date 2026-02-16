@@ -1,5 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 export const config = {
   runtime: 'edge',
 };
@@ -12,8 +10,6 @@ export default function handler(req: Request): Response {
     GEMINI_API_KEY: Boolean(process.env.GEMINI_API_KEY),
     STRIPE_SECRET_KEY: Boolean(process.env.STRIPE_SECRET_KEY),
     STRIPE_WEBHOOK_SECRET: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
-    LEMONSQUEEZY_API_KEY: Boolean(process.env.LEMONSQUEEZY_API_KEY),
-    LEMONSQUEEZY_WEBHOOK_SECRET: Boolean(process.env.LEMONSQUEEZY_WEBHOOK_SECRET),
     UPSTASH_REDIS_REST_URL: Boolean(process.env.UPSTASH_REDIS_REST_URL),
     APP_URL: Boolean(process.env.APP_URL),
   };
