@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, BodyAnalysisResult } from '../../lib/ai/types';
-import { apiGateWithAuth, getErrorType, validateImageSize } from '../../lib/ai/apiHelpers';
+import { apiGateWithAuth, getErrorType, validateImageSize, hashImage, getCachedResult, setCachedResult } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -63,6 +63,23 @@ export default async function handler(req: Request): Promise<Response> {
 
     console.log('[analyze-body] Processing image, size:', Math.round(imageBase64.length / 1024), 'KB');
 
+    // Check cache for duplicate analysis (same user + same image within 5 min)
+    const cacheKey = await hashImage(auth.userId, imageBase64);
+    const cached = getCachedResult<BodyAnalysisResult>(cacheKey);
+    if (cached) {
+      console.log('[analyze-body] Cache hit — returning previous result');
+      return new Response(JSON.stringify({
+        success: true,
+        data: cached.data,
+        provider: cached.provider,
+        durationMs: Date.now() - startTime,
+        cached: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const { data: result, provider: usedProvider } = await withFallback(
       p => p.analyzeBodyPhoto(imageBase64),
       r => {
@@ -75,6 +92,9 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const durationMs = Date.now() - startTime;
+
+    // Cache result for dedup (same image re-upload within 5 min)
+    setCachedResult(cacheKey, result, usedProvider);
 
     // Save analysis result to DB (fire-and-forget, don't block response)
     // Controlled by BODY_ANALYSIS_PERSIST env var — disable if table doesn't exist yet

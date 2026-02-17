@@ -1,6 +1,6 @@
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, PhotoMealAnalysis } from '../../lib/ai/types';
-import { apiGate, getErrorType, validateImageSize, sanitizeAIInput } from '../../lib/ai/apiHelpers';
+import { apiGateWithAuth, getErrorType, validateImageSize, sanitizeAIInput, hashImage, getCachedResult, setCachedResult } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -19,9 +19,10 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const blocked = await apiGate(req);
-  if (blocked) return blocked;
+  const gate = await apiGateWithAuth(req);
+  if (gate.blocked) return gate.blocked;
 
+  const auth = (gate as { blocked: null; auth: { userId: string } }).auth;
   const startTime = Date.now();
 
   try {
@@ -41,6 +42,23 @@ export default async function handler(req: Request): Promise<Response> {
     const tooLarge = validateImageSize(imageBase64);
     if (tooLarge) return tooLarge;
 
+    // Check cache for duplicate analysis (same user + same image within 5 min)
+    const cacheKey = await hashImage(auth.userId, imageBase64);
+    const cached = getCachedResult<PhotoMealAnalysis>(cacheKey);
+    if (cached) {
+      console.log('[analyze-meal-photo] Cache hit — returning previous result');
+      return new Response(JSON.stringify({
+        success: true,
+        data: cached.data,
+        provider: cached.provider,
+        durationMs: Date.now() - startTime,
+        cached: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // FIX 8.1: Sanitize user inputs before passing to AI
     const safeGoal = userGoal ? sanitizeAIInput(userGoal, 'userGoal') : null;
 
@@ -48,6 +66,9 @@ export default async function handler(req: Request): Promise<Response> {
       p => p.analyzeMealPhoto(imageBase64, safeGoal),
       r => r.markdown.startsWith('Error:')
     );
+
+    // Cache result for dedup
+    setCachedResult(cacheKey, result, usedProvider);
 
     return new Response(JSON.stringify({
       success: true,

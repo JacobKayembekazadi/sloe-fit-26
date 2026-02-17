@@ -201,6 +201,57 @@ export function sanitizeAIObject<T extends Record<string, unknown>>(obj: T, dept
   return result as T;
 }
 
+// ============================================================================
+// Image Result Cache (same-instance dedup for Edge Runtime)
+// ============================================================================
+
+interface CachedResult {
+  data: unknown;
+  provider: string;
+  cachedAt: number;
+}
+
+const IMAGE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const IMAGE_CACHE_MAX_ENTRIES = 50;
+const imageResultCache = new Map<string, CachedResult>();
+
+/**
+ * Hash an image payload using SHA-256 (Web Crypto API, available on Edge Runtime).
+ * Combines userId + image data so different users don't share cache entries.
+ */
+export async function hashImage(userId: string, imageBase64: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(userId + imageBase64.slice(0, 50000)); // hash first 50KB for speed
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Check cache for a previous analysis of the same image.
+ */
+export function getCachedResult<T>(cacheKey: string): { data: T; provider: string } | null {
+  const entry = imageResultCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > IMAGE_CACHE_TTL_MS) {
+    imageResultCache.delete(cacheKey);
+    return null;
+  }
+  return { data: entry.data as T, provider: entry.provider };
+}
+
+/**
+ * Store a result in the image cache.
+ */
+export function setCachedResult(cacheKey: string, data: unknown, provider: string): void {
+  // Evict oldest entries if at capacity
+  if (imageResultCache.size >= IMAGE_CACHE_MAX_ENTRIES) {
+    const oldest = imageResultCache.keys().next().value;
+    if (oldest !== undefined) imageResultCache.delete(oldest);
+  }
+  imageResultCache.set(cacheKey, { data, provider, cachedAt: Date.now() });
+}
+
 /**
  * Max allowed base64 payload size (roughly 2MB decoded ≈ 2.67MB base64).
  */
