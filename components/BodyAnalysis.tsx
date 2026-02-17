@@ -20,7 +20,7 @@ interface BodyAnalysisProps {
   onAnalysisComplete: (result: string) => void;
 }
 
-type TabMode = 'analyze' | 'progress';
+type TabMode = 'analyze' | 'progress' | 'history';
 
 const STORAGE_KEY = 'sloefit_body_analysis';
 const STALENESS_DAYS = 30;
@@ -77,6 +77,10 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const [analyzeRetry, setAnalyzeRetry] = useState<(() => void) | null>(null);
   const [isRestored, setIsRestored] = useState(false);
   const [restoredTimestamp, setRestoredTimestamp] = useState<number | null>(null);
+  // History state
+  const [history, setHistory] = useState<SavedBodyAnalysis[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   // Progressive loading phase for AI analysis
   const [loadingPhase, setLoadingPhase] = useState<string>('Scanning physique...');
   // H4 FIX: Track if user cancelled or timed out
@@ -161,6 +165,31 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     loadLatestAnalysis();
     return () => { cancelled = true; };
   }, [user?.id]);
+
+  // Load analysis history when history tab is selected
+  useEffect(() => {
+    if (tabMode !== 'history' || !user?.id) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+
+    async function loadHistory() {
+      try {
+        const { data } = await supabaseGet<SavedBodyAnalysis[]>(
+          `body_analyses?user_id=eq.${user!.id}&order=created_at.desc&limit=20`
+        );
+        if (!cancelled && data) {
+          setHistory(data);
+        }
+      } catch {
+        // Silent fail — history is non-critical
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    }
+
+    loadHistory();
+    return () => { cancelled = true; };
+  }, [tabMode, user?.id]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -400,6 +429,20 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         </button>
         <button
           role="tab"
+          aria-selected={tabMode === 'history'}
+          aria-controls="panel-history"
+          id="tab-history"
+          onClick={() => setTabMode('history')}
+          className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
+            tabMode === 'history'
+              ? 'bg-[var(--color-primary)] text-black'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          History
+        </button>
+        <button
+          role="tab"
           aria-selected={tabMode === 'progress'}
           aria-controls="panel-progress"
           id="tab-progress"
@@ -410,9 +453,56 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          Progress Photos
+          Progress
         </button>
       </div>
+
+      {/* History Tab */}
+      {tabMode === 'history' && (
+        <div className="space-y-4" role="tabpanel" id="panel-history" aria-labelledby="tab-history">
+          {historyLoading ? (
+            <div className="card"><AnalysisResultSkeleton /></div>
+          ) : history.length === 0 ? (
+            <div className="card text-center p-8">
+              <p className="text-gray-400">No past analyses yet. Run your first analysis to start tracking.</p>
+            </div>
+          ) : (
+            history.map((entry) => {
+              const date = new Date(entry.created_at);
+              const isExpanded = expandedHistoryId === entry.id;
+              return (
+                <div key={entry.id} className="card">
+                  <button
+                    onClick={() => setExpandedHistoryId(isExpanded ? null : entry.id)}
+                    className="w-full flex items-center justify-between text-left"
+                  >
+                    <div>
+                      <p className="text-white font-bold">
+                        {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                      <p className="text-gray-400 text-xs">
+                        {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {entry.provider && ` · ${entry.provider}`}
+                      </p>
+                    </div>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <ResultDisplay result={entry.result_markdown} />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {/* Progress Photos Tab */}
       {tabMode === 'progress' && (

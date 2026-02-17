@@ -29,7 +29,7 @@ import {
 // Configuration
 // ============================================================================
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_TIMEOUT_MS = 30000;
 const BASE_RETRY_DELAY_MS = 1000;
