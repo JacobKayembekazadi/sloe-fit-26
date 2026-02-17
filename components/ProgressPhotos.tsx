@@ -228,11 +228,14 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
     try {
       // Upload to storage
+      console.log('[ProgressPhotos] Uploading...', { userId: user.id, type: captureType, size: selectedFile.size });
       uploadResult = await uploadImage(selectedFile, user.id, 'progress');
 
       if (!uploadResult.success) {
+        console.error('[ProgressPhotos] Storage upload failed:', uploadResult.error);
         throw new Error(uploadResult.error || 'Upload failed');
       }
+      console.log('[ProgressPhotos] Storage OK:', uploadResult.path);
 
       // Save metadata to database
       const { error: dbError } = await supabaseInsert('progress_photos', {
@@ -244,7 +247,11 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
         notes: notes || null
       });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('[ProgressPhotos] DB insert failed:', dbError);
+        throw new Error(typeof dbError === 'object' && 'message' in dbError ? (dbError as { message: string }).message : 'Failed to save photo record');
+      }
+      console.log('[ProgressPhotos] DB insert OK');
 
       // Reset state and refresh
       setSelectedFile(null);
