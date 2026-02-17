@@ -388,8 +388,8 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
   const hasImage = body && typeof body === 'object' && ('imageBase64' in (body as Record<string, unknown>) || 'images' in (body as Record<string, unknown>));
   const timeoutMs = hasImage ? 45000 : 30000;
 
-  // FIX AUTH1: Get auth token upfront (don't retry auth failures)
-  const authToken = await getAuthToken();
+  // Get auth token (will be refreshed on 401 retry)
+  let authToken = await getAuthToken();
   if (!authToken) {
     updateRequestLog(log, 'error');
     return {
@@ -403,6 +403,7 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
   }
 
   let lastError: AIResponse<T>['error'] = undefined;
+  let authRetried = false; // Track if we already retried after 401
 
   // Client-side retry loop for transient failures
   for (let attempt = 0; attempt <= MAX_CLIENT_RETRIES; attempt++) {
@@ -431,6 +432,50 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // Handle 401: refresh token and retry once
+        if (response.status === 401 && !authRetried) {
+          authRetried = true;
+          if (DEBUG_MODE) {
+            console.log(`[AI #${log.id}] 401 — refreshing auth token and retrying`);
+          }
+          // Notify AuthContext to refresh session
+          if (typeof window !== 'undefined') {
+            try {
+              window.dispatchEvent(new CustomEvent('supabase-auth-error', { detail: { status: 401, endpoint } }));
+            } catch { /* safety */ }
+          }
+          // Wait briefly for refresh, then get new token
+          await sleep(1000);
+          const freshToken = await getAuthToken();
+          if (freshToken && freshToken !== authToken) {
+            authToken = freshToken;
+            continue; // Retry with new token (doesn't count as an attempt)
+          }
+          // Token didn't change — auth is truly broken
+          updateRequestLog(log, 'error');
+          return {
+            success: false,
+            error: {
+              type: 'auth',
+              message: 'Session expired. Please refresh the page.',
+              retryable: false,
+            },
+          };
+        }
+
+        // Persistent 401 after retry
+        if (response.status === 401) {
+          updateRequestLog(log, 'error');
+          return {
+            success: false,
+            error: {
+              type: 'auth',
+              message: 'Session expired. Please refresh the page.',
+              retryable: false,
+            },
+          };
+        }
+
         // FIX 3.1: Handle 402 subscription required responses (don't retry)
         if (response.status === 402) {
           updateRequestLog(log, 'error');
@@ -456,7 +501,7 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
           }
         }
 
-        // Don't retry 4xx errors (except 429 rate limit)
+        // Don't retry other 4xx errors (except 429 rate limit)
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           updateRequestLog(log, 'error');
           const type = response.status === 413 ? 'payload_too_large' : 'api';

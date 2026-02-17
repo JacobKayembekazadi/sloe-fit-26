@@ -195,33 +195,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         window.addEventListener('supabase-auth-error', handleAuthError);
 
-        // FIX: Proactively refresh token when tab becomes visible after being hidden
-        // Browser throttles inactive tabs, so autoRefresh may not run while away
+        // FIX: Always refresh token when tab becomes visible after being hidden.
+        // Browser throttles inactive tabs, so autoRefresh may not run while away.
+        // Previous approach (only refresh if <5 min remaining) missed tokens that
+        // went stale during 30-60 min of backgrounding.
         const handleVisibilityChange = async () => {
             if (document.visibilityState !== 'visible') return;
-            // Skip if already refreshing or recently refreshed
             if (isRefreshingRef.current) return;
             const now = Date.now();
             if (now - lastRefreshAttemptRef.current < REFRESH_COOLDOWN_MS) return;
 
-            // Check if we have a session that might need refreshing
             try {
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
-                if (!currentSession) return; // Not logged in, nothing to refresh
+                if (!currentSession) return;
 
-                // Check if token expires within the next 5 minutes
-                const expiresAt = currentSession.expires_at;
-                if (expiresAt && expiresAt * 1000 < now + 5 * 60 * 1000) {
-                    isRefreshingRef.current = true;
-                    lastRefreshAttemptRef.current = now;
-                    try {
-                        await supabase.auth.refreshSession();
-                    } finally {
-                        isRefreshingRef.current = false;
-                    }
+                // Always refresh on tab return — browser may have suspended autoRefresh
+                isRefreshingRef.current = true;
+                lastRefreshAttemptRef.current = now;
+                try {
+                    await supabase.auth.refreshSession();
+                } finally {
+                    isRefreshingRef.current = false;
                 }
             } catch {
-                // Ignore errors - this is a best-effort proactive refresh
+                // Best-effort — ignore errors
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
