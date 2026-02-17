@@ -62,6 +62,8 @@ export async function DELETE(req: Request): Promise<Response> {
     // - progress_photos (ON DELETE CASCADE)
     // - measurements (ON DELETE CASCADE)
     // - audit_logs (ON DELETE CASCADE)
+    // - body_analyses (ON DELETE CASCADE)
+    // - food_scans (ON DELETE CASCADE)
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteError) {

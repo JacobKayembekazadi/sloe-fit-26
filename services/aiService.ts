@@ -467,14 +467,30 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
           };
         }
 
-        // Server error or rate limit — retry
-        const type = response.status === 429 ? 'rate_limit' : 'server_error';
+        // Rate limit — parse body for retry info, then retry
+        if (response.status === 429) {
+          try {
+            const errorBody = await response.json();
+            const retryMs = errorBody.error?.retryAfterMs;
+            const retrySeconds = retryMs ? Math.ceil(retryMs / 1000) : 60;
+            lastError = {
+              type: 'rate_limit',
+              message: errorBody.error?.message || `Rate limited. Try again in ${retrySeconds}s.`,
+              retryable: true,
+            };
+          } catch {
+            lastError = { type: 'rate_limit', message: 'Rate limited. Try again in 60s.', retryable: true };
+          }
+          continue;
+        }
+
+        // Server error — retry
         lastError = {
-          type,
+          type: 'server_error',
           message: `Server error (${response.status})`,
           retryable: true,
         };
-        continue; // Retry
+        continue;
       }
 
       const result: AIResponse<T> = await response.json();

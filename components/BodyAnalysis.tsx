@@ -244,7 +244,6 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       }
 
       if (analysisResult.markdown.startsWith('An error occurred') || analysisResult.markdown.startsWith('Error:')) {
-        // Extract the actual error message for better user feedback
         const errorMsg = analysisResult.markdown.replace(/^(An error occurred|Error):\s*/i, '');
         console.error('[BodyAnalysis] Analysis returned error:', errorMsg);
         reportError(new Error(errorMsg), {
@@ -254,18 +253,33 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           context: { responseType: 'soft_error', fullMessage: analysisResult.markdown.substring(0, 500) },
           userId: user?.id,
         });
-        setError(analysisResult.markdown);
-        setAnalyzeRetry(() => handleAnalyze);
-        // Show more specific toast based on error type
-        if (errorMsg.includes('content') || errorMsg.includes('filter') || errorMsg.includes('moderation')) {
-          showToast("Image rejected by AI. Try a different photo.", 'error');
-        } else if (errorMsg.includes('rate') || errorMsg.includes('limit')) {
-          showToast("Too many requests. Wait a moment.", 'error');
-        } else if (errorMsg.includes('auth') || errorMsg.includes('key')) {
-          showToast("Service unavailable. Try again later.", 'error');
+
+        // Map error keywords to actionable user messages
+        const lower = errorMsg.toLowerCase();
+        let userMessage: string;
+        let toastMsg: string;
+        if (lower.includes('content') || lower.includes('filter') || lower.includes('moderation') || lower.includes('safety')) {
+          userMessage = 'The AI flagged this image. Try a different angle or ensure good lighting with a neutral background.';
+          toastMsg = 'Image flagged. Try a different angle.';
+        } else if (lower.includes('rate') || lower.includes('limit') || lower.includes('too many')) {
+          userMessage = 'You\'ve hit the analysis limit. Wait 60 seconds before trying again.';
+          toastMsg = 'Rate limit. Wait 60s.';
+        } else if (lower.includes('timeout') || lower.includes('took too long')) {
+          userMessage = 'Analysis timed out. Try a smaller image or check your connection.';
+          toastMsg = 'Timed out. Try smaller image.';
+        } else if (lower.includes('subscription') || lower.includes('trial')) {
+          userMessage = errorMsg;
+          toastMsg = 'Subscription required.';
+        } else if (lower.includes('large') || lower.includes('size')) {
+          userMessage = 'Image is too large. Use a photo under 2MB or take a new one at lower resolution.';
+          toastMsg = 'Image too large.';
         } else {
-          showToast("Analysis failed. Try again.", 'error');
+          userMessage = 'Analysis failed. Try again, or use a different photo if the issue persists.';
+          toastMsg = 'Analysis failed. Try again.';
         }
+        setError(userMessage);
+        setAnalyzeRetry(() => handleAnalyze);
+        showToast(toastMsg, 'error');
       } else {
         setResult(analysisResult.markdown);
         setIsRestored(false);
@@ -317,7 +331,19 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         context: { errorMessage, fileSize: file?.size, fileType: file?.type },
         userId: user?.id,
       });
-      setError(`Body analysis failed: ${errorMessage}. Please check your connection and try again.`);
+      // Map exception messages to actionable guidance
+      const lower = errorMessage.toLowerCase();
+      let userError: string;
+      if (lower.includes('network') || lower.includes('fetch') || lower.includes('connection')) {
+        userError = 'Connection issue. Check your internet and try again.';
+      } else if (lower.includes('timeout') || lower.includes('abort')) {
+        userError = 'Request timed out. Try a smaller image or better connection.';
+      } else if (lower === 'unknown error') {
+        userError = 'Something went wrong. Try again, or use a different photo.';
+      } else {
+        userError = `Analysis failed: ${errorMessage}`;
+      }
+      setError(userError);
       setAnalyzeRetry(() => handleAnalyze);
       showToast("Analysis failed. Try again.", 'error');
     } finally {
@@ -447,6 +473,16 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             </div>
             <p className="text-xl font-black text-white uppercase tracking-wide">{loadingPhase}</p>
             <p className="text-gray-400 mt-2 text-sm">AI is examining your physique in detail</p>
+            {/* Progress bar — fills over analysis timeout duration */}
+            <div className="w-full max-w-xs mt-4 h-1 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-primary)] rounded-full"
+                style={{
+                  animation: `progressFill ${ANALYSIS_TIMEOUT_MS / 1000}s linear forwards`,
+                }}
+              />
+            </div>
+            <style>{`@keyframes progressFill { from { width: 0%; } to { width: 100%; } }`}</style>
             {/* H4 FIX: Cancel button for long-running analysis */}
             <button
               onClick={handleCancelAnalysis}
@@ -502,13 +538,20 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
 
       {tabMode === 'analyze' && result && (
         <div className="space-y-6" role="tabpanel" id="panel-analyze" aria-labelledby="tab-analyze">
-          {isRestored && restoredTimestamp && (
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center justify-between">
-              <p className="text-sm text-blue-300">
-                Previous analysis from {new Date(restoredTimestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </p>
-            </div>
-          )}
+          {isRestored && restoredTimestamp && (() => {
+            const ageDays = Math.floor((Date.now() - restoredTimestamp) / (1000 * 60 * 60 * 24));
+            const isStale = ageDays > 7;
+            return (
+              <div className={`${isStale ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'} border rounded-lg p-3`}>
+                <p className={`text-sm ${isStale ? 'text-amber-300' : 'text-blue-300'}`}>
+                  {isStale
+                    ? `This analysis is ${ageDays} days old. Take a new photo for accurate tracking.`
+                    : `Previous analysis from ${new Date(restoredTimestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                  }
+                </p>
+              </div>
+            );
+          })()}
 
           <div className="card">
             <ResultDisplay result={result} />
@@ -521,15 +564,32 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             {isRestored ? 'New Analysis' : 'Scan New Photo'}
           </button>
 
-          {/* Supplement Recommendations */}
+          {/* Supplement Recommendations — personalized based on analysis */}
           <div className="pt-6 border-t border-white/10">
             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-2 h-8 bg-[var(--color-primary)] rounded-full"></span>
               RECOMMENDED STACK
             </h3>
             <div className="grid grid-cols-1 gap-4">
-              <ProductCard productId={PRODUCT_IDS.CREATINE} />
-              <ProductCard productId={PRODUCT_IDS.PRE_WORKOUT} />
+              {(() => {
+                const lower = (result || '').toLowerCase();
+                const wantsBulk = lower.includes('bulk') || lower.includes('mass') || lower.includes('lean') || lower.includes('underweight') || lower.includes('muscle');
+                const wantsCut = lower.includes('cut') || lower.includes('fat loss') || lower.includes('overweight') || lower.includes('body fat') || lower.includes('lean out');
+                const wantsEndurance = lower.includes('cardio') || lower.includes('endurance') || lower.includes('stamina');
+
+                return (
+                  <>
+                    {/* Creatine: always good for bulking/muscle, skip if purely cardio-focused */}
+                    {(!wantsEndurance || wantsBulk) && <ProductCard productId={PRODUCT_IDS.CREATINE} />}
+                    {/* Pre-workout: good for everyone except pure bulk/recovery focus */}
+                    {(wantsEndurance || wantsCut || !wantsBulk) && <ProductCard productId={PRODUCT_IDS.PRE_WORKOUT} />}
+                    {/* Whey protein: show for bulk/muscle building */}
+                    {wantsBulk && PRODUCT_IDS.WHEY_PROTEIN && <ProductCard productId={PRODUCT_IDS.WHEY_PROTEIN} />}
+                    {/* Fat burner: show for cut/fat loss goals */}
+                    {wantsCut && PRODUCT_IDS.FAT_BURNER && <ProductCard productId={PRODUCT_IDS.FAT_BURNER} />}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
