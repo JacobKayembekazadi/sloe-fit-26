@@ -77,16 +77,20 @@ export default async function handler(req: Request): Promise<Response> {
     const durationMs = Date.now() - startTime;
 
     // Save analysis result to DB (fire-and-forget, don't block response)
-    try {
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      await supabase.from('body_analyses').insert({
-        user_id: auth.userId,
-        result_markdown: result.markdown,
-        provider: usedProvider,
-        duration_ms: durationMs,
-      });
-    } catch (saveErr) {
-      console.error('[analyze-body] Failed to save analysis to DB:', saveErr);
+    // Controlled by BODY_ANALYSIS_PERSIST env var — disable if table doesn't exist yet
+    const shouldPersist = process.env.BODY_ANALYSIS_PERSIST !== 'false';
+    if (shouldPersist) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        await supabase.from('body_analyses').insert({
+          user_id: auth.userId,
+          result_markdown: result.markdown,
+          provider: usedProvider,
+          duration_ms: durationMs,
+        });
+      } catch (saveErr) {
+        console.error('[analyze-body] Failed to save analysis to DB:', saveErr);
+      }
     }
 
     return new Response(JSON.stringify({

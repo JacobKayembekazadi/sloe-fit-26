@@ -52,11 +52,13 @@ interface ExtendedChatOptions extends ChatOptions {
 // block shirtless/fitness photos as "sexually explicit" which breaks
 // body composition analysis. BLOCK_NONE for sexually explicit (fitness
 // photos are the exact trigger), BLOCK_ONLY_HIGH for everything else.
+// Configurable via GEMINI_SAFETY_THRESHOLD env var (BLOCK_NONE, BLOCK_ONLY_HIGH, BLOCK_MEDIUM_AND_ABOVE, etc.)
+const safetyThreshold = process.env.GEMINI_SAFETY_THRESHOLD || 'BLOCK_ONLY_HIGH';
 const RELAXED_SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: safetyThreshold },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: safetyThreshold },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: safetyThreshold },
 ];
 
 // ============================================================================

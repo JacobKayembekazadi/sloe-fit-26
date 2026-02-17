@@ -11,6 +11,7 @@ import ProductCard from './ProductCard';
 import ProgressPhotos from './ProgressPhotos';
 import { PRODUCT_IDS } from '../services/shopifyService';
 import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
+import { reportError } from '../utils/sentryHelpers';
 
 // H4 FIX: Timeout for body analysis (60 seconds)
 const ANALYSIS_TIMEOUT_MS = 60000;
@@ -246,6 +247,13 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         // Extract the actual error message for better user feedback
         const errorMsg = analysisResult.markdown.replace(/^(An error occurred|Error):\s*/i, '');
         console.error('[BodyAnalysis] Analysis returned error:', errorMsg);
+        reportError(new Error(errorMsg), {
+          category: 'ai',
+          operation: 'analyzeBodyPhoto',
+          severity: 'warning',
+          context: { responseType: 'soft_error', fullMessage: analysisResult.markdown.substring(0, 500) },
+          userId: user?.id,
+        });
         setError(analysisResult.markdown);
         setAnalyzeRetry(() => handleAnalyze);
         // Show more specific toast based on error type
@@ -303,6 +311,12 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       }
       const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : 'Unknown error');
       console.error('[BodyAnalysis] Exception during analysis:', errorMessage, err);
+      reportError(err, {
+        category: 'ai',
+        operation: 'analyzeBodyPhoto',
+        context: { errorMessage, fileSize: file?.size, fileType: file?.type },
+        userId: user?.id,
+      });
       setError(`Body analysis failed: ${errorMessage}. Please check your connection and try again.`);
       setAnalyzeRetry(() => handleAnalyze);
       showToast("Analysis failed. Try again.", 'error');
@@ -343,8 +357,12 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       </header>
 
       {/* Tab selector */}
-      <div className="flex gap-2 p-1 bg-black/30 rounded-xl">
+      <div className="flex gap-2 p-1 bg-black/30 rounded-xl" role="tablist" aria-label="Body analysis views">
         <button
+          role="tab"
+          aria-selected={tabMode === 'analyze'}
+          aria-controls="panel-analyze"
+          id="tab-analyze"
           onClick={() => setTabMode('analyze')}
           className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
             tabMode === 'analyze'
@@ -355,6 +373,10 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           AI Analysis
         </button>
         <button
+          role="tab"
+          aria-selected={tabMode === 'progress'}
+          aria-controls="panel-progress"
+          id="tab-progress"
           onClick={() => setTabMode('progress')}
           className={`flex-1 py-3 min-h-[44px] px-4 rounded-lg font-bold text-sm uppercase transition-all ${
             tabMode === 'progress'
@@ -368,19 +390,20 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
 
       {/* Progress Photos Tab */}
       {tabMode === 'progress' && (
-        <div className="card">
+        <div className="card" role="tabpanel" id="panel-progress" aria-labelledby="tab-progress">
           <ProgressPhotos />
         </div>
       )}
 
       {/* AI Analysis Tab */}
       {tabMode === 'analyze' && !result && !isLoading && (
-        <div className="card flex flex-col items-center p-8">
+        <div className="card flex flex-col items-center p-8" role="tabpanel" id="panel-analyze" aria-labelledby="tab-analyze">
           <input
             type="file"
             id="body-photo-upload"
             className="hidden"
             accept="image/png, image/jpeg, image/webp"
+            aria-label="Upload body photo for AI analysis"
             onChange={handleFileChange}
           />
           <label
@@ -414,9 +437,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
 
       {/* Loading State */}
       {tabMode === 'analyze' && isLoading && (
-        <div className="space-y-4">
+        <div className="space-y-4" role="status" aria-live="polite" aria-label="Analyzing body photo">
           <div className="card flex flex-col items-center justify-center text-center p-8">
-            <div className="relative mb-4">
+            <div className="relative mb-4" aria-hidden="true">
               <div className="w-20 h-20 border-4 border-gray-700 border-t-[var(--color-primary)] rounded-full animate-spin motion-reduce:animate-none" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-3xl">💪</span>
@@ -427,6 +450,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             {/* H4 FIX: Cancel button for long-running analysis */}
             <button
               onClick={handleCancelAnalysis}
+              aria-label="Cancel body analysis"
               className="mt-4 px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 rounded-lg transition-colors"
             >
               Cancel
@@ -439,7 +463,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       )}
 
       {tabMode === 'analyze' && error && !isLoading && (
-        <div className="card border border-red-500/30 bg-red-500/5">
+        <div className="card border border-red-500/30 bg-red-500/5" role="alert">
           <div className="flex items-start gap-4">
             <div className="p-2 bg-red-500/20 rounded-full">
               <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -477,7 +501,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       )}
 
       {tabMode === 'analyze' && result && (
-        <div className="space-y-6">
+        <div className="space-y-6" role="tabpanel" id="panel-analyze" aria-labelledby="tab-analyze">
           {isRestored && restoredTimestamp && (
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 flex items-center justify-between">
               <p className="text-sm text-blue-300">
