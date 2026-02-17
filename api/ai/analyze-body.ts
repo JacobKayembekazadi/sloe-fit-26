@@ -1,6 +1,7 @@
+import { createClient } from '@supabase/supabase-js';
 import { withFallback } from '../../lib/ai';
 import type { AIResponse, BodyAnalysisResult } from '../../lib/ai/types';
-import { apiGate, getErrorType, validateImageSize } from '../../lib/ai/apiHelpers';
+import { apiGateWithAuth, getErrorType, validateImageSize } from '../../lib/ai/apiHelpers';
 
 export const config = {
   runtime: 'edge',
@@ -10,6 +11,9 @@ interface RequestBody {
   imageBase64: string;
 }
 
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -18,9 +22,10 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const blocked = await apiGate(req);
-  if (blocked) return blocked;
+  const gate = await apiGateWithAuth(req);
+  if (gate.blocked) return gate.blocked;
 
+  const auth = (gate as { blocked: null; auth: { userId: string } }).auth;
   const startTime = Date.now();
 
   try {
@@ -69,11 +74,26 @@ export default async function handler(req: Request): Promise<Response> {
       }
     );
 
+    const durationMs = Date.now() - startTime;
+
+    // Save analysis result to DB (fire-and-forget, don't block response)
+    try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      await supabase.from('body_analyses').insert({
+        user_id: auth.userId,
+        result_markdown: result.markdown,
+        provider: usedProvider,
+        duration_ms: durationMs,
+      });
+    } catch (saveErr) {
+      console.error('[analyze-body] Failed to save analysis to DB:', saveErr);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       data: result,
       provider: usedProvider,
-      durationMs: Date.now() - startTime,
+      durationMs,
     } as AIResponse<BodyAnalysisResult>), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

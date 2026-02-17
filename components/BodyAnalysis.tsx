@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect, ChangeEvent, memo, useRef } fr
 import { analyzeBodyPhoto } from '../services/aiService';
 import { validateImage } from '../services/storageService';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabaseGet } from '../services/supabaseRawFetch';
 import CameraIcon from './icons/CameraIcon';
 import LoaderIcon from './icons/LoaderIcon';
 import ResultDisplay from './ResultDisplay';
@@ -55,8 +57,16 @@ const AnalysisResultSkeleton = () => (
   </div>
 );
 
+interface SavedBodyAnalysis {
+  id: string;
+  result_markdown: string;
+  provider: string | null;
+  created_at: string;
+}
+
 const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [tabMode, setTabMode] = useState<TabMode>('analyze');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -92,33 +102,64 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     return () => timers.forEach(clearTimeout);
   }, [isLoading]);
 
-  // Restore previous analysis from localStorage on mount
+  // Restore previous analysis: try DB first, fall back to localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) return;
+    let cancelled = false;
 
-      const parsed = safeJSONParse<StoredAnalysis | null>(stored, null);
-      if (!parsed || !parsed.result || !parsed.timestamp) return;
-
-      const ageMs = Date.now() - parsed.timestamp;
-      const ageDays = ageMs / (1000 * 60 * 60 * 24);
-
-      if (ageDays > STALENESS_DAYS) {
-        // Too old to auto-restore — clear it
-        localStorage.removeItem(STORAGE_KEY);
-        return;
+    async function loadLatestAnalysis() {
+      // Try DB first if user is logged in
+      if (user?.id) {
+        try {
+          const { data } = await supabaseGet<SavedBodyAnalysis[]>(
+            `body_analyses?user_id=eq.${user.id}&order=created_at.desc&limit=1`
+          );
+          if (!cancelled && data && data.length > 0) {
+            const entry = data[0];
+            const ageMs = Date.now() - new Date(entry.created_at).getTime();
+            const ageDays = ageMs / (1000 * 60 * 60 * 24);
+            if (ageDays <= STALENESS_DAYS) {
+              setResult(entry.result_markdown);
+              setIsRestored(true);
+              setRestoredTimestamp(new Date(entry.created_at).getTime());
+              return;
+            }
+          }
+        } catch {
+          // DB fetch failed — fall through to localStorage
+        }
       }
 
-      setResult(parsed.result);
-      setPreview(parsed.photoPreview);
-      setIsRestored(true);
-      setRestoredTimestamp(parsed.timestamp);
-    } catch {
-      // Corrupted data — clear and move on
-      localStorage.removeItem(STORAGE_KEY);
+      // Fallback: localStorage
+      if (cancelled) return;
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return;
+
+        const parsed = safeJSONParse<StoredAnalysis | null>(stored, null);
+        if (!parsed || !parsed.result || !parsed.timestamp) return;
+
+        const ageMs = Date.now() - parsed.timestamp;
+        const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+        if (ageDays > STALENESS_DAYS) {
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+
+        if (!cancelled) {
+          setResult(parsed.result);
+          setPreview(parsed.photoPreview);
+          setIsRestored(true);
+          setRestoredTimestamp(parsed.timestamp);
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     }
-  }, []);
+
+    loadLatestAnalysis();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {

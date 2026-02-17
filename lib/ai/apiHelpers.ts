@@ -3,7 +3,7 @@
  * Combines auth check, subscription check, rate limiting, and error type guards.
  */
 
-import { requireAuth, unauthorizedResponse } from './requireAuth';
+import { requireAuth, unauthorizedResponse, type AuthResult } from './requireAuth';
 import { checkRateLimit, checkDailyLimit } from './rateLimit';
 import type { AIErrorType } from './types';
 
@@ -43,20 +43,15 @@ export function getTrialDaysRemaining(trialStartedAt: string | null): number {
  * FIX 2.2: Per-user rate limiting using userId from auth
  * FIX 3.1: Subscription/trial check for AI features
  */
-export async function apiGate(req: Request): Promise<Response | null> {
-  // Auth check first — rejects invalid tokens before burning rate limit budget
-  const auth = await requireAuth(req);
-  if (!auth) return unauthorizedResponse();
-
-  // FIX 3.1: Check subscription status
+/**
+ * Check subscription status. Returns a 402 Response if blocked, or null to proceed.
+ */
+function checkSubscription(auth: AuthResult): Response | null {
   const { subscriptionStatus, trialStartedAt } = auth;
 
-  // Active subscribers can proceed
   if (subscriptionStatus === 'active') {
-    // Skip subscription check, continue to rate limit
-  }
-  // Trial users: check if trial expired
-  else if (subscriptionStatus === 'trial') {
+    return null;
+  } else if (subscriptionStatus === 'trial') {
     if (isTrialExpired(trialStartedAt)) {
       return new Response(
         JSON.stringify({
@@ -71,9 +66,8 @@ export async function apiGate(req: Request): Promise<Response | null> {
         { status: 402, headers: { 'Content-Type': 'application/json' } }
       );
     }
-  }
-  // Expired or no subscription
-  else if (subscriptionStatus === 'expired' || subscriptionStatus === 'none') {
+    return null;
+  } else if (subscriptionStatus === 'expired' || subscriptionStatus === 'none') {
     return new Response(
       JSON.stringify({
         success: false,
@@ -87,16 +81,32 @@ export async function apiGate(req: Request): Promise<Response | null> {
       { status: 402, headers: { 'Content-Type': 'application/json' } }
     );
   }
-
-  // Per-user rate limit (30 req/min) - async for Redis support
-  const rateLimited = await checkRateLimit(req, auth.userId);
-  if (rateLimited) return rateLimited;
-
-  // Per-user daily limit (50 calls/day) - async for Redis support
-  const dailyLimited = await checkDailyLimit(auth.userId);
-  if (dailyLimited) return dailyLimited;
-
   return null;
+}
+
+/**
+ * Like apiGate, but also returns the authenticated user info on success.
+ * Use when the handler needs the userId (e.g., to save results to DB).
+ */
+export async function apiGateWithAuth(req: Request): Promise<{ blocked: Response } | { blocked: null; auth: AuthResult }> {
+  const auth = await requireAuth(req);
+  if (!auth) return { blocked: unauthorizedResponse() };
+
+  const subscriptionBlock = checkSubscription(auth);
+  if (subscriptionBlock) return { blocked: subscriptionBlock };
+
+  const rateLimited = await checkRateLimit(req, auth.userId);
+  if (rateLimited) return { blocked: rateLimited };
+
+  const dailyLimited = await checkDailyLimit(auth.userId);
+  if (dailyLimited) return { blocked: dailyLimited };
+
+  return { blocked: null, auth };
+}
+
+export async function apiGate(req: Request): Promise<Response | null> {
+  const result = await apiGateWithAuth(req);
+  return result.blocked;
 }
 
 // Valid AIErrorType values for type-safe error classification
