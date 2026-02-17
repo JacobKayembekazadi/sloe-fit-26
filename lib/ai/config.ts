@@ -12,6 +12,19 @@ export const AI_CONFIG = {
 };
 
 /**
+ * Estimated cost per vision analysis call by provider (USD).
+ * Used for spend tracking and alerts — not billing.
+ */
+export const COST_PER_VISION_CALL: Record<string, number> = {
+  google: 0.015,   // Gemini 2.5 Flash vision
+  openai: 0.03,    // GPT-4o-mini vision
+  anthropic: 0.05, // Claude vision
+};
+
+/** Daily spend warning threshold (USD). Log warning if exceeded. */
+export const DAILY_SPEND_WARN_USD = parseFloat(process.env.AI_DAILY_SPEND_WARN || '5');
+
+/**
  * Get the appropriate model for a task
  */
 export function getModelForTask(): string {

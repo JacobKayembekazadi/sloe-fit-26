@@ -2,6 +2,28 @@ import type { AIProvider, AIProviderType, AIError } from './types';
 import { createOpenAIProvider } from './providers/openai';
 import { createAnthropicProvider } from './providers/anthropic';
 import { createGoogleProvider } from './providers/google';
+import { COST_PER_VISION_CALL, DAILY_SPEND_WARN_USD } from './config';
+
+// In-memory daily cost accumulator (resets on cold start / redeploy)
+let dailyCostUSD = 0;
+let dailyCostDate = new Date().toISOString().split('T')[0];
+let dailySpendWarned = false;
+
+function trackCost(provider: AIProviderType) {
+  const today = new Date().toISOString().split('T')[0];
+  if (today !== dailyCostDate) {
+    dailyCostUSD = 0;
+    dailyCostDate = today;
+    dailySpendWarned = false;
+  }
+  const cost = COST_PER_VISION_CALL[provider] || 0.02;
+  dailyCostUSD += cost;
+
+  if (dailyCostUSD >= DAILY_SPEND_WARN_USD && !dailySpendWarned) {
+    dailySpendWarned = true;
+    console.error(`[ai] SPEND WARNING: Daily AI cost estimate $${dailyCostUSD.toFixed(2)} exceeded $${DAILY_SPEND_WARN_USD} threshold`);
+  }
+}
 
 // ============================================================================
 // Provider Factory
@@ -163,7 +185,8 @@ export async function withFallback<T>(
         lastError = new Error(`Provider ${type} returned soft failure`);
         continue;
       }
-      console.log(`[ai] success via ${type}${i > 0 ? ` (fallback #${i})` : ''}`);
+      trackCost(type);
+      console.log(`[ai] success via ${type}${i > 0 ? ` (fallback #${i})` : ''} | est. daily cost: $${dailyCostUSD.toFixed(3)}`);
       return { data, provider: type };
     } catch (error) {
       lastError = error;

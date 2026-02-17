@@ -61,6 +61,26 @@ const RELAXED_SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: safetyThreshold },
 ];
 
+// Safety block rate tracking (in-memory, resets on cold start)
+let safetyBlockCount = 0;
+let safetyTotalCalls = 0;
+let safetyLastLogTime = 0;
+
+function trackSafetyBlock(blockReason: string, safetyRatings: unknown) {
+  safetyBlockCount++;
+  const now = Date.now();
+  // Log aggregate stats every 10 blocks or every 5 minutes
+  if (safetyBlockCount % 10 === 0 || now - safetyLastLogTime > 300_000) {
+    safetyLastLogTime = now;
+    const rate = safetyTotalCalls > 0 ? ((safetyBlockCount / safetyTotalCalls) * 100).toFixed(1) : '0';
+    console.error(`[google] SAFETY_BLOCK_RATE: ${safetyBlockCount}/${safetyTotalCalls} (${rate}%) | last: ${blockReason} | ratings: ${JSON.stringify(safetyRatings)}`);
+  }
+}
+
+function trackSafetyCall() {
+  safetyTotalCalls++;
+}
+
 // ============================================================================
 // Error Handling
 // ============================================================================
@@ -267,9 +287,11 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       }
 
       const data = await response.json();
+      trackSafetyCall();
 
       // Check for content moderation block (no candidates or blocked reason)
       if (data.promptFeedback?.blockReason) {
+        trackSafetyBlock(data.promptFeedback.blockReason, data.promptFeedback?.safetyRatings);
         console.error('[google] Content blocked:', data.promptFeedback.blockReason, 'safetyRatings:', JSON.stringify(data.promptFeedback?.safetyRatings));
         throw {
           type: 'content_filter',
@@ -283,6 +305,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
         // Check if finish reason indicates content filtering
         const finishReason = data.candidates[0].finishReason;
         if (finishReason === 'SAFETY' || finishReason === 'BLOCKED') {
+          trackSafetyBlock(finishReason, data.candidates[0].safetyRatings);
           console.error('[google] Response blocked due to safety filters. finishReason:', finishReason, 'safetyRatings:', JSON.stringify(data.candidates[0].safetyRatings));
           throw {
             type: 'content_filter',
@@ -300,6 +323,7 @@ export function createGoogleProvider(apiKey: string): AIProvider {
       }
 
       // No candidates at all - likely a content moderation issue
+      trackSafetyBlock('NO_CANDIDATES', data.promptFeedback?.safetyRatings);
       console.error('[google] No candidates in response:', JSON.stringify(data).substring(0, 500));
       throw {
         type: 'content_filter',

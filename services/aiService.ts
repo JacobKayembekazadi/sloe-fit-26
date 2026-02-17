@@ -347,9 +347,12 @@ function checkRateLimit(operation: string): { allowed: boolean; retryAfterMs?: n
 // Client-Side Retry Configuration
 // ============================================================================
 
-const MAX_CLIENT_RETRIES = 2; // Total of 3 attempts (1 initial + 2 retries)
+const MAX_CLIENT_RETRIES = 1; // Total of 2 attempts (1 initial + 1 retry). Server already retries across providers.
 const BASE_RETRY_DELAY_MS = 1500;
 const MAX_RETRY_DELAY_MS = 10000;
+
+// Error types that should NOT be retried client-side (deterministic failures)
+const NON_RETRYABLE_ERROR_TYPES = new Set(['content_filter', 'invalid_request', 'auth', 'subscription_required', 'payload_too_large']);
 
 function calculateClientRetryDelay(attempt: number): number {
   const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
@@ -484,12 +487,25 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
           continue;
         }
 
-        // Server error — retry
-        lastError = {
-          type: 'server_error',
-          message: `Server error (${response.status})`,
-          retryable: true,
-        };
+        // Server error — check body for non-retryable error types before retrying
+        try {
+          const errorBody = await response.json();
+          if (errorBody.error?.type && NON_RETRYABLE_ERROR_TYPES.has(errorBody.error.type)) {
+            updateRequestLog(log, 'error');
+            return { success: false, error: errorBody.error };
+          }
+          lastError = {
+            type: errorBody.error?.type || 'server_error',
+            message: errorBody.error?.message || `Server error (${response.status})`,
+            retryable: true,
+          };
+        } catch {
+          lastError = {
+            type: 'server_error',
+            message: `Server error (${response.status})`,
+            retryable: true,
+          };
+        }
         continue;
       }
 
