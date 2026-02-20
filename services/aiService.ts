@@ -224,7 +224,10 @@ const fileToDataUrl = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
+    reader.onerror = () => {
+      const error = reader.error;
+      reject(new Error(error?.message || `Failed to read file (${file.type}, ${Math.round(file.size / 1024)}KB)`));
+    };
     reader.readAsDataURL(file);
   });
 };
@@ -286,7 +289,10 @@ const blobToBase64 = async (blob: Blob): Promise<string> => {
       const base64 = dataUrl.split(',')[1];
       resolve(base64);
     };
-    reader.onerror = reject;
+    reader.onerror = () => {
+      const error = reader.error;
+      reject(new Error(error?.message || `Failed to read blob (${blob.type}, ${Math.round(blob.size / 1024)}KB)`));
+    };
     reader.readAsDataURL(blob);
   });
 };

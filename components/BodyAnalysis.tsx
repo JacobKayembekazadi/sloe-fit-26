@@ -358,7 +358,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       if (analysisCancelledRef.current) {
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : (typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : 'Unknown error');
+      const errorMessage = err instanceof Error ? err.message
+        : (typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message)
+        : (typeof err === 'string' ? err : 'Unknown error'));
       console.error('[BodyAnalysis] Exception during analysis:', errorMessage, err);
       reportError(err, {
         category: 'ai',
@@ -369,7 +371,9 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       // Map exception messages to actionable guidance
       const lower = errorMessage.toLowerCase();
       let userError: string;
-      if (lower.includes('network') || lower.includes('fetch') || lower.includes('connection')) {
+      if (lower.includes('failed to read file') || lower.includes('failed to read blob') || lower.includes('progressevent')) {
+        userError = 'Could not read the photo. Try taking a new one or selecting a different image.';
+      } else if (lower.includes('network') || lower.includes('fetch') || lower.includes('connection')) {
         userError = 'Connection issue. Check your internet and try again.';
       } else if (lower.includes('timeout') || lower.includes('abort')) {
         userError = 'Request timed out. Try a smaller image or better connection.';
