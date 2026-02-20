@@ -1017,7 +1017,7 @@ const AppContent: React.FC = () => {
         return (
           <SectionErrorBoundary sectionName="Body Analysis">
           <Suspense fallback={<LazyFallback />}>
-            <BodyAnalysis onAnalysisComplete={handleGoalUpdate} />
+            <BodyAnalysis onAnalysisComplete={handleGoalUpdate} goal={goal} defaultWeight={userProfile?.weight_lbs ?? null} />
           </Suspense>
           </SectionErrorBoundary>
         );
