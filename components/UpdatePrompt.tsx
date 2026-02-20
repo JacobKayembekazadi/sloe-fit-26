@@ -1,8 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { reportError } from '../utils/sentryHelpers';
 
-const UpdatePrompt: React.FC = () => {
+interface UpdatePromptProps {
+    /** When true, hides the update banner (e.g. during active workouts) */
+    suppressBanner?: boolean;
+}
+
+const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) => {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const updateInProgressRef = useRef(false);
 
@@ -58,7 +63,7 @@ const UpdatePrompt: React.FC = () => {
                     } finally {
                         updateInProgressRef.current = false;
                     }
-                }, 60 * 60 * 1000);
+                }, 5 * 60 * 1000); // Check every 5 minutes (was 1 hour)
             }
         },
         onRegisterError(error) {
@@ -91,6 +96,30 @@ const UpdatePrompt: React.FC = () => {
         },
     });
 
+    // Expose a global function for Settings "Check for Updates" button
+    const manualCheckForUpdate = useCallback(async (): Promise<boolean> => {
+        try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+                await registration.update();
+            }
+            // Return whether there's a waiting update
+            return needRefresh;
+        } catch {
+            return false;
+        }
+    }, [needRefresh]);
+
+    // Store the check function globally so Settings can call it
+    useEffect(() => {
+        (window as any).__sloefit_checkForUpdate = manualCheckForUpdate;
+        (window as any).__sloefit_applyUpdate = () => updateServiceWorker(true);
+        return () => {
+            delete (window as any).__sloefit_checkForUpdate;
+            delete (window as any).__sloefit_applyUpdate;
+        };
+    }, [manualCheckForUpdate, updateServiceWorker]);
+
     // Cleanup interval on unmount to prevent memory leak
     useEffect(() => {
         return () => {
@@ -100,7 +129,8 @@ const UpdatePrompt: React.FC = () => {
         };
     }, []);
 
-    if (!needRefresh) return null;
+    // Don't show banner during active workouts or when suppressed
+    if (!needRefresh || suppressBanner) return null;
 
     return (
         <div className="fixed top-4 left-4 right-4 z-50 animate-slide-up">

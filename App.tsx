@@ -74,7 +74,8 @@ type Tab = 'dashboard' | 'train' | 'body' | 'meal' | 'mindset';
 type View = 'tabs' | 'settings' | 'trainer' | 'myTrainer' | 'history' | 'privacy' | 'terms';
 type WorkoutStatus = 'idle' | 'recovery' | 'generating' | 'preview' | 'active' | 'completed';
 
-const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
+// Draft key is namespaced by userId to prevent cross-user data leaks on shared devices
+const getDraftStorageKey = (userId?: string) => `sloefit_workout_draft_${userId || 'anon'}`;
 
 export interface ExerciseLog {
   id: number;
@@ -235,12 +236,12 @@ const AppContent: React.FC = () => {
 
   // Check for draft workout on mount
   useEffect(() => {
-    const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+    const saved = localStorage.getItem(getDraftStorageKey(user?.id));
     if (saved && workoutStatus === 'idle') {
       try {
         const draft = safeJSONParse<WorkoutDraft | null>(saved, null);
         if (!draft || !draft.savedAt) {
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          localStorage.removeItem(getDraftStorageKey(user?.id));
           return;
         }
         const ageMinutes = (Date.now() - draft.savedAt) / 60000;
@@ -253,14 +254,14 @@ const AppContent: React.FC = () => {
         if (ageMinutes < 120 && isSameDay) {
           setRecoveryDraft(draft);
         } else {
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          localStorage.removeItem(getDraftStorageKey(user?.id));
         }
       } catch (err) {
         reportWarning('Failed to parse workout draft, removing corrupted data', {
             category: 'data_fetch',
             operation: 'recoverDraft',
         });
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        localStorage.removeItem(getDraftStorageKey(user?.id));
       }
     }
   }, [workoutStatus]);
@@ -338,7 +339,7 @@ const AppContent: React.FC = () => {
   }, [recoveryDraft, requireSubscription]);
 
   const handleDiscardDraft = useCallback(() => {
-    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    localStorage.removeItem(getDraftStorageKey(user?.id));
     setRecoveryDraft(null);
   }, []);
 
@@ -548,7 +549,7 @@ const AppContent: React.FC = () => {
 
       if (saved) {
         // Only delete draft AFTER confirmed save
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        localStorage.removeItem(getDraftStorageKey(user?.id));
 
         // Mark plan day as completed if this workout was from the weekly plan
         if (workoutFromPlanDayIndex !== null) {
@@ -576,7 +577,7 @@ const AppContent: React.FC = () => {
         setIsSaving(false);
         if (queued) {
           showToast('Saved offline. Will sync later.', 'info');
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          localStorage.removeItem(getDraftStorageKey(user?.id));
           setWorkoutStatus('idle');
           return true;
         } else {
@@ -601,7 +602,7 @@ const AppContent: React.FC = () => {
       setIsSaving(false);
       if (queued) {
         showToast('Saved offline. Will sync later.', 'info');
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        localStorage.removeItem(getDraftStorageKey(user?.id));
         setWorkoutStatus('idle');
         return true;
       } else {
@@ -652,6 +653,16 @@ const AppContent: React.FC = () => {
         setShowQuickRecovery(false);
         setPendingPlanWorkout(null);
         setPendingCustomWorkout(null);
+      } else if (workoutStatus === 'active') {
+        // H2 FIX: Don't silently leave active workout — handled by WorkoutSession's cancel confirm
+        // Push state back so user stays on the workout screen
+        history.pushState({ overlay: true }, '');
+      } else if (workoutStatus === 'completed') {
+        // H2 FIX: Close workout summary and return to idle
+        resetWorkoutState();
+      } else if (workoutStatus === 'generating') {
+        // H2 FIX: Cancel AI generation and return to idle
+        setWorkoutStatus('idle');
       } else if (workoutStatus === 'preview') {
         setWorkoutStatus('idle');
       } else if (workoutStatus === 'recovery') {
@@ -1034,7 +1045,7 @@ const AppContent: React.FC = () => {
         <CartDrawer isOpen={isCartOpen} onClose={closeCart} />
       </Suspense>
       <InstallPrompt />
-      <UpdatePrompt />
+      <UpdatePrompt suppressBanner={workoutStatus !== 'idle'} />
 
       {/* Mobile Shell Layout */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
@@ -1119,6 +1130,7 @@ const AppContent: React.FC = () => {
               initialDraft={activeDraft ?? undefined}
               initialElapsedTime={activeDraft?.elapsedTime}
               workoutHistory={workouts}
+              draftStorageKey={getDraftStorageKey(user?.id)}
             />
           </Suspense>
         </div>

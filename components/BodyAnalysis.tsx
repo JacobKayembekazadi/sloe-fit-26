@@ -24,7 +24,8 @@ interface BodyAnalysisProps {
 
 type TabMode = 'analyze' | 'progress' | 'history';
 
-const STORAGE_KEY = 'sloefit_body_analysis';
+// Namespaced by userId to prevent cross-user body photo leaks on shared devices
+const getBodyStorageKey = (userId?: string) => `sloefit_body_analysis_${userId || 'anon'}`;
 const STALENESS_DAYS = 30;
 
 interface StoredAnalysis {
@@ -139,7 +140,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
       // Fallback: localStorage
       if (cancelled) return;
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
+        const stored = localStorage.getItem(getBodyStorageKey(user?.id));
         if (!stored) return;
 
         const parsed = safeJSONParse<StoredAnalysis | null>(stored, null);
@@ -149,7 +150,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
         const ageDays = ageMs / (1000 * 60 * 60 * 24);
 
         if (ageDays > STALENESS_DAYS) {
-          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(getBodyStorageKey(user?.id));
           return;
         }
 
@@ -160,7 +161,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
           setRestoredTimestamp(parsed.timestamp);
         }
       } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(getBodyStorageKey(user?.id));
       }
     }
 
@@ -347,7 +348,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
             timestamp: Date.now(),
             photoPreview: thumbPreview,
           };
-          safeLocalStorageSet(STORAGE_KEY, JSON.stringify(toStore));
+          safeLocalStorageSet(getBodyStorageKey(user?.id), JSON.stringify(toStore));
         } catch {
           // Thumbnail creation failed — save without it
         }
@@ -401,7 +402,7 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     setAnalyzeRetry(null);
     setIsRestored(false);
     setRestoredTimestamp(null);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(getBodyStorageKey(user?.id));
   };
 
   const dismissError = () => {

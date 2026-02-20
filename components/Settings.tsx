@@ -142,6 +142,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
 
+    // App update state
+    const [checkingUpdate, setCheckingUpdate] = useState(false);
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+
     // GDPR: Data export state
     const [exporting, setExporting] = useState(false);
 
@@ -1005,6 +1009,89 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                     </div>
                 </div>
             )}
+
+            {/* App Updates */}
+            <div className="card space-y-4">
+                <h3 className="text-lg font-bold text-white">App Updates</h3>
+                <p className="text-gray-400 text-sm">
+                    Check for the latest version of Sloe Fit.
+                </p>
+
+                {updateAvailable ? (
+                    <div className="bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined text-[var(--color-primary)]">system_update</span>
+                            <div>
+                                <p className="text-white font-medium">Update available!</p>
+                                <p className="text-sm text-gray-400">A new version is ready to install.</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                const applyUpdate = (window as any).__sloefit_applyUpdate;
+                                if (applyUpdate) applyUpdate();
+                                else window.location.reload();
+                            }}
+                            className="w-full py-3 px-4 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-lg">download</span>
+                            Update Now
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={async () => {
+                            setCheckingUpdate(true);
+                            try {
+                                const checkFn = (window as any).__sloefit_checkForUpdate;
+                                if (checkFn) {
+                                    const hasUpdate = await checkFn();
+                                    if (hasUpdate) {
+                                        setUpdateAvailable(true);
+                                    } else {
+                                        // Force a SW update check
+                                        const registrations = await navigator.serviceWorker?.getRegistrations();
+                                        if (registrations) {
+                                            for (const reg of registrations) {
+                                                await reg.update();
+                                            }
+                                        }
+                                        // Brief delay to let SW process
+                                        await new Promise(r => setTimeout(r, 1500));
+                                        const hasUpdateNow = (window as any).__sloefit_checkForUpdate ? await (window as any).__sloefit_checkForUpdate() : false;
+                                        if (hasUpdateNow) {
+                                            setUpdateAvailable(true);
+                                        } else {
+                                            showToast("You're on the latest version.", 'success');
+                                        }
+                                    }
+                                } else {
+                                    // No SW registered — just reload
+                                    showToast("You're on the latest version.", 'success');
+                                }
+                            } catch {
+                                showToast("Couldn't check for updates.", 'error');
+                            } finally {
+                                setCheckingUpdate(false);
+                            }
+                        }}
+                        disabled={checkingUpdate}
+                        className="w-full py-3 px-4 bg-gray-700 text-gray-300 font-bold rounded-xl hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {checkingUpdate ? (
+                            <>
+                                <LoaderIcon className="w-5 h-5 animate-spin" />
+                                Checking...
+                            </>
+                        ) : (
+                            <>
+                                <span className="material-symbols-outlined text-lg">sync</span>
+                                Check for Updates
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
 
             {/* Sign Out */}
             <button

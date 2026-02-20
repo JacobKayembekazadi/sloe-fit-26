@@ -482,7 +482,7 @@ export const useUserData = () => {
         if (!user) return;
 
         const syncQueued = async () => {
-            const queue = getQueuedMeals();
+            const queue = getQueuedMeals().filter(m => !m.userId || m.userId === user.id);
             if (queue.length === 0) return;
 
             console.log(`[useUserData] Back online - syncing ${queue.length} queued meals`);

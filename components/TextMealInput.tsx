@@ -68,10 +68,15 @@ const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisCompl
         }
     };
 
+    // M5 FIX: Clean up recording resources on unmount to prevent mic/AudioContext leak
     useEffect(() => {
         return () => {
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
+            }
+            // Stop recording and release mic if component unmounts while recording
+            if (mediaRecorderRef.current?.state === 'recording') {
+                mediaRecorderRef.current.stop();
             }
         };
     }, []);

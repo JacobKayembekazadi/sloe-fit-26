@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { getSubscriptionStatus, type SubscriptionStatus } from '../services/paymentService';
 
 interface UseSubscriptionProps {
@@ -24,6 +24,14 @@ export function useSubscription({ userProfile }: UseSubscriptionProps): UseSubsc
     const [showPaywall, setShowPaywall] = useState(false);
     const [paywallFeature, setPaywallFeature] = useState<string | null>(null);
 
+    // C5 FIX: Re-evaluate subscription every 60s so trial expiry is caught in long sessions
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setTick(t => t + 1), 60_000);
+        return () => clearInterval(id);
+    }, []);
+
+    // M8 FIX: Use specific fields as deps instead of entire userProfile object reference
     const subscription = useMemo(() => {
         if (!userProfile) {
             return {
@@ -37,13 +45,25 @@ export function useSubscription({ userProfile }: UseSubscriptionProps): UseSubsc
             };
         }
         return getSubscriptionStatus(userProfile);
-    }, [userProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        userProfile?.subscription_status,
+        userProfile?.subscription_ends_at,
+        userProfile?.trial_started_at,
+        userProfile?.subscription_provider,
+        userProfile?.subscription_plan,
+        tick, // C5: forces re-evaluation every 60 seconds
+    ]);
 
-    // Call this before allowing access to premium features
-    // Returns true if user can access, false if paywall should show
+    // C5 FIX: requireSubscription always re-checks live status (not cached memo)
     const requireSubscription = useCallback(
         (feature?: string): boolean => {
-            if (subscription.canAccessPremium) {
+            // Re-evaluate at point of use to catch time-based expiry
+            const liveStatus = userProfile
+                ? getSubscriptionStatus(userProfile)
+                : { canAccessPremium: false };
+
+            if (liveStatus.canAccessPremium) {
                 return true;
             }
 
@@ -52,7 +72,7 @@ export function useSubscription({ userProfile }: UseSubscriptionProps): UseSubsc
             setShowPaywall(true);
             return false;
         },
-        [subscription.canAccessPremium]
+        [userProfile]
     );
 
     return {

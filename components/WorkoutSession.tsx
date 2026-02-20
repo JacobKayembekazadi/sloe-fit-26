@@ -6,7 +6,7 @@ import { safeLocalStorageSet } from '../utils/safeStorage';
 
 // -- Constants --
 
-const DRAFT_STORAGE_KEY = 'sloefit_workout_draft';
+// Draft key passed as prop (namespaced by userId in App.tsx)
 
 // -- Interfaces --
 
@@ -49,6 +49,7 @@ interface WorkoutSessionProps {
   initialDraft?: WorkoutDraft;
   initialElapsedTime?: number;
   workoutHistory?: CompletedWorkout[];
+  draftStorageKey?: string;
 }
 
 // -- Main Component --
@@ -62,7 +63,8 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
   recoveryNotes,
   initialDraft,
   initialElapsedTime,
-  workoutHistory = []
+  workoutHistory = [],
+  draftStorageKey = 'sloefit_workout_draft_anon',
 }) => {
   // Helper to convert initial data
   const convertToTracked = (exercises: ExerciseLog[]): TrackedExercise[] => {
@@ -128,28 +130,79 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     return () => clearInterval(interval);
   }, [workoutStartTime, isPaused, restTimerOpen]);
 
+  // Force-save draft immediately (used by visibilitychange and emergency save)
+  const forceSaveDraft = useCallback(() => {
+    if (exercises.length === 0) return;
+    const draft: WorkoutDraft = {
+      exercises,
+      activeExerciseIndex,
+      elapsedTime: Math.floor((Date.now() - workoutStartTime) / 1000),
+      workoutTitle,
+      savedAt: Date.now()
+    };
+    safeLocalStorageSet(draftStorageKey, JSON.stringify(draft));
+  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle, draftStorageKey]);
+
   // FIX 1.4: Check return value + debounce autosave (2s) to reduce write frequency
   const [draftSaveWarning, setDraftSaveWarning] = useState(false);
   useEffect(() => {
     if (exercises.length === 0) return;
 
     const timer = setTimeout(() => {
-      const draft: WorkoutDraft = {
+      const saved = safeLocalStorageSet(draftStorageKey, JSON.stringify({
         exercises,
         activeExerciseIndex,
         elapsedTime: Math.floor((Date.now() - workoutStartTime) / 1000),
         workoutTitle,
         savedAt: Date.now()
-      };
-
-      const saved = safeLocalStorageSet(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      }));
       if (!saved && !draftSaveWarning) {
         setDraftSaveWarning(true);
       }
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle, draftSaveWarning]);
+  }, [exercises, activeExerciseIndex, workoutStartTime, workoutTitle, draftSaveWarning, draftStorageKey]);
+
+  // C3 FIX: Wake Lock to prevent screen sleep during workout
+  useEffect(() => {
+    let wakeLock: WakeLockSentinel | null = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch { /* unsupported or denied */ }
+    };
+    requestWakeLock();
+    // Re-acquire on visibility change (Chrome releases wake lock when tab is hidden)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      wakeLock?.release();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  // H1 FIX: Save draft immediately when app goes to background (iOS PWA kill protection)
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        forceSaveDraft();
+      }
+    };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => document.removeEventListener('visibilitychange', onHidden);
+  }, [forceSaveDraft]);
+
+  // C4 FIX: Listen for emergency save events (triggered by lazyWithRetry before reload)
+  useEffect(() => {
+    const onEmergencySave = () => forceSaveDraft();
+    window.addEventListener('sloefit-emergency-save', onEmergencySave);
+    return () => window.removeEventListener('sloefit-emergency-save', onEmergencySave);
+  }, [forceSaveDraft]);
 
   // Format elapsed time
   const formatTime = (seconds: number) => {
@@ -281,7 +334,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     if (hasProgress) {
       setShowCancelConfirm(true);
     } else {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      localStorage.removeItem(draftStorageKey);
       onCancel();
     }
   };
@@ -312,7 +365,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
     // Call onComplete first (triggers Supabase save). Draft stays as safety net.
     onComplete(finalLogs, workoutTitle, { restSkips: restSkipCount, totalRests: totalRestCount });
     // Clear draft only after onComplete returns — save has been initiated.
-    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    localStorage.removeItem(draftStorageKey);
   };
 
   return (
@@ -333,7 +386,7 @@ const WorkoutSession: React.FC<WorkoutSessionProps> = ({
               </button>
               <button
                 onClick={() => {
-                  localStorage.removeItem(DRAFT_STORAGE_KEY);
+                  localStorage.removeItem(draftStorageKey);
                   onCancel();
                 }}
                 className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold text-sm"
