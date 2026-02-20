@@ -6,9 +6,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth, unauthorizedResponse } from '../../lib/ai/requireAuth';
+import { requireEnv, getSupabaseUrl } from '../../lib/env';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = getSupabaseUrl();
+const supabaseServiceKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
 export async function GET(req: Request): Promise<Response> {
   // Verify authentication
@@ -18,18 +19,6 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const { userId } = auth;
-
-  // Require service role key for full data access
-  if (!supabaseServiceKey) {
-    console.error('[account/export] Missing SUPABASE_SERVICE_ROLE_KEY');
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'Server configuration error. Contact support.',
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
 
   try {
     // Create admin client with service role key

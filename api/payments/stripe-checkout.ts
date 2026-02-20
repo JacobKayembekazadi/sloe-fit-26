@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
+import { requireEnv, getAppUrl } from '../../lib/env';
+import { checkPaymentRateLimit } from '../../lib/paymentRateLimit';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const stripe = new Stripe(requireEnv('STRIPE_SECRET_KEY'), {
     apiVersion: '2026-01-28.clover',
 });
 
@@ -28,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, stripe-signature');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
@@ -37,6 +39,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    if (await checkPaymentRateLimit(req, res)) return;
 
     try {
         const { userId, email, plan, successUrl, cancelUrl } = req.body;
@@ -74,8 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 },
             ],
             mode: 'subscription',
-            success_url: successUrl || `${process.env.VITE_APP_URL || 'https://sloe-fit-26.vercel.app'}/settings?payment=success`,
-            cancel_url: cancelUrl || `${process.env.VITE_APP_URL || 'https://sloe-fit-26.vercel.app'}/settings?payment=cancelled`,
+            success_url: successUrl || `${getAppUrl()}/?payment=success`,
+            cancel_url: cancelUrl || `${getAppUrl()}/?payment=cancelled`,
             metadata: {
                 supabase_user_id: userId,
                 plan,

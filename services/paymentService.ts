@@ -46,22 +46,23 @@ export const PRICING = {
     },
 } as const;
 
-// Calculate trial days remaining
+// Calculate trial days remaining — uses UTC calendar days for consistency
 export function getTrialDaysRemaining(trialStartedAt: string | null): number {
     if (!trialStartedAt) return 0;
     const start = new Date(trialStartedAt);
+    if (isNaN(start.getTime())) return 0;
     const now = new Date();
-    const daysPassed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    // Use UTC calendar days to avoid timezone inconsistencies
+    const startUTC = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+    const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysPassed = Math.floor((nowUTC - startUTC) / (1000 * 60 * 60 * 24));
     return Math.max(0, 7 - daysPassed);
 }
 
-// Check if trial is expired
+// Check if trial is expired — uses same UTC logic as getTrialDaysRemaining
 export function isTrialExpired(trialStartedAt: string | null): boolean {
     if (!trialStartedAt) return true;
-    const start = new Date(trialStartedAt);
-    const now = new Date();
-    const daysPassed = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-    return daysPassed > 7;
+    return getTrialDaysRemaining(trialStartedAt) <= 0;
 }
 
 // Get subscription status from profile
@@ -79,13 +80,26 @@ export function getSubscriptionStatus(profile: {
     const trialDaysRemaining = getTrialDaysRemaining(profile.trial_started_at || null);
     const trialExpired = isTrialExpired(profile.trial_started_at || null);
 
+    // Check if a paid subscription has expired based on subscription_ends_at
+    // This catches cases where the webhook fails to update status to 'expired'
+    let effectiveStatus = status;
+    if (status === 'active' && endsAt) {
+        const endsAtDate = new Date(endsAt);
+        const now = new Date();
+        // 3-day grace period for payment retries before treating as expired
+        const graceMs = 3 * 24 * 60 * 60 * 1000;
+        if (now.getTime() > endsAtDate.getTime() + graceMs) {
+            effectiveStatus = 'expired';
+        }
+    }
+
     // User can access premium if:
-    // 1. Active subscription
+    // 1. Active subscription (not past expiry + grace period)
     // 2. Trial not expired
-    const canAccessPremium = status === 'active' || (status === 'trial' && !trialExpired);
+    const canAccessPremium = effectiveStatus === 'active' || (effectiveStatus === 'trial' && !trialExpired);
 
     return {
-        status,
+        status: effectiveStatus,
         provider,
         plan,
         endsAt,

@@ -3,6 +3,8 @@ import { useToast } from '../contexts/ToastContext';
 import { analyzeTextMeal, TextMealAnalysisResult, transcribeAudio, TranscribeResult } from '../services/aiService';
 import LoaderIcon from './icons/LoaderIcon';
 import MicrophoneIcon from './icons/MicrophoneIcon';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
+import { PREMIUM_FEATURES } from '../hooks/useSubscription';
 
 interface TextMealInputProps {
     userGoal: string | null;
@@ -18,6 +20,7 @@ const QUICK_EXAMPLES = [
 
 const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisComplete }) => {
     const { showToast } = useToast();
+    const { requireSubscription } = useSubscriptionContext();
     const [description, setDescription] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -167,6 +170,7 @@ const TextMealInput: React.FC<TextMealInputProps> = ({ userGoal, onAnalysisCompl
     };
 
     const handleAnalyze = async () => {
+        if (!requireSubscription(PREMIUM_FEATURES.MEAL_PHOTO_ANALYSIS)) return;
         if (!description.trim()) {
             setError('Please describe your meal first');
             return;

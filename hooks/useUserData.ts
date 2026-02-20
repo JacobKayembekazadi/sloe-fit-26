@@ -49,6 +49,7 @@ export interface UserProfile {
     // FIX 3.1: Subscription status for payment gating
     subscription_status: SubscriptionStatus | null;
     trial_started_at: string | null;
+    subscription_ends_at: string | null;
     // Supplement preferences for smart recommendations
     supplement_preferences: SupplementPreferences | null;
     // When user signed up (for day counter)
@@ -121,7 +122,8 @@ const DEFAULT_PROFILE: UserProfile = {
     trainer_id: null,
     full_name: null,
     subscription_status: 'trial',
-    trial_started_at: null,
+    trial_started_at: new Date().toISOString(),
+    subscription_ends_at: null,
     supplement_preferences: null,
     created_at: null
 };
@@ -256,7 +258,7 @@ export const useUserData = () => {
         try {
             // Fetch all data in parallel using supabaseGet (retry, timeout, dedup built-in)
             const profileFetch = supabaseGet<any[]>(
-                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at&id=eq.${userId}`
+                `profiles?select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at,subscription_status,trial_started_at,subscription_ends_at,subscription_provider,subscription_plan,stripe_customer_id&id=eq.${userId}`
             ).then(r => {
                 if (r.data && Array.isArray(r.data) && r.data.length > 0) {
                     return { data: r.data[0], error: null };
@@ -305,6 +307,7 @@ export const useUserData = () => {
                     full_name: p.full_name,
                     subscription_status: p.subscription_status || 'trial',
                     trial_started_at: p.trial_started_at || null,
+                    subscription_ends_at: p.subscription_ends_at || null,
                     supplement_preferences: validateSupplementPreferences(p.supplement_preferences),
                     created_at: p.created_at || null
                 };
@@ -313,10 +316,14 @@ export const useUserData = () => {
             } else if (profileResult.error?.code === 'PGRST116') {
                 // No profile found - create one and show onboarding
                 try {
+                    const nowISO = new Date().toISOString();
                     await supabaseInsert('profiles', {
                         id: userId,
                         onboarding_complete: false,
-                        created_at: new Date().toISOString()
+                        created_at: nowISO,
+                        // Initialize trial so new users get 7-day free access
+                        subscription_status: 'trial',
+                        trial_started_at: nowISO,
                     });
                 } catch (err) {
                     // Profile creation failed - will be retried on next load
@@ -506,7 +513,6 @@ export const useUserData = () => {
 
                     if (!error) {
                         console.log(`[useUserData] Synced queued meal: ${meal.payload.description}`);
-                        removeFromQueue(meal.id);
                         affectedDates.add(mealDate);
 
                         // Update local state with the synced entry's real ID
@@ -519,6 +525,27 @@ export const useUserData = () => {
                                 m.id === meal.id ? { ...m, id: realId } : m
                             )
                         }));
+
+                        // Save scan data if present (mirrors the online save path)
+                        if (meal.payload.scanData && meal.payload.scanData.detectedFoods.length > 0) {
+                            try {
+                                await supabaseInsert('food_scans', {
+                                    meal_entry_id: realId,
+                                    user_id: user.id,
+                                    detected_items: meal.payload.scanData.detectedFoods,
+                                    final_items: meal.payload.scanData.finalFoods,
+                                    has_usda_data: meal.payload.scanData.hasUSDAData,
+                                    user_edited: meal.payload.scanData.userEdited,
+                                    portion_multipliers: meal.payload.scanData.portionMultipliers,
+                                });
+                                console.log(`[useUserData] Synced scan data for meal: ${meal.payload.description}`);
+                            } catch (scanErr) {
+                                console.warn('[useUserData] Failed to sync scan data:', scanErr);
+                            }
+                        }
+
+                        // Remove from queue AFTER all inserts complete to prevent data loss
+                        removeFromQueue(meal.id);
                     } else {
                         console.error(`[useUserData] Failed to sync meal ${meal.id}:`, error);
                         incrementRetryCount(meal.id);
@@ -902,7 +929,9 @@ export const useUserData = () => {
                 mealType: entry.mealType,
                 inputMethod: entry.inputMethod,
                 photoUrl: entry.photoUrl,
-                date: today
+                date: today,
+                // Preserve scan data in offline queue so it's not lost
+                scanData: entry.scanData || undefined,
             }, user.id);
             setOfflineQueueCount(getQueuedCount());
             // Still update daily totals locally
@@ -945,7 +974,8 @@ export const useUserData = () => {
                         mealType: entry.mealType,
                         inputMethod: entry.inputMethod,
                         photoUrl: entry.photoUrl,
-                        date: today
+                        date: today,
+                        scanData: entry.scanData || undefined,
                     }, user.id);
                     setOfflineQueueCount(getQueuedCount());
                     await addMealToDaily({
@@ -1025,7 +1055,8 @@ export const useUserData = () => {
                     mealType: entry.mealType,
                     inputMethod: entry.inputMethod,
                     photoUrl: entry.photoUrl,
-                    date: today
+                    date: today,
+                    scanData: entry.scanData || undefined,
                 }, user.id);
                 setOfflineQueueCount(getQueuedCount());
                 await addMealToDaily({
@@ -1340,7 +1371,7 @@ export const useUserData = () => {
         // This bypasses the hasFetchedRef guard that was preventing legitimate refetches
         try {
             const { data: profile, error } = await supabaseGetSingle<any>(
-                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at,subscription_status,trial_started_at`
+                `profiles?id=eq.${user.id}&select=goal,onboarding_complete,height_inches,weight_lbs,age,gender,activity_level,training_experience,equipment_access,days_per_week,full_name,role,trainer_id,supplement_preferences,created_at,subscription_status,trial_started_at,subscription_ends_at`
             );
 
             if (error) {
@@ -1369,6 +1400,7 @@ export const useUserData = () => {
                         full_name: profile.full_name,
                         subscription_status: profile.subscription_status || 'trial',
                         trial_started_at: profile.trial_started_at || null,
+                        subscription_ends_at: profile.subscription_ends_at || null,
                         supplement_preferences: profile.supplement_preferences || null,
                         created_at: profile.created_at || null
                     }

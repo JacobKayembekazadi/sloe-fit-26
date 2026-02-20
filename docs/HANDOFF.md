@@ -7,6 +7,20 @@
 
 ## Latest Handoff
 
+### 2026-02-16 - Gemini (Antigravity) - Session 15
+
+**Session Summary**
+- Task: Set up Stitch MCP configuration
+- Files modified: `~/.gemini/antigravity/mcp_config.json`
+- Status: Complete
+
+**Code State**
+- Branch: main (unchanged)
+- Uncommitted changes: yes (existing from previous sessions)
+- Stitch MCP: Configured with API Key
+
+---
+
 ### 2026-02-14 - Claude Code (Opus 4.6) - Session 14
 
 **Session Summary**

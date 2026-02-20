@@ -7,6 +7,7 @@ import { supabase } from '@/supabaseClient';
 import LoaderIcon from './icons/LoaderIcon';
 import Skeleton from './ui/Skeleton';
 import { getAllSupplements, type SupplementPreferences } from '@/services/supplementService';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
 
 // Settings loading skeleton
 const SettingsSkeleton = () => (
@@ -108,6 +109,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
     const { user, signOut } = useAuth();
     const { permission, requestPermission, sendLocalNotification } = useNotifications();
     const { showToast } = useToast();
+    const { requireSubscription } = useSubscriptionContext();
 
     const [profile, setProfile] = useState<ProfileData>({
         full_name: '',
@@ -878,26 +880,22 @@ const Settings: React.FC<SettingsProps> = ({ onBack, onProfileSaved, onPrivacy, 
                                 </p>
                             </div>
                         </div>
-                        <a
-                            href="https://sloefit.com/subscribe"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => requireSubscription('Full Access')}
                             className="block w-full py-3 px-4 bg-[var(--color-primary)] text-black font-bold rounded-xl text-center hover:opacity-90 transition-opacity"
                         >
                             Upgrade Now
-                        </a>
+                        </button>
                     </div>
                 )}
                 {profile.subscription_status === 'trial' && (
                     <div className="space-y-3">
-                        <a
-                            href="https://sloefit.com/subscribe"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => requireSubscription('Full Access')}
                             className="block w-full py-3 px-4 bg-gray-700 text-white font-bold rounded-xl text-center hover:bg-gray-600 transition-colors"
                         >
                             Upgrade for Full Access
-                        </a>
+                        </button>
                         <p className="text-xs text-gray-500 text-center">
                             Questions? Contact support@sloefit.com
                         </p>

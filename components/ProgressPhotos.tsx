@@ -10,6 +10,8 @@ import LoaderIcon from './icons/LoaderIcon';
 import TrashIcon from './icons/TrashIcon';
 import ResultDisplay from './ResultDisplay';
 import Skeleton from './ui/Skeleton';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
+import { PREMIUM_FEATURES } from '../hooks/useSubscription';
 
 // Progress photo entry stored in database
 interface ProgressPhotoEntry {
@@ -36,6 +38,7 @@ interface ProgressPhotosProps {
 const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { requireSubscription } = useSubscriptionContext();
   const [viewMode, setViewMode] = useState<ViewMode>('capture');
   const [photos, setPhotos] = useState<ProgressPhotoEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,6 +324,7 @@ const ProgressPhotos: React.FC<ProgressPhotosProps> = ({ onPhotoSaved }) => {
 
   // Handle AI progress analysis
   const handleAnalyzeProgress = useCallback(async () => {
+    if (!requireSubscription(PREMIUM_FEATURES.PROGRESS_COMPARISON)) return;
     if (!comparePhotos[0] || !comparePhotos[1]) return;
     if (analysisLoading) return;
 

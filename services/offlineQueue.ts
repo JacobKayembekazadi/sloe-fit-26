@@ -26,6 +26,14 @@ export interface QueuedMeal {
     inputMethod?: 'photo' | 'text' | 'quick_add';
     photoUrl?: string;
     date?: string; // YYYY-MM-DD - preserves original date when queued offline
+    // USDA scan data preserved for offline sync (prevents data loss)
+    scanData?: {
+      detectedFoods: unknown[];
+      finalFoods: unknown[];
+      hasUSDAData: boolean;
+      userEdited: boolean;
+      portionMultipliers: Record<number, number>;
+    };
   };
   timestamp: number;
   retryCount: number;

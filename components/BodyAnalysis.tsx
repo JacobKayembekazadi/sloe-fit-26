@@ -12,6 +12,8 @@ import ProgressPhotos from './ProgressPhotos';
 import { PRODUCT_IDS } from '../services/shopifyService';
 import { safeJSONParse, safeLocalStorageSet } from '../utils/safeStorage';
 import { reportError } from '../utils/sentryHelpers';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
+import { PREMIUM_FEATURES } from '../hooks/useSubscription';
 
 // H4 FIX: Timeout for body analysis (60 seconds)
 const ANALYSIS_TIMEOUT_MS = 60000;
@@ -233,7 +235,10 @@ const BodyAnalysis: React.FC<BodyAnalysisProps> = ({ onAnalysisComplete }) => {
     showToast('Cancelled.', 'info');
   }, [showToast]);
 
+  const { requireSubscription } = useSubscriptionContext();
+
   const handleAnalyze = useCallback(async () => {
+    if (!requireSubscription(PREMIUM_FEATURES.BODY_ANALYSIS)) return;
     if (!file) {
       setError("Please upload a photo first.");
       return;

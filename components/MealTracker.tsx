@@ -16,6 +16,8 @@ import { MealEntry, FavoriteFood } from '../hooks/useUserData';
 import type { NutritionLog } from '../App';
 import WeeklyNutritionSummary from './WeeklyNutritionSummary';
 import ProgressChart from './ProgressChart';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
+import { PREMIUM_FEATURES } from '../hooks/useSubscription';
 
 type InputMode = 'text' | 'photo' | 'quick';
 type TabMode = 'log' | 'history';
@@ -96,6 +98,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   supplementPreferences = null
 }) => {
   const { showToast } = useToast();
+  const { requireSubscription } = useSubscriptionContext();
   const [tabMode, setTabMode] = useState<TabMode>('log');
   const [inputMode, setInputMode] = useState<InputMode>('text');
   const [file, setFile] = useState<File | null>(null);
@@ -276,6 +279,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   }, [preview]);
 
   const handlePhotoAnalyze = useCallback(async () => {
+    if (!requireSubscription(PREMIUM_FEATURES.MEAL_PHOTO_ANALYSIS)) return;
     if (!file) {
       setError("Please upload a photo of your meal first.");
       return;
@@ -1004,23 +1008,26 @@ const MealTracker: React.FC<MealTrackerProps> = ({
                             value={mult}
                             onChange={(e) => {
                               const newMult = parseFloat(e.target.value);
-                              setPortionMultipliers(prev => ({ ...prev, [index]: newMult }));
-                              // Update macros in real-time
-                              if (foodsDetailed.length > 0) {
-                                const newTotals = foodsDetailed.reduce(
-                                  (acc, f, i) => {
-                                    const m = i === index ? newMult : (portionMultipliers[i] ?? 1.0);
-                                    return {
-                                      calories: acc.calories + Math.round(f.calories * m),
-                                      protein: acc.protein + Math.round(f.protein * m),
-                                      carbs: acc.carbs + Math.round(f.carbs * m),
-                                      fats: acc.fats + Math.round(f.fats * m),
+                              setPortionMultipliers(prev => {
+                                const updated = { ...prev, [index]: newMult };
+                                // Update macros in real-time using the NEW multiplier map (not stale closure)
+                                if (foodsDetailed.length > 0) {
+                                  const newTotals = foodsDetailed.reduce(
+                                    (acc, f, i) => {
+                                      const m = updated[i] ?? 1.0;
+                                      return {
+                                        calories: acc.calories + Math.round(f.calories * m),
+                                        protein: acc.protein + Math.round(f.protein * m),
+                                        carbs: acc.carbs + Math.round(f.carbs * m),
+                                        fats: acc.fats + Math.round(f.fats * m),
                                     };
                                   },
                                   { calories: 0, protein: 0, carbs: 0, fats: 0 }
                                 );
-                                setMacros(newTotals);
-                              }
+                                  setMacros(newTotals);
+                                }
+                                return updated;
+                              });
                             }}
                             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"
                           />

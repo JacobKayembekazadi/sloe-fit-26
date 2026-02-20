@@ -26,6 +26,8 @@ import { safeJSONParse } from './utils/safeStorage';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { queueWorkout, syncQueuedWorkouts, hasQueuedWorkouts, onOnlineWorkoutSync } from './services/workoutOfflineQueue';
 import { useCoachingAgent } from './hooks/useCoachingAgent';
+import { useSubscription, PREMIUM_FEATURES } from './hooks/useSubscription';
+const PaywallModal = lazyWithRetry(() => import('./components/PaywallModal'), 'PaywallModal');
 
 // Lazy load heavy components (with retry for stale chunk recovery after deploys)
 const Dashboard = lazyWithRetry(() => import('./components/Dashboard'), 'Dashboard');
@@ -57,6 +59,7 @@ import { ToastProvider, useToast } from './contexts/ToastContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ShopifyProvider } from './contexts/ShopifyContext';
+import SubscriptionContext from './contexts/SubscriptionContext';
 
 // Lazy load LoginScreen - only needed for unauthenticated users
 const LoginScreen = lazyWithRetry(() => import('./components/LoginScreen'), 'LoginScreen');
@@ -148,6 +151,22 @@ const AppContent: React.FC = () => {
   const { goal, onboardingComplete, userProfile, nutritionTargets, workouts, nutritionLogs, mealEntries, favorites, updateGoal, addWorkout, saveNutrition, addMealToDaily, saveMealEntry, deleteMealEntry, addToFavorites, refetchProfile, loading: dataLoading, error: dataError, retry: retryData } = useUserData();
   const { user, loading } = useAuth();
   const { showToast } = useToast();
+
+  // ============================================================================
+  // Subscription Gating (must be before workout/AI features)
+  // ============================================================================
+  const {
+    subscription,
+    showPaywall,
+    setShowPaywall,
+    requireSubscription,
+    paywallFeature,
+  } = useSubscription({ userProfile: userProfile || null });
+
+  const subscriptionContextValue = useMemo(() => ({
+    subscription,
+    requireSubscription,
+  }), [subscription, requireSubscription]);
 
   // ============================================================================
   // Coaching Agent (must be before handleWorkoutComplete which uses captureEvent)
@@ -310,12 +329,13 @@ const AppContent: React.FC = () => {
 
   const handleResumeDraft = useCallback(() => {
     if (!recoveryDraft) return;
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
     setActiveDraft(recoveryDraft);
     setWorkoutTitle(recoveryDraft.workoutTitle);
     setStartTime(Date.now() - (recoveryDraft.elapsedTime * 1000));
     setRecoveryDraft(null);
     setWorkoutStatus('active');
-  }, [recoveryDraft]);
+  }, [recoveryDraft, requireSubscription]);
 
   const handleDiscardDraft = useCallback(() => {
     localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -323,9 +343,10 @@ const AppContent: React.FC = () => {
   }, []);
 
   const startNewWorkout = useCallback(() => {
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
     setWorkoutStatus('recovery');
     setAiWorkout(null);
-  }, []);
+  }, [requireSubscription]);
 
   const handleRecoveryComplete = useCallback(async (recovery: RecoveryState) => {
     setWorkoutStatus('generating');
@@ -356,7 +377,8 @@ const AppContent: React.FC = () => {
       trainer_id: null,
       full_name: null,
       subscription_status: 'trial',
-      trial_started_at: null,
+      trial_started_at: new Date().toISOString(),
+      subscription_ends_at: null,
       supplement_preferences: null,
       created_at: new Date().toISOString() // Fallback to now for day counter
     };
@@ -447,6 +469,11 @@ const AppContent: React.FC = () => {
     markDayCompleted
   } = useWeeklyPlan();
 
+  const gatedGenerateNewPlan = useCallback(() => {
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
+    generateNewPlan();
+  }, [generateNewPlan, requireSubscription]);
+
   const [showWeeklyPlan, setShowWeeklyPlan] = useState(false);
   const [showQuickRecovery, setShowQuickRecovery] = useState(false);
   const [pendingPlanWorkout, setPendingPlanWorkout] = useState<GeneratedWorkout | null>(null);
@@ -466,10 +493,11 @@ const AppContent: React.FC = () => {
 
   // Step 1: User clicks "Start" on plan workout -> show quick recovery check
   const handleStartFromPlan = useCallback((workout: GeneratedWorkout) => {
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
     setPendingPlanWorkout(workout);
     setShowWeeklyPlan(false);
     setShowQuickRecovery(true);
-  }, []);
+  }, [requireSubscription]);
 
   // Step 2a: Quick check passed -> proceed to preview
   const handleQuickRecoveryProceed = useCallback(() => {
@@ -665,13 +693,15 @@ const AppContent: React.FC = () => {
 
   // Show quick recovery check before starting custom workout
   const handleStartCustomWorkout = useCallback((exercises: ExerciseLog[], title: string) => {
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
     setPendingCustomWorkout({ exercises, title });
     setShowBuilder(false);
     setShowQuickRecovery(true);
-  }, []);
+  }, [requireSubscription]);
 
   // Show quick recovery check before starting template
   const handleStartTemplate = useCallback((template: WorkoutTemplate) => {
+    if (!requireSubscription(PREMIUM_FEATURES.AI_WORKOUTS)) return;
     updateLastUsed(template.id);
     refreshTemplates();
     const logs = templateToExerciseLogs(template);
@@ -679,7 +709,7 @@ const AppContent: React.FC = () => {
     setShowBuilder(false);
     setShowLibrary(false);
     setShowQuickRecovery(true);
-  }, [refreshTemplates]);
+  }, [refreshTemplates, requireSubscription]);
 
   // Handle quick recovery proceed for custom/template workouts
   const handleCustomRecoveryProceed = useCallback(() => {
@@ -752,6 +782,30 @@ const AppContent: React.FC = () => {
   const showTerms = useCallback(() => setCurrentView('terms'), []);
   const openCart = useCallback(() => setIsCartOpen(true), []);
   const closeCart = useCallback(() => setIsCartOpen(false), []);
+
+  // After checkout redirect: detect ?payment=success and refetch profile to pick up subscription
+  // Webhook may not have processed yet, so retry after a short delay
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success' && user) {
+      // Clean URL without reloading
+      window.history.replaceState({}, '', window.location.pathname);
+      showToast('Payment received! Activating your subscription...', 'success');
+      // Immediate attempt + delayed retry (gives webhook 3s to process)
+      refetchProfile();
+      const timer = setTimeout(() => refetchProfile(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, refetchProfile, showToast]);
+
+  // Clean up ?payment=cancelled URL param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'cancelled') {
+      window.history.replaceState({}, '', window.location.pathname);
+      showToast('Payment cancelled. You can upgrade anytime.', 'info');
+    }
+  }, [showToast]);
 
   // Debug loading states (dev only)
   if (import.meta.env.DEV) {
@@ -895,7 +949,7 @@ const AppContent: React.FC = () => {
               todaysPlan={todaysPlan}
               isWeeklyPlanLoading={isWeeklyPlanLoading}
               isGeneratingPlan={isGeneratingPlan}
-              onGeneratePlan={generateNewPlan}
+              onGeneratePlan={gatedGenerateNewPlan}
               onViewWeeklyPlan={handleViewWeeklyPlan}
               onStartPlanWorkout={handleStartFromPlan}
               coachInsights={coachInsights}
@@ -973,6 +1027,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
+    <SubscriptionContext.Provider value={subscriptionContextValue}>
     <div className={`flex flex-col h-screen bg-[var(--bg-app)] text-[var(--text-primary)] overflow-hidden ${!isOnline ? 'pt-10' : ''}`}>
       {!isOnline && <OfflineBanner />}
       <Suspense fallback={null}>
@@ -1125,7 +1180,7 @@ const AppContent: React.FC = () => {
               isGenerating={isGeneratingPlan}
               isPreviousWeekPlan={isPreviousWeekPlan}
               onBack={handleCloseWeeklyPlan}
-              onGenerate={generateNewPlan}
+              onGenerate={gatedGenerateNewPlan}
               onStartWorkout={handleStartFromPlan}
               completedDays={completedDays}
             />
@@ -1156,7 +1211,20 @@ const AppContent: React.FC = () => {
           />
         </Suspense>
       )}
+
+      {/* Subscription Paywall Modal */}
+      {showPaywall && (
+        <Suspense fallback={null}>
+          <PaywallModal
+            isOpen={showPaywall}
+            onClose={() => setShowPaywall(false)}
+            trialDaysRemaining={subscription.trialDaysRemaining}
+            feature={paywallFeature || undefined}
+          />
+        </Suspense>
+      )}
     </div>
+    </SubscriptionContext.Provider>
   );
 };
 

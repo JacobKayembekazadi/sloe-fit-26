@@ -55,16 +55,21 @@ const MAX_DISMISSED_INSIGHTS = 20; // Cap dismissed insights to prevent unbounde
 // ============================================================================
 
 function getEventsKey(userId?: string): string {
-  return userId ? `${EVENTS_KEY_PREFIX}_${userId}` : EVENTS_KEY_PREFIX;
+  // Never use unnamespaced key — prevents cross-user data leaks on logout
+  if (!userId) return '';
+  return `${EVENTS_KEY_PREFIX}_${userId}`;
 }
 
 function getInsightsKey(userId?: string): string {
-  return userId ? `${INSIGHTS_KEY_PREFIX}_${userId}` : INSIGHTS_KEY_PREFIX;
+  if (!userId) return '';
+  return `${INSIGHTS_KEY_PREFIX}_${userId}`;
 }
 
 function loadEvents(userId?: string): CoachEvent[] {
   try {
-    const raw = localStorage.getItem(getEventsKey(userId));
+    const key = getEventsKey(userId);
+    if (!key) return []; // No userId = no data to load
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const events = JSON.parse(raw) as CoachEvent[];
     if (!Array.isArray(events)) return [];
@@ -78,8 +83,10 @@ function loadEvents(userId?: string): CoachEvent[] {
 
 function saveEvents(events: CoachEvent[], userId?: string): void {
   try {
+    const key = getEventsKey(userId);
+    if (!key) return; // No userId = don't persist
     const trimmed = events.slice(-MAX_EVENTS);
-    localStorage.setItem(getEventsKey(userId), JSON.stringify(trimmed));
+    localStorage.setItem(key, JSON.stringify(trimmed));
   } catch {
     // Storage full — evict oldest events and retry once
     try {
@@ -93,7 +100,9 @@ function saveEvents(events: CoachEvent[], userId?: string): void {
 
 function loadInsights(userId?: string): CoachInsight[] {
   try {
-    const raw = localStorage.getItem(getInsightsKey(userId));
+    const key = getInsightsKey(userId);
+    if (!key) return []; // No userId = no data to load
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const insights = JSON.parse(raw) as CoachInsight[];
     if (!Array.isArray(insights)) return [];
@@ -105,7 +114,9 @@ function loadInsights(userId?: string): CoachInsight[] {
 
 function saveInsights(insights: CoachInsight[], userId?: string): void {
   try {
-    localStorage.setItem(getInsightsKey(userId), JSON.stringify(insights));
+    const key = getInsightsKey(userId);
+    if (!key) return; // No userId = don't persist
+    localStorage.setItem(key, JSON.stringify(insights));
   } catch {
     // Storage full — keep only active insights and recent dismissed
     try {

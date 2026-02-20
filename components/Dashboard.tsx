@@ -13,6 +13,8 @@ import WeeklyPlanCard from './WeeklyPlanCard';
 import { getRecommendations } from '../services/supplementService';
 import CoachInsightCard from './CoachInsightCard';
 import SectionErrorBoundary from './SectionErrorBoundary';
+import { useSubscriptionContext } from '../contexts/SubscriptionContext';
+import { getTrialDaysRemaining } from '../services/paymentService';
 import type { CoachInsight } from '../hooks/useCoachingAgent';
 import type { NutritionLog, CompletedWorkout } from '../App';
 import type { NutritionTargets, UserProfile } from '../hooks/useUserData';
@@ -66,6 +68,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     onDismissInsight
 }) => {
     const { user } = useAuth();
+    const { requireSubscription } = useSubscriptionContext();
     const [pendingWorkoutsCount, setPendingWorkoutsCount] = useState(0);
     const [trainerName, setTrainerName] = useState<string | null>(null);
 
@@ -108,19 +111,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Uses useReducer to avoid unused state variable lint warnings
     const [, forceRender] = useReducer((x: number) => x + 1, 0);
     useEffect(() => {
+        let timerId: ReturnType<typeof setTimeout>;
+        let cancelled = false;
         const scheduleNextMidnight = () => {
             const now = new Date();
             const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
             // Add 1s buffer to ensure we're past midnight
             const msUntilMidnight = tomorrow.getTime() - now.getTime() + 1000;
-            return setTimeout(() => {
+            timerId = setTimeout(() => {
+                if (cancelled) return; // Prevent re-scheduling after cleanup
                 forceRender();
-                // Re-schedule for next midnight
-                timerId = scheduleNextMidnight();
+                scheduleNextMidnight();
             }, msUntilMidnight);
         };
-        let timerId = scheduleNextMidnight();
-        return () => clearTimeout(timerId);
+        scheduleNextMidnight();
+        return () => {
+            cancelled = true;
+            clearTimeout(timerId);
+        };
     }, []);
 
     // RALPH LOOP 22: Refresh day counter when tab becomes visible
@@ -134,6 +142,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
+
+    // Derive a today key that changes when the calendar day changes.
+    // forceRender (midnight timer + visibility change) triggers re-render,
+    // which recalculates todayKey, which invalidates the memo below.
+    const todayKey = new Date().toDateString();
 
     // Calculate program day (days since user started) instead of calendar day
     const { dayDisplay, isMilestone, milestoneMessage } = useMemo(() => {
@@ -213,7 +226,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         return { programDay: day, dayDisplay: display, isMilestone: milestone, milestoneMessage: message };
-    }, [userProfile?.created_at]);
+    }, [userProfile?.created_at, todayKey]);
 
     // Get today's nutrition from log or use defaults (local date YYYY-MM-DD format to match database)
     const now = new Date();
@@ -295,23 +308,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <p className="text-xs text-blue-300 font-medium">Free Trial Active</p>
                             <p className="text-xs text-gray-400 mt-0.5">
                                 {(() => {
-                                    const trialStart = new Date(userProfile.trial_started_at!).getTime();
-                                    const daysSinceStart = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
-                                    const daysRemaining = Math.max(0, Math.ceil(7 - daysSinceStart));
+                                    const daysRemaining = getTrialDaysRemaining(userProfile.trial_started_at!);
                                     return daysRemaining > 0
                                         ? `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`
                                         : 'Trial expired';
                                 })()}
                             </p>
                         </div>
-                        <a
-                            href="https://sloefit.com/subscribe"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => requireSubscription('Full Access')}
                             className="text-xs px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-full hover:bg-blue-500/30 transition-colors whitespace-nowrap"
                         >
                             Upgrade
-                        </a>
+                        </button>
                     </div>
                 )}
 
@@ -327,14 +336,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 </p>
                             </div>
                         </div>
-                        <a
-                            href="https://sloefit.com/subscribe"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => requireSubscription('Full Access')}
                             className="mt-3 block w-full py-2 px-4 bg-[var(--color-primary)] text-black text-sm font-bold rounded-lg text-center hover:opacity-90 transition-opacity"
                         >
                             Upgrade Now
-                        </a>
+                        </button>
                     </div>
                 )}
             </div>

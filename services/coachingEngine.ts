@@ -86,6 +86,8 @@ function detectLowSleep(events: CoachEvent[]): DetectedPattern | null {
   if (recent.length === 0) return null;
 
   const sleep = Number(recent[0].data.sleep);
+  // Validate sleep is a real number in reasonable range (0-24 hours)
+  if (isNaN(sleep) || sleep < 0 || sleep > 24) return null;
   if (sleep > 0 && sleep < 6) {
     return {
       type: 'low_sleep',
@@ -104,21 +106,43 @@ function detectTrainingStreak(events: CoachEvent[]): DetectedPattern | null {
 
   if (workouts.length < 3) return null;
 
-  // Count consecutive days with workouts (from most recent)
-  const now = Date.now();
-  let streak = 0;
-  const daysSeen = new Set<string>();
+  // Use UTC date keys to avoid timezone-related streak miscounts
+  const toUTCDateKey = (ts: number): string => {
+    const d = new Date(ts);
+    return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+  };
 
+  // Collect unique UTC dates, sorted most recent first
+  const uniqueDates: string[] = [];
+  const seen = new Set<string>();
   for (const w of workouts) {
-    const dayKey = new Date(w.timestamp).toDateString();
-    if (daysSeen.has(dayKey)) continue;
-    daysSeen.add(dayKey);
+    const key = toUTCDateKey(w.timestamp);
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueDates.push(key);
+    }
+  }
 
-    const daysAgo = Math.floor((now - w.timestamp) / MS_PER_DAY);
-    if (daysAgo <= streak + 1) {
+  // Count strictly consecutive days (no gaps allowed)
+  const now = Date.now();
+  const todayKey = toUTCDateKey(now);
+  const yesterdayKey = toUTCDateKey(now - MS_PER_DAY);
+
+  // Streak must start from today or yesterday
+  if (uniqueDates[0] !== todayKey && uniqueDates[0] !== yesterdayKey) {
+    return null;
+  }
+
+  let streak = 1;
+  for (let i = 1; i < uniqueDates.length; i++) {
+    // Check if the previous unique date is exactly 1 day before this one
+    const prevWorkoutTs = workouts.find(w => toUTCDateKey(w.timestamp) === uniqueDates[i])!.timestamp;
+    const currWorkoutTs = workouts.find(w => toUTCDateKey(w.timestamp) === uniqueDates[i - 1])!.timestamp;
+    const dayDiff = Math.round((currWorkoutTs - prevWorkoutTs) / MS_PER_DAY);
+    if (dayDiff <= 1) {
       streak++;
     } else {
-      break;
+      break; // Gap found — streak ends
     }
   }
 
@@ -134,19 +158,23 @@ function detectTrainingStreak(events: CoachEvent[]): DetectedPattern | null {
 }
 
 function detectOvertraining(events: CoachEvent[]): DetectedPattern | null {
-  const weekAgo = Date.now() - MS_PER_WEEK;
+  const now = Date.now();
+  const weekAgo = now - MS_PER_WEEK;
   const workoutsThisWeek = events.filter(
     e => e.type === 'workout_completed' && e.timestamp > weekAgo
   );
 
   if (workoutsThisWeek.length <= 5) return null;
 
-  // Check if last recovery check-in has high soreness
+  // Check if RECENT recovery check-in (within 3 days) has high soreness
+  const threeDaysAgo = now - (3 * MS_PER_DAY);
   const lastRecovery = events
-    .filter(e => e.type === 'recovery_checkin')
+    .filter(e => e.type === 'recovery_checkin' && e.timestamp > threeDaysAgo)
     .sort((a, b) => b.timestamp - a.timestamp)[0];
 
-  const soreness = lastRecovery?.data.soreness;
+  if (!lastRecovery) return null; // No recent recovery data — can't diagnose overtraining
+
+  const soreness = lastRecovery.data.soreness;
   const hasSoreness = Array.isArray(soreness) ? soreness.length > 2 : false;
 
   if (hasSoreness) {
@@ -162,7 +190,11 @@ function detectOvertraining(events: CoachEvent[]): DetectedPattern | null {
 
 function detectVolumeProgression(events: CoachEvent[]): DetectedPattern | null {
   const workouts = events
-    .filter(e => e.type === 'workout_completed' && typeof e.data.volume === 'number')
+    .filter(e => {
+      const vol = Number(e.data.volume);
+      // Validate: must be a real positive number, not NaN/Infinity
+      return e.type === 'workout_completed' && isFinite(vol) && vol > 0;
+    })
     .sort((a, b) => a.timestamp - b.timestamp);
 
   if (workouts.length < 4) return null;
@@ -174,12 +206,16 @@ function detectVolumeProgression(events: CoachEvent[]): DetectedPattern | null {
   const avgFirst = firstHalf.reduce((s, w) => s + Number(w.data.volume), 0) / firstHalf.length;
   const avgSecond = secondHalf.reduce((s, w) => s + Number(w.data.volume), 0) / secondHalf.length;
 
+  if (avgFirst <= 0) return null; // Prevent division by zero
+
   if (avgSecond > avgFirst * 1.1) {
+    const volumeIncrease = Math.round(((avgSecond - avgFirst) / avgFirst) * 100);
+    if (!isFinite(volumeIncrease)) return null;
     return {
       type: 'volume_progression',
       priority: 'low',
       data: {
-        volumeIncrease: Math.round(((avgSecond - avgFirst) / avgFirst) * 100),
+        volumeIncrease,
         currentAvgVolume: Math.round(avgSecond),
       },
       productKey: 'general_recovery',
