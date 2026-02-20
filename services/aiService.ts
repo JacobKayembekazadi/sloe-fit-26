@@ -352,7 +352,7 @@ const BASE_RETRY_DELAY_MS = 1500;
 const MAX_RETRY_DELAY_MS = 10000;
 
 // Error types that should NOT be retried client-side (deterministic failures)
-const NON_RETRYABLE_ERROR_TYPES = new Set(['content_filter', 'invalid_request', 'auth', 'subscription_required', 'payload_too_large']);
+const NON_RETRYABLE_ERROR_TYPES = new Set(['content_filter', 'invalid_request', 'auth', 'subscription_required', 'payload_too_large', 'cancelled']);
 
 function calculateClientRetryDelay(attempt: number): number {
   const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
@@ -364,7 +364,7 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function callAPI<T>(endpoint: string, body: unknown, operation: string): Promise<AIResponse<T>> {
+async function callAPI<T>(endpoint: string, body: unknown, operation: string, externalSignal?: AbortSignal): Promise<AIResponse<T>> {
   // H12 FIX: Check client-side rate limit before making request
   const rateLimitCheck = checkRateLimit(operation);
   if (!rateLimitCheck.allowed) {
@@ -417,6 +417,15 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    // H6 FIX: If caller provides an external signal (e.g. component unmount), wire it in
+    if (externalSignal?.aborted) {
+      clearTimeout(timeoutId);
+      updateRequestLog(log, 'error');
+      return { success: false, error: { type: 'cancelled', message: 'Request cancelled.', retryable: false } };
+    }
+    const onExternalAbort = () => controller.abort();
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
 
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -559,8 +568,14 @@ async function callAPI<T>(endpoint: string, body: unknown, operation: string): P
       return result;
     } catch (error: any) {
       clearTimeout(timeoutId);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
 
       if (error?.name === 'AbortError') {
+        // H6 FIX: Distinguish external cancellation from timeout
+        if (externalSignal?.aborted) {
+          updateRequestLog(log, 'error');
+          return { success: false, error: { type: 'cancelled', message: 'Request cancelled.', retryable: false } };
+        }
         lastError = {
           type: 'timeout',
           message: 'Request timed out. Please try again.',
@@ -639,9 +654,9 @@ export function getSubscriptionErrorCode(error: AIResponse<unknown>['error']): s
 /**
  * Analyze a body photo for composition assessment
  */
-export const analyzeBodyPhoto = async (image: File): Promise<BodyAnalysisResult> => {
+export const analyzeBodyPhoto = async (image: File, options?: { signal?: AbortSignal }): Promise<BodyAnalysisResult> => {
   const imageBase64 = await compressImageForAnalysis(image);
-  const result = await callAPI<BodyAnalysisResult>('/analyze-body', { imageBase64 }, 'analyzeBodyPhoto');
+  const result = await callAPI<BodyAnalysisResult>('/analyze-body', { imageBase64 }, 'analyzeBodyPhoto', options?.signal);
 
   if (result.success && result.data) {
     return result.data;
@@ -652,9 +667,9 @@ export const analyzeBodyPhoto = async (image: File): Promise<BodyAnalysisResult>
 /**
  * Analyze a meal photo for nutrition information
  */
-export const analyzeMealPhoto = async (image: File, userGoal: string | null): Promise<MealAnalysisResult> => {
+export const analyzeMealPhoto = async (image: File, userGoal: string | null, options?: { signal?: AbortSignal }): Promise<MealAnalysisResult> => {
   const imageBase64 = await compressImageForAnalysis(image);
-  const result = await callAPI<MealAnalysisResult>('/analyze-meal-photo', { imageBase64, userGoal }, 'analyzeMealPhoto');
+  const result = await callAPI<MealAnalysisResult>('/analyze-meal-photo', { imageBase64, userGoal }, 'analyzeMealPhoto', options?.signal);
 
   if (result.success && result.data) {
     return result.data;
@@ -683,8 +698,8 @@ export const analyzeProgress = async (images: File[], metrics: string): Promise<
 /**
  * Generate a personalized workout based on profile and recovery state
  */
-export const generateWorkout = async (input: WorkoutGenerationInput): Promise<GeneratedWorkout | null> => {
-  const result = await callAPI<GeneratedWorkout>('/generate-workout', input, 'generateWorkout');
+export const generateWorkout = async (input: WorkoutGenerationInput, options?: { signal?: AbortSignal }): Promise<GeneratedWorkout | null> => {
+  const result = await callAPI<GeneratedWorkout>('/generate-workout', input, 'generateWorkout', options?.signal);
 
   if (result.success && result.data) {
     return result.data;
@@ -744,8 +759,8 @@ export const analyzeWeeklyNutrition = async (input: WeeklyNutritionInput): Promi
 /**
  * Generate a weekly training plan using multi-step AI reasoning
  */
-export const generateWeeklyPlan = async (input: WeeklyPlanGenerationInput): Promise<WeeklyPlan | null> => {
-  const result = await callAPI<WeeklyPlan>('/generate-weekly-plan', input, 'generateWeeklyPlan');
+export const generateWeeklyPlan = async (input: WeeklyPlanGenerationInput, options?: { signal?: AbortSignal }): Promise<WeeklyPlan | null> => {
+  const result = await callAPI<WeeklyPlan>('/generate-weekly-plan', input, 'generateWeeklyPlan', options?.signal);
 
   if (result.success && result.data) {
     return result.data;

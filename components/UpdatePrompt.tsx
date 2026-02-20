@@ -3,22 +3,29 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { reportError } from '../utils/sentryHelpers';
 
 interface UpdatePromptProps {
-    /** When true, hides the update banner (e.g. during active workouts) */
+    /** When true, hides the update banner AND pauses SW checks (e.g. during active workouts) */
     suppressBanner?: boolean;
 }
 
 const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) => {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const updateInProgressRef = useRef(false);
+    const bcRef = useRef<BroadcastChannel | null>(null);
 
     const {
         needRefresh: [needRefresh, setNeedRefresh],
         updateServiceWorker,
     } = useRegisterSW({
         onRegistered(r) {
-            // Check for updates every hour — store ref for cleanup
+            // Check for updates every 5 minutes — store ref for cleanup
             if (r) {
                 intervalRef.current = setInterval(async () => {
+                    // M1 FIX: Skip update checks during active workouts to prevent
+                    // interruption from SW reload mid-exercise
+                    if (suppressBannerRef.current) {
+                        return;
+                    }
+
                     // Prevent concurrent update attempts (causes InvalidStateError)
                     if (updateInProgressRef.current) {
                         return;
@@ -63,7 +70,7 @@ const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) =
                     } finally {
                         updateInProgressRef.current = false;
                     }
-                }, 5 * 60 * 1000); // Check every 5 minutes (was 1 hour)
+                }, 5 * 60 * 1000); // Check every 5 minutes
             }
         },
         onRegisterError(error) {
@@ -96,6 +103,29 @@ const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) =
         },
     });
 
+    // Keep ref in sync with prop so interval callback reads latest value
+    const suppressBannerRef = useRef(suppressBanner);
+    useEffect(() => { suppressBannerRef.current = suppressBanner; }, [suppressBanner]);
+
+    // H3 FIX: BroadcastChannel to coordinate updates across tabs
+    // Only one tab should apply the SW update to avoid race conditions
+    useEffect(() => {
+        try {
+            const bc = new BroadcastChannel('sloefit-sw-update');
+            bcRef.current = bc;
+            bc.onmessage = (event) => {
+                if (event.data?.type === 'sw-updating') {
+                    // Another tab is applying the update — dismiss our banner
+                    setNeedRefresh(false);
+                }
+            };
+            return () => { bc.close(); bcRef.current = null; };
+        } catch {
+            // BroadcastChannel not supported (older browsers) — no coordination needed
+            return;
+        }
+    }, [setNeedRefresh]);
+
     // Expose a global function for Settings "Check for Updates" button
     const manualCheckForUpdate = useCallback(async (): Promise<boolean> => {
         try {
@@ -113,7 +143,10 @@ const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) =
     // Store the check function globally so Settings can call it
     useEffect(() => {
         (window as any).__sloefit_checkForUpdate = manualCheckForUpdate;
-        (window as any).__sloefit_applyUpdate = () => updateServiceWorker(true);
+        (window as any).__sloefit_applyUpdate = () => {
+            bcRef.current?.postMessage({ type: 'sw-updating' });
+            updateServiceWorker(true);
+        };
         return () => {
             delete (window as any).__sloefit_checkForUpdate;
             delete (window as any).__sloefit_applyUpdate;
@@ -152,7 +185,11 @@ const UpdatePrompt: React.FC<UpdatePromptProps> = ({ suppressBanner = false }) =
                         Later
                     </button>
                     <button
-                        onClick={() => updateServiceWorker(true)}
+                        onClick={() => {
+                            // H3 FIX: Notify other tabs before applying update
+                            bcRef.current?.postMessage({ type: 'sw-updating' });
+                            updateServiceWorker(true);
+                        }}
                         className="flex-1 py-3 px-4 min-h-[44px] bg-[var(--color-primary)] text-black font-bold rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-[var(--color-primary)]/20"
                     >
                         Update Now

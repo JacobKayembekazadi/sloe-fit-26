@@ -49,19 +49,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`[Stripe Webhook] Event: ${event.type}, ID: ${event.id}`);
 
-    // Idempotency check
+    // Idempotency check — allow re-processing of failed events
     const { data: existingEvent } = await supabase
         .from('processed_webhooks')
-        .select('id')
+        .select('id, status')
         .eq('event_id', event.id)
         .single();
 
-    if (existingEvent) {
-        console.log(`[Stripe Webhook] Event ${event.id} already processed`);
+    if (existingEvent && existingEvent.status !== 'failed') {
+        console.log(`[Stripe Webhook] Event ${event.id} already processed (${existingEvent.status})`);
         return res.status(200).json({ received: true });
     }
 
     try {
+        // M7 FIX: Write idempotency record BEFORE processing to prevent
+        // double-processing if the handler crashes and Stripe retries
+        await supabase.from('processed_webhooks').upsert({
+            event_id: event.id,
+            event_type: event.type,
+            processed_at: new Date().toISOString(),
+            status: 'processing',
+        }, { onConflict: 'event_id' });
+
         switch (event.type) {
             case 'checkout.session.completed': {
                 const session = event.data.object as Stripe.Checkout.Session;
@@ -92,16 +101,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 console.log(`[Stripe Webhook] Unhandled event: ${event.type}`);
         }
 
-        // Record successful processing
-        await supabase.from('processed_webhooks').insert({
-            event_id: event.id,
-            event_type: event.type,
-            processed_at: new Date().toISOString()
-        });
+        // Mark as completed
+        await supabase.from('processed_webhooks')
+            .update({ status: 'completed' })
+            .eq('event_id', event.id);
 
         return res.status(200).json({ received: true });
     } catch (error) {
         console.error('[Stripe Webhook] Handler error:', error);
+
+        // Mark as failed so it can be retried (best effort)
+        try {
+            await supabase.from('processed_webhooks')
+                .update({ status: 'failed' })
+                .eq('event_id', event.id);
+        } catch { /* best effort */ }
+
         return res.status(500).json({ error: 'Webhook handler failed' });
     }
 }
@@ -114,6 +129,12 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
 
     if (!userId) {
         console.error('[Stripe] No user ID in checkout session metadata');
+        return;
+    }
+
+    // M9 FIX: Verify payment was actually collected before activating
+    if (session.payment_status !== 'paid') {
+        console.warn(`[Stripe] Checkout session ${session.id} payment_status is "${session.payment_status}", skipping activation`);
         return;
     }
 

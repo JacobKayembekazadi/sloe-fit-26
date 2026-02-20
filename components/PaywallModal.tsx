@@ -51,6 +51,11 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             return;
         }
 
+        // H7 FIX: Save the feature that triggered the paywall so we can redirect back after payment
+        if (feature) {
+            try { sessionStorage.setItem('sloefit_paywall_feature', feature); } catch { /* quota */ }
+        }
+
         // Redirect to checkout
         window.location.href = result.url;
     };

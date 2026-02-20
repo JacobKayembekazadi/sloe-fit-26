@@ -99,6 +99,27 @@ const MealTracker: React.FC<MealTrackerProps> = ({
 }) => {
   const { showToast } = useToast();
   const { requireSubscription } = useSubscriptionContext();
+
+  // M2 FIX: Track current date and auto-refresh at midnight so "today" data stays correct
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+
+  useEffect(() => {
+    const scheduleNextMidnight = () => {
+      const now = new Date();
+      const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const msUntilMidnight = tomorrow.getTime() - now.getTime();
+      return setTimeout(() => {
+        const newNow = new Date();
+        setCurrentDate(`${newNow.getFullYear()}-${String(newNow.getMonth() + 1).padStart(2, '0')}-${String(newNow.getDate()).padStart(2, '0')}`);
+      }, msUntilMidnight + 500); // +500ms buffer past midnight
+    };
+    const timerId = scheduleNextMidnight();
+    return () => clearTimeout(timerId);
+  }, [currentDate]); // Re-schedule after each date change
+
   const [tabMode, setTabMode] = useState<TabMode>('log');
   const [inputMode, setInputMode] = useState<InputMode>('text');
   const [file, setFile] = useState<File | null>(null);
@@ -132,12 +153,10 @@ const MealTracker: React.FC<MealTrackerProps> = ({
   // Race condition protection - useRef for immediate lock (not subject to React batching)
   const isLoggingRef = useRef(false);
 
-  // Derive today's meals from mealEntries — use local date (not UTC)
+  // Derive today's meals from mealEntries — use M2 currentDate for midnight refresh
   const todaysMeals = useMemo(() => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return mealEntries
-      .filter(m => m.date === today)
+      .filter(m => m.date === currentDate)
       .map(m => ({
         id: m.id,
         name: m.description || 'Meal',
@@ -148,7 +167,7 @@ const MealTracker: React.FC<MealTrackerProps> = ({
         time: new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
         mealType: m.meal_type
       }));
-  }, [mealEntries]);
+  }, [mealEntries, currentDate]);
 
   // Memoize supplement recommendations - only show if user has enabled supplements
   const supplementRecs = useMemo(

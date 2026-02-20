@@ -805,6 +805,28 @@ const AppContent: React.FC = () => {
       // Immediate attempt + delayed retry (gives webhook 3s to process)
       refetchProfile();
       const timer = setTimeout(() => refetchProfile(), 3000);
+
+      // H7 FIX: Redirect back to the feature that triggered the paywall
+      try {
+        const savedFeature = sessionStorage.getItem('sloefit_paywall_feature');
+        sessionStorage.removeItem('sloefit_paywall_feature');
+        if (savedFeature) {
+          // Map feature names to tabs
+          const featureToTab: Record<string, Tab> = {
+            [PREMIUM_FEATURES.AI_WORKOUTS]: 'train',
+            [PREMIUM_FEATURES.MEAL_PHOTO_ANALYSIS]: 'meal',
+            [PREMIUM_FEATURES.BODY_ANALYSIS]: 'body',
+            [PREMIUM_FEATURES.WEEKLY_INSIGHTS]: 'meal',
+            [PREMIUM_FEATURES.PROGRESS_COMPARISON]: 'body',
+          };
+          const targetTab = featureToTab[savedFeature];
+          if (targetTab) {
+            setActiveTab(targetTab);
+            setCurrentView('tabs');
+          }
+        }
+      } catch { /* sessionStorage unavailable */ }
+
       return () => clearTimeout(timer);
     }
   }, [user, refetchProfile, showToast]);
